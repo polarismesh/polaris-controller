@@ -435,11 +435,11 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 
 	polarisNamespace := service.Namespace
 	if polarisNamespace == "" {
-		return response, fmt.Errorf("Failed service is invalid, polarisNamespace is empty")
+		return response, fmt.Errorf("failed service is invalid, polarisNamespace is empty")
 	}
 	polaris := service.Name
 	if polaris == "" {
-		return response, fmt.Errorf("Failed service is invalid, polarisService is empty")
+		return response, fmt.Errorf("failed service is invalid, polarisService is empty")
 	}
 
 	url := fmt.Sprintf("%s%s?namespace=%s&name=%s&offset=%d&limit=%d",
@@ -462,7 +462,7 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 
 	if statusCode != http.StatusOK {
 		klog.Errorf("Failed to get service %s %s", serviceMsg, response.Info)
-		return response, fmt.Errorf("Failed to get service %s %s", serviceMsg, response.Info)
+		return response, fmt.Errorf("failed to get service %s %s", serviceMsg, response.Info)
 	}
 
 	return response, nil
@@ -498,7 +498,7 @@ func ListService(clusterID string) (res GetServiceResponse, err error) {
 
 	if statusCode != http.StatusOK {
 		klog.Errorf("Failed to get platform service list %s", response.Info)
-		return response, fmt.Errorf("Failed to get platform service list %s", response.Info)
+		return response, fmt.Errorf("failed to get platform service list %s", response.Info)
 	}
 
 	return response, nil

@@ -2,13 +2,13 @@ package controller
 
 import (
 	"fmt"
-	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
+	"github.com/polarismesh/polaris-go/api"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -610,7 +610,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	}
 
 	if addInsErr != nil || deleteInsErr != nil || updateInsErr != nil {
-		return fmt.Errorf("Failed AddInstances %v DeleteInstances %v UpdateInstances %v", addInsErr, deleteInsErr,
+		return fmt.Errorf("failed AddInstances %v DeleteInstances %v UpdateInstances %v", addInsErr, deleteInsErr,
 			updateInsErr)
 	}
 

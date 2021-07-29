@@ -1,14 +1,11 @@
 package accountingcontroller
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
-	"github.com/polarismesh/polaris-controller/pkg/util"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -25,8 +22,6 @@ import (
 // PolarisAccountController
 type PolarisAccountController struct {
 	client           clientset.Interface
-	eventBroadcaster record.EventBroadcaster
-	eventRecorder    record.EventRecorder
 
 	// serviceLister is able to list/get services and is populated by the shared informer passed to
 	// NewEndpointController.
@@ -109,27 +104,6 @@ func (p *PolarisAccountController) Run(workers int, stopCh <-chan struct{}) {
 
 	<-stopCh
 
-}
-
-// onServiceDelete 识别到北极星服务的时候，进行处理
-func (p *PolarisAccountController) onServiceDelete(obj interface{}) {
-	key, err := util.KeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("Couldn't get key for object %+v: %v", obj, err))
-		return
-	}
-
-	svc := obj.(*v1.Service)
-	p.enqueueService(svc, key)
-
-}
-
-func (p *PolarisAccountController) enqueueService(service *v1.Service, key string) {
-	// 只有符合要求的svc 才会加入队列处理
-	if util.IsPolarisService(service) {
-		klog.Infof("Service %s is polaris type, in queue", key)
-		p.queue.Add(key)
-	}
 }
 
 func (p *PolarisAccountController) worker() {

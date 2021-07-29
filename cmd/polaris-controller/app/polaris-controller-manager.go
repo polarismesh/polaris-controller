@@ -243,8 +243,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 		checks = append(checks, electionChecker)
 	}
 
-	var unsecuredMux *mux.PathRecorderMux
-	unsecuredMux = options.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, checks...)
+	unsecuredMux := options.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, checks...)
 	//handler := options.BuildHandlerChain(unsecuredMux)
 
 	if err := options.RunServe(unsecuredMux, c.ComponentConfig.Generic.Port, 0, stopCh); err != nil {
