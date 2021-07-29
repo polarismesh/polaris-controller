@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"time"
 
-	"git.code.oa.com/polaris/polaris-go/api"
-	"git.code.oa.com/polaris/polaris-go/pkg/model"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 )
@@ -130,8 +130,6 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 	var healthCheck polarisapi.HealthCheck
 	enableHealthCheck := util.Bool(false)
 
-	healthy := util.Bool(true)
-
 	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
 	if ttlStr != "" {
 		// ttl 默认是5s
@@ -153,7 +151,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 
 	for _, i := range address {
 
-		healthy = util.Bool(i.Healthy)
+		healthy := util.Bool(i.Healthy)
 		tmpInstance := polarisapi.Instance{
 			Service:           service.Name,
 			Namespace:         service.Namespace,
@@ -313,10 +311,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 
 // 判断当前 polaris 实例是否有自定义 meta
 func isPolarisInstanceHasCustomMeta(m map[string]string) bool {
-	if len(m) > len(util.PolarisDefaultMetaSet) {
-		return true
-	}
-	return false
+	return len(m) > len(util.PolarisDefaultMetaSet)
 }
 
 // filterPolarisMetadata 过滤属于TKE注册的服务
