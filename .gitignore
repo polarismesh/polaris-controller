@@ -1,0 +1,8 @@
+.idea
+*.log
+tags
+*.exe
+**/*.exe
+# Build output
+bin
+.vscode/
