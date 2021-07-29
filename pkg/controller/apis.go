@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"git.code.oa.com/polaris/polaris-go/api"
-	"git.code.oa.com/polaris/polaris-go/pkg/model"
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"

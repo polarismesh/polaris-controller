@@ -3,7 +3,7 @@ package address
 import (
 	"encoding/json"
 	"fmt"
-	"git.code.oa.com/polaris/polaris-go/pkg/model"
+	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	v1 "k8s.io/api/core/v1"

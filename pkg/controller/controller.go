@@ -2,7 +2,7 @@ package controller
 
 import (
 	"fmt"
-	"git.code.oa.com/polaris/polaris-go/api"
+	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
