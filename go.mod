@@ -19,3 +19,5 @@ require (
 	k8s.io/component-base v0.17.2
 	k8s.io/klog v1.0.0
 )
+
+replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.8.1
