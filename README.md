@@ -2,7 +2,7 @@
 
 ## 概览
 
-Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要接入到 Polaris 的 k8s 集群中。提供将 k8s 服务自动注册到 Polaris ，同时也提供了自动注入 Sidecar 的能力。
+Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要接入到 Polaris 的 k8s 集群中。提供将 k8s 服务自动注册到 Polaris ，和自动注入 Sidecar 的能力。
 
 本文档将介绍如何在 k8s 集群上安装、配置 Polaris Controller 。
 
@@ -22,10 +22,10 @@ cd polaris-controller/deploy/polaris-controller
 
 ### 配置 Polaris Server 地址和集群信息
 
-修改 configmap.yaml ，配置下面的参数：
+修改 configmap.yaml 和 polaris-controller.yaml，配置下面的参数：
 
 - 将 `POLARIS_SERVER_URL` 替换为 Polaris server 的 ip。Polaris Controller 会将 k8s service 同步到这个 Poarlis server。
-- 将 `CLUSTER_NAME` 替换为您需要的值。北极星支持多集群接入的方案，即多个集群的同名服务，同步到北极星是一个服务，通过北极星的服务发现，可以发现两个 k8s 的同名服务的实例列表。当使用多集群方案时，您需要为两个集群指定不同的 CLUSTER_NAME ， Polaris Controller 会只处理自己所在的集群的实例。
+- 将 `deploy/polaris-controller/polaris-controller.yaml` 中 `polaris-controller` 容器的启动参数 `cluster-name`替换为您需要的值（默认为`default`）。北极星支持多集群接入的方案，即多个集群的同名服务，同步到北极星是一个服务，通过北极星的服务发现，可以发现多个 k8s 的同名服务的实例列表。当使用多集群方案时，您需要为多个集群指定不同的 `cluster-name` ， Polaris Controller 会只处理自己所在的集群的实例，若多个集群使用了相同的`cluster-name`，且多个集群有同名的service，会出现多个 Controller 相互覆盖对方同步到北极星上的实例的情况。
 
 ### 运行安装脚本
 
