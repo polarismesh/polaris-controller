@@ -7,7 +7,7 @@ metadata:
   namespace: polaris-system
 spec:
   progressDeadlineSeconds: 60
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 10
   selector:
     matchLabels:
@@ -25,11 +25,11 @@ spec:
     spec:
       containers:
         - name: polaris-controller
-          image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-controller:v1.0.0-beta
+          image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-controller:v1.0.2-beta
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
                  "--v=4",
-                 "--cluster-name=${CLUSTER}",
+                 "--cluster-name=default",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
                  "--stderrthreshold=0",
@@ -37,7 +37,6 @@ spec:
                  "--log-file=/polaris-controller/log/test.log",
                  "--logtostderr=false",
                  "--log-file-max-size=1800",
-                 "--polarisServerAddress=127.0.0.1",
                  "--leader-elect=true"
           ]
           imagePullPolicy: Always
@@ -53,13 +52,6 @@ spec:
             - name: config-volume
               mountPath: /etc/polaris-inject/config
               readOnly: true
-          resources:
-            limits:
-              cpu: "4"
-              memory: 8Gi
-            requests:
-              cpu: "2"
-              memory: 4Gi
       dnsPolicy: ClusterFirst
       imagePullSecrets:
         - name: qcloudregistrykey

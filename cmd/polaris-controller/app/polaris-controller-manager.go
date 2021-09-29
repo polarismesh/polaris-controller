@@ -32,6 +32,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,7 +58,9 @@ var (
 	flags = struct {
 		loggingOptions *log.Options
 
-		port           int
+		injectPort     int
+		httpPort       int
+		grpcPort       int
 		monitoringPort int
 
 		polarisServerAddress string
@@ -168,12 +171,14 @@ func initPolarisServerAddress() {
 
 	klog.Infof("load polaris server address: %s \n", polarisServerAddress)
 
-	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":8080"
-	polarisapi.PolarisGrpc = polarisServerAddress + ":8090"
+	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":" + strconv.Itoa(flags.httpPort)
+	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
 }
 
 func assignFlags(rootCmd *cobra.Command) {
-	rootCmd.PersistentFlags().IntVar(&flags.port, "port", 9443, "Webhook port")
+	rootCmd.PersistentFlags().IntVar(&flags.injectPort, "port", 9443, "Webhook port")
+	rootCmd.PersistentFlags().IntVar(&flags.httpPort, "httpPort", 8090, "Http port")
+	rootCmd.PersistentFlags().IntVar(&flags.grpcPort, "grpcPort", 8091, "Grpc port")
 	rootCmd.PersistentFlags().StringVar(&(flags.polarisServerAddress), "polarisServerAddress", "",
 		"polaris api address")
 	rootCmd.PersistentFlags().IntVar(&flags.monitoringPort, "monitoringPort", 15014, "Webhook monitoring port")
@@ -198,7 +203,7 @@ func initPolarisSidecarInjector() error {
 		MeshFile:            MeshFile,
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
-		Port:                flags.port,
+		Port:                flags.injectPort,
 		HealthCheckInterval: 3,
 		HealthCheckFile:     "/tmp/health",
 		MonitoringPort:      flags.monitoringPort,
