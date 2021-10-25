@@ -95,7 +95,7 @@ data:
           - -m
           - REDIRECT
           - -i
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/includeOutboundCIDRs` `*`) }}"
+          - "10.4.4.4"
           - -b
           - "{{ (annotation .ObjectMeta `cloud.tencent.com/includeInboundPorts` ``) }}"
           - -x
@@ -104,6 +104,7 @@ data:
           - "{{ (annotation .ObjectMeta `cloud.tencent.com/excludeInboundPorts` ``) }}"
           - -o
           - "{{ (annotation .ObjectMeta `cloud.tencent.com/excludeOutboundPorts` ``) }}"
+          - --redirect-dns=true
         resources:
           limits:
             cpu: 100m
