@@ -26,13 +26,14 @@ var (
 
 const (
 	//getInstances    = "/naming/v1/instances"
-	addInstances    = "/naming/v1/instances"
-	deleteInstances = "/naming/v1/instances/delete"
-	getService      = "/naming/v1/services"
-	updateService   = "/naming/v1/services"
-	createService   = "/naming/v1/services"
-	getNamespace    = "/naming/v1/namespaces"
-	createNamespace = "/naming/v1/namespaces"
+	addInstances       = "/naming/v1/instances"
+	deleteInstances    = "/naming/v1/instances/delete"
+	getService         = "/naming/v1/services"
+	updateService      = "/naming/v1/services"
+	createService      = "/naming/v1/services"
+	createServiceAlias = "/naming/v1/service/alias"
+	getNamespace       = "/naming/v1/namespaces"
+	createNamespace    = "/naming/v1/namespaces"
 )
 
 // GetAllInstances 获取全量Instances
@@ -562,6 +563,62 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 		if response.Code != ExistedResource {
 			klog.Errorf("Failed to create service %s %v", serviceMsg, response.Info)
 			return response, fmt.Errorf("create namespace failed: " + response.Info)
+		}
+	}
+
+	return response, nil
+}
+
+// CreateServiceAlias 创建北极星服务别名
+func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error) {
+
+	alias := service.GetAnnotations()[util.PolarisAliasNamespace]
+	aliasNs := service.GetAnnotations()[util.PolarisAliasService]
+
+	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", service.GetNamespace(), service.GetName(), aliasNs, alias)
+
+	klog.Infof("Start to create service alias %s", serviceAliasMsg)
+	startTime := time.Now()
+	defer func() {
+		klog.Infof("Finish to create service alias %s (%v)", serviceAliasMsg, time.Since(startTime))
+	}()
+
+	var response CreateServiceAliasResponse
+	requestID := uuid.New().String()
+	url := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
+
+	createRequest := &CreateServiceAliasRequest{
+		Service:        service.Name,
+		Namespace:      service.Namespace,
+		Alias:          alias,
+		AliasNamespace: aliasNs,
+		Owners:         Platform,
+	}
+
+	requestByte, err := json.Marshal(createRequest)
+	if err != nil {
+		klog.Errorf("Failed to marsh request %s %v", serviceAliasMsg, err)
+		return response, err
+	}
+
+	klog.Infof("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
+
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+
+	if err != nil {
+		klog.Errorf("Failed to create service alias %s %v", serviceAliasMsg, err)
+		return response, err
+	}
+
+	if statusCode != http.StatusOK {
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			klog.Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
+			return CreateServiceAliasResponse{}, err
+		}
+		if response.Code != ExistedResource {
+			klog.Errorf("Failed to create service alias %s %v", serviceAliasMsg, response.Info)
+			return response, fmt.Errorf("create service alias failed: " + response.Info)
 		}
 	}
 

@@ -69,7 +69,7 @@ func WaitForAPIServer(client clientset.Interface, timeout time.Duration) error {
 	return nil
 }
 
-// CompareServiceChange 比较service变化
+// CompareServiceAnnotationsChange 比较service变化
 func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeType {
 
 	// 以下变更,需要同步对应的Service实例信息
@@ -87,8 +87,8 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 	if old[PolarisWeight] != new[PolarisWeight] {
 		return ServiceWeightChanged
 	}
-	if old[PolarisAutoRegister] != new[PolarisAutoRegister] {
-		return ServiceAutoRegisterChanged
+	if old[PolarisEnableRegister] != new[PolarisEnableRegister] {
+		return ServiceEnableRegisterChanged
 	}
 	return ""
 }
@@ -99,6 +99,18 @@ func CompareServiceChange(old, new *v1.Service) ServiceChangeType {
 		return ServicePolarisDelete
 	}
 	return CompareServiceAnnotationsChange(old.GetAnnotations(), new.GetAnnotations())
+}
+
+// IfNeedCreateServiceAlias Determine whether to create a service alias
+func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
+	if old.Annotations[PolarisAliasNamespace] != new.Annotations[PolarisAliasNamespace] ||
+		old.Annotations[PolarisAliasService] != new.Annotations[PolarisAliasService] {
+		if new.Annotations[PolarisAliasNamespace] == "" || new.Annotations[PolarisAliasService] == "" {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 // 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加

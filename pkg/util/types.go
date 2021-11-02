@@ -1,12 +1,14 @@
 package util
 
 const (
-	PolarisWeight       = "polaris.cloud.tencentyun.com/weight"
-	PolarisHeartBeatTTL = "polaris.cloud.tencentyun.com/ttl"
-	PolarisAutoRegister = "polaris.cloud.tencentyun.com/autoRegister"
-	WorkloadKind        = "polaris.cloud.tencentyun.com/workloadKind"
-	PolarisMetadata     = "polaris.cloud.tencentyun.com/metadata"
-	PolarisCustomWeight = "polaris.cloud.tencentyun.com/customWeight"
+	PolarisWeight         = "polarismesh.cn/weight"
+	PolarisHeartBeatTTL   = "polarismesh.cn/ttl"
+	PolarisEnableRegister = "polarismesh.cn/enableRegister"
+	WorkloadKind          = "polarismesh.cn/workloadKind"
+	PolarisMetadata       = "polarismesh.cn/metadata"
+	PolarisCustomWeight   = "polarismesh.cn/customWeight"
+	PolarisAliasNamespace = "polarismesh.cn/namespace"
+	PolarisAliasService   = "polarismesh.cn/alias"
 )
 
 const (
@@ -32,15 +34,15 @@ var PolarisDefaultMetaSet = map[string]struct{}{
 type ServiceChangeType string
 
 const (
-	ServicePolarisDelete       ServiceChangeType = "servicePolarisDelete" // 删除了北极星的服务
-	ServiceNameSpacesChanged   ServiceChangeType = "serviceNameSpacesChanged"
-	ServiceNameChanged         ServiceChangeType = "serviceNameChanged"
-	ServiceWeightChanged       ServiceChangeType = "serviceWeightChanged"
-	ServiceTokenChanged        ServiceChangeType = "serviceTokenChanged"
-	ServiceTTLChanged          ServiceChangeType = "serviceTTLChanged"
-	ServiceAutoRegisterChanged ServiceChangeType = "serviceAutoRegisterChanged"
-	ServiceMetadataChanged     ServiceChangeType = "serviceMetadataChanged"
-	ServiceCustomWeightChanged ServiceChangeType = "serviceCustomWeightChanged"
+	ServicePolarisDelete         ServiceChangeType = "servicePolarisDelete" // 删除了北极星的服务
+	ServiceNameSpacesChanged     ServiceChangeType = "serviceNameSpacesChanged"
+	ServiceNameChanged           ServiceChangeType = "serviceNameChanged"
+	ServiceWeightChanged         ServiceChangeType = "serviceWeightChanged"
+	ServiceTokenChanged          ServiceChangeType = "serviceTokenChanged"
+	ServiceTTLChanged            ServiceChangeType = "serviceTTLChanged"
+	ServiceEnableRegisterChanged ServiceChangeType = "serviceEnableRegisterChanged"
+	ServiceMetadataChanged       ServiceChangeType = "serviceMetadataChanged"
+	ServiceCustomWeightChanged   ServiceChangeType = "serviceCustomWeightChanged"
 )
 
 // IndexPortMap 对应{"index-port":weight}
