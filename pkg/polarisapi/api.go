@@ -572,8 +572,10 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 // CreateServiceAlias 创建北极星服务别名
 func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error) {
 
-	alias := service.GetAnnotations()[util.PolarisAliasNamespace]
-	aliasNs := service.GetAnnotations()[util.PolarisAliasService]
+	var response CreateServiceAliasResponse
+
+	alias := service.GetAnnotations()[util.PolarisAliasService]
+	aliasNs := service.GetAnnotations()[util.PolarisAliasNamespace]
 
 	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", service.GetNamespace(), service.GetName(), aliasNs, alias)
 
@@ -583,7 +585,14 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 		klog.Infof("Finish to create service alias %s (%v)", serviceAliasMsg, time.Since(startTime))
 	}()
 
-	var response CreateServiceAliasResponse
+	createNsResponse, err := CreateNamespaces(aliasNs)
+	if err != nil {
+		klog.Errorf("Failed create namespaces in CreateServiceAlias %s, err %s, resp %v",
+			serviceAliasMsg, err, createNsResponse)
+
+		return response, err
+	}
+
 	requestID := uuid.New().String()
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
 
