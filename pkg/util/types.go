@@ -7,8 +7,8 @@ const (
 	WorkloadKind          = "polarismesh.cn/workloadKind"
 	PolarisMetadata       = "polarismesh.cn/metadata"
 	PolarisCustomWeight   = "polarismesh.cn/customWeight"
-	PolarisAliasNamespace = "polarismesh.cn/namespace"
-	PolarisAliasService   = "polarismesh.cn/alias"
+	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
+	PolarisAliasService   = "polarismesh.cn/aliasService"
 )
 
 const (
