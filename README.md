@@ -57,8 +57,8 @@ Polaris Controller 正常运行后，登录 Polaris 的控制台，可以看到 
 ### 服务同步配置
 Polaris Controller 允许您在 Service 的 Annotations 上配置参数，来控制服务同步的行为，目前支持的参数如下：
 
-- polaris.cloud.tencentyun.com/enableRegister: 如果某些服务您不想由 Poalris Controller 注册到北极星，可以设置 polaris.cloud.tencentyun.com/enableRegister="true"。
-- polaris.cloud.tencentyun.com/metadata: 如果您希望 Poalris Controller 注册的实例带上特定的 metadata ，可以指定这个参数，例如指定polaris.cloud.tencentyun.com/metadata='{"version":"v1"}'。
+- polarismesh.cn/enableRegister: 如果某些服务您不想由 Poalris Controller 注册到北极星，可以设置 polarismesh.cn/enableRegister="false"。
+- polarismesh.cn/metadata: 如果您希望 Poalris Controller 注册的实例带上特定的 metadata ，可以指定这个参数，例如指定 polarismesh.cn/metadata='{"version":"v1"}'。
 
 ### 开启自动注入功能
 
@@ -91,8 +91,8 @@ kubectl rollout restart deployment xxx --namespace xxxx
 
 Polaris Controller 允许您在 pod 的 Annotations 中指定一些配置来控制自动注入的行为，目前支持的配置有：
 
-- annotation sidecar.istio.io/inject: 您可以对命名空间开启自动注入，并对某些特殊的 pod 配置 annotation sidecar.istio.io/inject=false ，关闭这个 pod 的自动注入。
-- cloud.tencent.com/proxyCPU: 自动注入的 Envoy 的 cpu request。
-- cloud.tencent.com/proxyMemory: 自动注入的 Envoy 的 memory request。
-- cloud.tencent.com/proxyCPULimit: 自动注入的 Envoy 的 cpu limit。
-- cloud.tencent.com/proxyMemoryLimit: 自动注入的 Envoy 的 memory limit。
+- sidecar.istio.io/inject: 您可以对命名空间开启自动注入，并对某些特殊的 pod 配置 annotation sidecar.istio.io/inject=false ，关闭这个 pod 的自动注入。
+- polarismesh.cn/proxyCPU: 自动注入的 Envoy 的 cpu request。
+- polarismesh.cn/proxyMemory: 自动注入的 Envoy 的 memory request。
+- polarismesh.cn/proxyCPULimit: 自动注入的 Envoy 的 cpu limit。
+- polarismesh.cn/proxyMemoryLimit: 自动注入的 Envoy 的 memory limit。

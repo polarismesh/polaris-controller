@@ -37,23 +37,23 @@ data:
         image: envoyproxy/envoy:v1.18.3
         imagePullPolicy: Always
         resources:
-        {{- if or (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPU`) (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemory`) (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPULimit`) (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemoryLimit`) }}
-          {{- if or (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPU`) (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemory`) }}
+        {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) }}
+          {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) }}
             requests:
-              {{ if (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPU`) -}}
-              cpu: "{{ index .ObjectMeta.Annotations `cloud.tencent.com/proxyCPU` }}"
+              {{ if (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) -}}
+              cpu: "{{ index .ObjectMeta.Annotations `polarismesh.cn/proxyCPU` }}"
               {{ end }}
-              {{ if (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemory`) -}}
-              memory: "{{ index .ObjectMeta.Annotations `cloud.tencent.com/proxyMemory` }}"
+              {{ if (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) -}}
+              memory: "{{ index .ObjectMeta.Annotations `polarismesh.cn/proxyMemory` }}"
               {{ end }}
           {{- end }}
-          {{- if or (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPULimit`) (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemoryLimit`) }}
+          {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) }}
             limits:
-              {{ if (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyCPULimit`) -}}
-              cpu: "{{ index .ObjectMeta.Annotations `cloud.tencent.com/proxyCPULimit` }}"
+              {{ if (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) -}}
+              cpu: "{{ index .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit` }}"
               {{ end }}
-              {{ if (isset .ObjectMeta.Annotations `cloud.tencent.com/proxyMemoryLimit`) -}}
-              memory: "{{ index .ObjectMeta.Annotations `cloud.tencent.com/proxyMemoryLimit` }}"
+              {{ if (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) -}}
+              memory: "{{ index .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit` }}"
               {{ end }}
           {{- end }}
         {{- else }}
@@ -69,7 +69,7 @@ data:
           name: envoy-bootstrap
       initContainers:
       - name: polaris-bootstrap-writer
-        image: ccr.ccs.tencentyun.com/test-tre/polaris-envoy-bootstrap-generator:v1
+        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:v1.0.0
         imagePullPolicy: Always
         env:
         - name: NAMESPACE
@@ -95,15 +95,15 @@ data:
           - -m
           - REDIRECT
           - -i
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/includeOutboundCIDRs` `*`) }}"
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeOutboundCIDRs` `*`) }}"
           - -b
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/includeInboundPorts` ``) }}"
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) }}"
           - -x
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/excludeOutboundCIDRs` ``) }}"
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) }}"
           - -d
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/excludeInboundPorts` ``) }}"
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` ``) }}"
           - -o
-          - "{{ (annotation .ObjectMeta `cloud.tencent.com/excludeOutboundPorts` ``) }}"
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundPorts` ``) }}"
         resources:
           limits:
             cpu: 100m
