@@ -82,7 +82,7 @@ const (
 	polarisControllerName       = "polaris-controller"
 	maxRetries                  = 10
 	metricPolarisControllerName = "polaris_controller"
-	isAutoRegister              = "true"
+	isEnableRegister            = "false"
 	polarisEvent                = "PolarisRegister"
 )
 
@@ -543,6 +543,18 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		return err
 	}
 
+	if service.Annotations[util.PolarisAliasNamespace] != "" &&
+		service.Annotations[util.PolarisAliasService] != "" {
+		createAliasResponse, err := polarisapi.CreateServiceAlias(service)
+		if err != nil {
+			klog.Errorf("Failed create service alias in processSyncNamespaceAndService %s, err %s, resp %v",
+				serviceMsg, err, createAliasResponse)
+			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
+			return err
+		}
+	}
+
 	createSvcResponse, err := polarisapi.CreateService(service)
 	if err != nil {
 		klog.Errorf("Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
@@ -586,9 +598,9 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 
 	var addInsErr, deleteInsErr, updateInsErr error
 
-	autoRegister := service.GetAnnotations()[util.PolarisAutoRegister]
-	// 如果autoRegister = true,那么自注册，平台不负责注册IP
-	if autoRegister != isAutoRegister {
+	enableRegister := service.GetAnnotations()[util.PolarisEnableRegister]
+	// 如果 enableRegister = true,那么自注册，平台不负责注册IP
+	if enableRegister != isEnableRegister {
 		// 使用platform 接口
 		if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
 			klog.Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
@@ -627,6 +639,17 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		   * 仅需要同步对应的endpoint即可
 		   * 更新serviceCache缓存
 	*/
+	if util.IfNeedCreateServiceAlias(old, cur) {
+		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
+		if err != nil {
+			serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
+			klog.Errorf("Failed create service alias in processUpdateService %s, err %s, resp %v",
+				serviceMsg, err, createAliasResponse)
+			p.eventRecorder.Eventf(cur, v1.EventTypeWarning, polarisEvent,
+				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
+		}
+	}
+
 	k8sService := cur.GetNamespace() + "/" + cur.GetName()
 	changeType := util.CompareServiceChange(old, cur)
 	switch changeType {
@@ -646,8 +669,8 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		util.ServiceWeightChanged, util.ServiceCustomWeightChanged:
 		klog.Infof("Service %s metadata,ttl,custom weight changed, need to update", k8sService)
 		return p.processSyncInstance(cur)
-	case util.ServiceAutoRegisterChanged:
-		klog.Infof("Service %s autoRegister,service weight changed, do nothing", k8sService)
+	case util.ServiceEnableRegisterChanged:
+		klog.Infof("Service %s enableRegister,service weight changed, do nothing", k8sService)
 		return
 	default:
 		klog.Infof("Service %s endpoints or ports changed", k8sService)

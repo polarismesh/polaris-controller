@@ -128,6 +128,30 @@ type CreateServiceRequest struct {
 	Ports      string            `json:"ports,omitempty"`
 }
 
+// CreateServiceAliasRequest create service alias request
+type CreateServiceAliasRequest struct {
+	Service        string `json:"service"`
+	Namespace      string `json:"namespace"`
+	Owners         string `json:"owners,omitempty"`
+	Alias          string `json:"alias"`
+	AliasNamespace string `json:"alias_namespace"`
+}
+
+// CreateServiceAliasResponse create service alias response
+type CreateServiceAliasResponse struct {
+	Code  uint32 `json:"code"`
+	Info  string `json:"info"`
+	Alias Alias  `json:"alias"`
+}
+
+// Alias service alias
+type Alias struct {
+	Service        string `json:"service"`
+	Namespace      string `json:"namespace"`
+	Alias          string `json:"alias"`
+	AliasNamespace string `json:"alias_namespace"`
+}
+
 // GetNamespacesResponse 获取命名空间的返回
 type GetNamespacesResponse struct {
 	Code       uint32              `json:"code"`
