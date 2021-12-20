@@ -8,7 +8,7 @@ Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要�
 
 ## 环境准备
 
-您需要先下载 Polaris 并启动，详细可参考[服务端安装指南](https://github.com/PolarisMesh/website/blob/main/docs/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF.md)。
+您需要先下载 Polaris 并启动，详细可参考[服务端安装指南](https://github.com/polarismesh/website/blob/main/docs/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E9%9B%86%E7%BE%A4%E7%89%88.md)。
 
 ## 安装 Polaris Controller
 
