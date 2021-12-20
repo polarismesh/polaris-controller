@@ -67,6 +67,19 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
+      - name: polaris-sidecar
+        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-sidecar:v1.0.0
+        securityContext:
+          runAsUser: 1337
+          runAsGroup: 1337
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 200m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 50Mi
       initContainers:
       - name: polaris-bootstrap-writer
         image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:v1.0.0
@@ -84,7 +97,7 @@ data:
           - mountPath: /var/lib/data
             name: envoy-bootstrap
       - name: istio-init
-        image: istio/proxyv2:1.7.0
+        image: istio/proxyv2:1.11.4
         imagePullPolicy: IfNotPresent
         args:
           - istio-iptables
@@ -95,7 +108,7 @@ data:
           - -m
           - REDIRECT
           - -i
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeOutboundCIDRs` `*`) }}"
+          - "10.4.4.4/32"
           - -b
           - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) }}"
           - -x
@@ -104,6 +117,7 @@ data:
           - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` ``) }}"
           - -o
           - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundPorts` ``) }}"
+          - --redirect-dns=true
         resources:
           limits:
             cpu: 100m
