@@ -68,7 +68,7 @@ data:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
       - name: polaris-sidecar
-        image: ccr.ccs.tencentyun.com/polaris_mesh_test/polaris-sidecar:test
+        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-sidecar:v1.0.0
         securityContext:
           runAsUser: 1337
           runAsGroup: 1337
