@@ -9,6 +9,7 @@ const (
 	PolarisCustomWeight   = "polarismesh.cn/customWeight"
 	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
 	PolarisAliasService   = "polarismesh.cn/aliasService"
+	PolarisSync           = "polarismesh.cn/sync"
 )
 
 const (

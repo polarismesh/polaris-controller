@@ -56,6 +56,7 @@ type PolarisController struct {
 	// Added as a member to the struct to allow injection for testing.
 	endpointsSynced cache.InformerSynced
 
+	namespaceLister corelisters.NamespaceLister
 	namespaceSynced cache.InformerSynced
 
 	// Services that need to be updated. A channel is inappropriate here,
@@ -84,6 +85,10 @@ const (
 	metricPolarisControllerName = "polaris_controller"
 	isEnableRegister            = "false"
 	polarisEvent                = "PolarisRegister"
+	isEnableSync                = "true"
+
+	SyncModeAll       = "ALL"
+	SyncModeNamespace = "Namespace"
 )
 
 // NewPolarisController
@@ -136,6 +141,7 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	p.endpointsLister = endpointsInformer.Lister()
 	p.endpointsSynced = endpointsInformer.Informer().HasSynced
 
+	p.namespaceLister = namespaceInformer.Lister()
 	p.namespaceSynced = namespaceInformer.Informer().HasSynced
 
 	p.eventBroadcaster = broadcaster
@@ -237,6 +243,19 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 	}
 
 	service := obj.(*v1.Service)
+
+	if p.config.PolarisController.SyncMode == SyncModeNamespace {
+		namespace, err := p.namespaceLister.Get(service.Namespace)
+		if err != nil {
+			klog.Errorf("find namespace in onServiceAdd error, %v", err)
+		}
+		sync, ok := namespace.Annotations[util.PolarisSync]
+		if ok && sync == isEnableSync {
+			service.Annotations[util.PolarisSync] = isEnableSync
+			p.client.CoreV1().Services(service.Namespace).Update(service)
+		}
+	}
+
 	p.enqueueService(service, key, "Add")
 
 }
@@ -367,6 +386,11 @@ func (p *PolarisController) enqueueService(service *v1.Service, key string, even
 			return
 		}
 	}
+
+	if p.config.PolarisController.SyncMode == SyncModeNamespace {
+
+	}
+
 	klog.Infof("Service %s is polaris type, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "Service").Inc()
 	p.queue.Add(key)
