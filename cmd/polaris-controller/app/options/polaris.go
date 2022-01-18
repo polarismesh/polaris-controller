@@ -45,6 +45,7 @@ func (o *PolarisControllerOptions) ApplyTo(cfg *PolarisControllerConfiguration) 
 	cfg.ConcurrentPolarisSyncs = o.ConcurrentPolarisSyncs
 	cfg.Size = o.Size
 	cfg.MinAccountingPeriod = o.MinAccountingPeriod
+	cfg.SyncMode = o.SyncMode
 
 	return nil
 }

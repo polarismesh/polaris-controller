@@ -18,7 +18,6 @@ package util
 
 import (
 	"fmt"
-	"github.com/polarismesh/polaris-controller/pkg/controller"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
@@ -135,7 +134,9 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 		return false
 	}
 
-	if syncMode == controller.SyncModeNamespace {
+	klog.Infof("hahahahaha [%s] [%t] \n", syncMode, IsServiceNeedSync(svc))
+
+	if syncMode == "NAMESPACE" {
 		if !IsServiceNeedSync(svc) {
 			return false
 		}
@@ -153,7 +154,10 @@ func IgnoreService(svc *v1.Service, syncMode string) bool {
 		}
 	}
 
-	if syncMode == controller.SyncModeNamespace {
+	klog.Infof("hahahahaha [%s] [%t] \n", syncMode, IsServiceNeedSync(svc))
+
+
+	if syncMode == "NAMESPACE" {
 		if !IsServiceNeedSync(svc) {
 			return false
 		}
@@ -200,7 +204,7 @@ func GetWeightFromService(svc *v1.Service) int {
 
 func IsNamespaceNeedSync(ns *v1.Namespace) bool {
 	sync, ok := ns.Annotations[PolarisSync]
-	if ok && sync == controller.IsEnableSync {
+	if ok && sync == "true" {
 		return true
 	}
 	return false
@@ -208,7 +212,7 @@ func IsNamespaceNeedSync(ns *v1.Namespace) bool {
 
 func IsServiceNeedSync(service *v1.Service) bool {
 	sync, ok := service.Annotations[PolarisSync]
-	if ok && sync == controller.IsEnableSync {
+	if ok && sync == "true" {
 		return true
 	}
 	return false

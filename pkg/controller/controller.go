@@ -89,7 +89,7 @@ const (
 	IsEnableSync                = "true"
 
 	SyncModeAll       = "ALL"
-	SyncModeNamespace = "Namespace"
+	SyncModeNamespace = "NAMESPACE"
 )
 
 // NewPolarisController
@@ -221,7 +221,19 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 		}
 		if util.IsNamespaceNeedSync(ns){
 			if !util.IsServiceNeedSync(curService) {
+				if curService.Annotations == nil {
+					curService.Annotations = make(map[string]string)
+				}
 				curService.Annotations[util.PolarisSync] = IsEnableSync
+				_, err := p.client.CoreV1().Services(ns.Name).Update(curService)
+				if err != nil {
+					klog.Errorf("update service in onServiceUpdate error, %v", err)
+					return
+				}
+			}
+		} else {
+			if util.IsServiceNeedSync(curService) {
+				delete(curService.Annotations, util.PolarisSync)
 				_, err := p.client.CoreV1().Services(ns.Name).Update(curService)
 				if err != nil {
 					klog.Errorf("update service in onServiceUpdate error, %v", err)
@@ -268,9 +280,13 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 		namespace, err := p.namespaceLister.Get(service.Namespace)
 		if err != nil {
 			klog.Errorf("find namespace in onServiceAdd error, %v", err)
+			return
 		}
 		sync, ok := namespace.Annotations[util.PolarisSync]
 		if ok && sync == IsEnableSync {
+			if service.Annotations == nil {
+				service.Annotations = make(map[string]string)
+			}
 			service.Annotations[util.PolarisSync] = IsEnableSync
 			p.client.CoreV1().Services(service.Namespace).Update(service)
 		}
@@ -316,6 +332,8 @@ func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 
 	namespace := obj.(*v1.Namespace)
 
+	klog.Infof("hahahahahans [%s] [%t] \n", p.config.PolarisController.SyncMode, util.IsNamespaceNeedSync(namespace))
+
 	if p.config.PolarisController.SyncMode == SyncModeNamespace {
 		if !util.IsNamespaceNeedSync(namespace) {
 			return
@@ -350,6 +368,9 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 				if s, ok := item.Annotations[util.PolarisSync]; ok && s == IsEnableSync{
 					continue
 				}
+				if item.Annotations == nil {
+					item.Annotations = make(map[string]string)
+				}
 				item.Annotations[util.PolarisSync] = IsEnableSync
 			} else {
 				if _, ok := item.Annotations[util.PolarisSync]; !ok {
@@ -363,6 +384,10 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 				klog.Errorf("update service %s error, %v", item.Name, err)
 				return
 			}
+		}
+
+		if !util.IsNamespaceNeedSync(curNs) {
+			return
 		}
 	}
 
