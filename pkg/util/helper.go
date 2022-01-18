@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"github.com/polarismesh/polaris-controller/pkg/controller"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
@@ -94,8 +95,8 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 }
 
 // CompareServiceChange 判断本次更新是什么类型的
-func CompareServiceChange(old, new *v1.Service) ServiceChangeType {
-	if !IsPolarisService(new) {
+func CompareServiceChange(old, new *v1.Service, syncMode string) ServiceChangeType {
+	if !IsPolarisService(new, syncMode) {
 		return ServicePolarisDelete
 	}
 	return CompareServiceAnnotationsChange(old.GetAnnotations(), new.GetAnnotations())
@@ -114,7 +115,7 @@ func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
 }
 
 // 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加
-func IsPolarisService(svc *v1.Service) bool {
+func IsPolarisService(svc *v1.Service, syncMode string) bool {
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if svc.GetNamespace() == namespaces {
@@ -134,14 +135,26 @@ func IsPolarisService(svc *v1.Service) bool {
 		return false
 	}
 
+	if syncMode == controller.SyncModeNamespace {
+		if !IsServiceNeedSync(svc) {
+			return false
+		}
+	}
+
 	return true
 }
 
 // IgnoreService 添加 service 时，忽略一些不需要处理的 service
-func IgnoreService(svc *v1.Service) bool {
+func IgnoreService(svc *v1.Service, syncMode string) bool {
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if svc.GetNamespace() == namespaces {
+			return false
+		}
+	}
+
+	if syncMode == controller.SyncModeNamespace {
+		if !IsServiceNeedSync(svc) {
 			return false
 		}
 	}
@@ -183,4 +196,20 @@ func GetWeightFromService(svc *v1.Service) int {
 		}
 	}
 	return DefaultWeight
+}
+
+func IsNamespaceNeedSync(ns *v1.Namespace) bool {
+	sync, ok := ns.Annotations[PolarisSync]
+	if ok && sync == controller.IsEnableSync {
+		return true
+	}
+	return false
+}
+
+func IsServiceNeedSync(service *v1.Service) bool {
+	sync, ok := service.Annotations[PolarisSync]
+	if ok && sync == controller.IsEnableSync {
+		return true
+	}
+	return false
 }
