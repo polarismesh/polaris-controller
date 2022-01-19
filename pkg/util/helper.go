@@ -134,8 +134,6 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 		return false
 	}
 
-	klog.Infof("hahahahaha [%s] [%t] \n", syncMode, IsServiceNeedSync(svc))
-
 	if syncMode == "NAMESPACE" {
 		if !IsServiceNeedSync(svc) {
 			return false
@@ -150,15 +148,6 @@ func IgnoreService(svc *v1.Service, syncMode string) bool {
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if svc.GetNamespace() == namespaces {
-			return false
-		}
-	}
-
-	klog.Infof("hahahahaha [%s] [%t] \n", syncMode, IsServiceNeedSync(svc))
-
-
-	if syncMode == "NAMESPACE" {
-		if !IsServiceNeedSync(svc) {
 			return false
 		}
 	}
@@ -211,7 +200,7 @@ func IsNamespaceNeedSync(ns *v1.Namespace) bool {
 }
 
 func IsServiceNeedSync(service *v1.Service) bool {
-	sync, ok := service.Annotations[PolarisSync]
+	sync, ok := service.Annotations[PolarisServiceSyncAnno]
 	if ok && sync == "true" {
 		return true
 	}

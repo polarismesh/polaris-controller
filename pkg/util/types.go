@@ -10,6 +10,10 @@ const (
 	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
 	PolarisAliasService   = "polarismesh.cn/aliasService"
 	PolarisSync           = "polarismesh.cn/sync"
+
+	// PolarisServiceSyncAnno 当同步模式是 NAMESPACE 时，会给 ns 下的 service 上打下面这个 anno
+	// 这个 anno 只在 polaris-controller 内部用，用户无需关心。
+	PolarisServiceSyncAnno = "polarismesh.cn/namespaceSync"
 )
 
 const (
