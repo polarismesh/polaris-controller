@@ -134,7 +134,7 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 		return false
 	}
 
-	if syncMode == "NAMESPACE" {
+	if syncMode == SyncModeDemand {
 		if !IsServiceNeedSync(svc) {
 			return false
 		}

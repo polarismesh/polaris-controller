@@ -32,7 +32,7 @@ spec:
                  "--cluster-name=default",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
-                 "--sync-mode=ALL",
+                 "--sync-mode=all",
                  "--stderrthreshold=0",
                  "--log-dir=/polaris-controller/log",
                  "--log-file=/polaris-controller/log/test.log",

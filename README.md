@@ -46,14 +46,14 @@ cd polaris-controller/deploy/polaris-controller
 
 您可以在 polaris-controller.yaml 中配置启动参数 `sync-mode` ，指定同步模式。
 
-按集群同步
+全量同步
 
-配置 `--sync-mode=ALL` ，以`集群同步模式`启动 polaris-controller。这种同步模式下会将 k8s 集群中所有的 namespace 和 service 同步到北极星。
+配置 `--sync-mode=all` ，以全量同步模式启动。这种同步模式下会将 k8s 集群中所有的 namespace 和 service 同步到北极星。
 
-按命名空间同步
+按需同步
 
-配置 `--sync-mode=NAMESPACE` ，以`命名空间同步模式`启动 polaris-controller。这种同步模式下 polaris-controller 默认不会同步任何资源。
-您需要为 namespace 配置以下的 annotations 来启用这个 namespace 和其下 service 的自动同步。 
+配置 `--sync-mode=demand` ，以按需同步模式启动 polaris-controller。这种同步模式下 polaris-controller 默认不会同步任何资源。
+您需要为 namespace 配置 annotations 来启用这个 namespace 和其下 service 的自动同步。 
 
 #### 运行安装脚本
 
