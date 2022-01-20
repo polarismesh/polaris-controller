@@ -113,7 +113,7 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			verflag.PrintAndExitIfRequested()
 			utilflag.PrintFlags(cmd.Flags())
-			initPolarisServerAddress()
+			initControllerConfig(s)
 			c, err := s.Config()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -150,29 +150,42 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 	return cmd
 }
 
-func initPolarisServerAddress() {
+func initControllerConfig(s *options.KubeControllerManagerOptions) {
+	// 读取配置文件
+	config, err := readConfFromFile()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read polaris server from config error %v \n", err)
+		os.Exit(1)
+	}
 
+	// 1. 配置 polaris server 地址
 	var polarisServerAddress string
 	// 优先使用启动参数指定的 polaris server 地址
 	if flags.polarisServerAddress != "" {
 		polarisServerAddress = flags.polarisServerAddress
 	} else {
 		// 启动参数没有指定，取 mesh config 中的地址
-		var err error
-		polarisServerAddress, err = readConfFromFile()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "read polaris server from config error %v \n", err)
-			os.Exit(1)
-		}
+		polarisServerAddress = config.DefaultConfig.ProxyMetadata.PolarisServerAddress
 	}
-
 	// 去除前后的空格字符
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
-
-	klog.Infof("load polaris server address: %s \n", polarisServerAddress)
-
 	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":" + strconv.Itoa(flags.httpPort)
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
+
+	// 2. 配置 polaris 同步模式
+	if s.PolarisController.SyncMode == "" {
+		// 优先用启动参数
+		s.PolarisController.SyncMode = config.DefaultConfig.ServiceSyncMode
+	}
+
+	// 3. 配置 clusterName
+	if s.PolarisController.ClusterName == "" {
+		// 优先用启动参数
+		s.PolarisController.ClusterName = config.DefaultConfig.ProxyMetadata.ClusterName
+	}
+
+	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
+		polarisServerAddress, s.PolarisController.SyncMode, s.PolarisController.ClusterName)
 }
 
 func assignFlags(rootCmd *cobra.Command) {
@@ -451,38 +464,37 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 	return nil, nil
 }
 
-// ProxyMetadata controller 用到的配置
+// ServiceSync controller 用到的配置
 type ProxyMetadata struct {
-	ServerUrl   string `yaml:"POLARIS_SERVER_URL"`
-	ClusterName string `yaml:"CLUSTER_NAME"`
+	PolarisServerAddress string `yaml:polarisServerAddress`
+	ClusterName          string `yaml:clusterName`
 }
 
 // DefaultConfig controller 用到的配置
 type DefaultConfig struct {
-	ProxyMetadata ProxyMetadata `yaml:"proxyMetadata"`
+	ProxyMetadata   ProxyMetadata `yaml:"serviceSync"`
+	ServiceSyncMode string        `yaml:"serviceSyncMode"`
 }
 
 type controllerConfig struct {
 	DefaultConfig DefaultConfig `yaml:"defaultConfig"`
 }
 
-func readConfFromFile() (string, error) {
+func readConfFromFile() (*controllerConfig, error) {
 	buf, err := ioutil.ReadFile(MeshFile)
 	if err != nil {
-		return "", err
+		klog.Errorf("read file error, %v", err)
+		return nil, err
 	}
 
-	c := controllerConfig{}
-	err = yaml.Unmarshal(buf, &c)
+	c := &controllerConfig{}
+	err = yaml.Unmarshal(buf, c)
 	if err != nil {
-		return "nil", fmt.Errorf("in file %q: %v", "test.yaml", err)
+		klog.Errorf("unmarshal config error, %v", err)
+		return nil, err
 	}
 
-	if c.DefaultConfig.ProxyMetadata.ServerUrl == "" {
-		return "", fmt.Errorf("error to load config")
-	}
-
-	return c.DefaultConfig.ProxyMetadata.ServerUrl, nil
+	return c, nil
 }
 
 // startPolarisAccountController 启用反对账逻辑，定时从北极星侧拉取通过TKEx注册的服务，对比一下是否在集群中还存在

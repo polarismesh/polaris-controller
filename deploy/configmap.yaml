@@ -7,9 +7,9 @@ data:
   mesh: |-
     defaultConfig:
 
-      # Envoy proxy port to listen on for the admin interface.
-      proxyAdminPort: 15000
+      # service sync mode: all, demand
+      serviceSyncMode: "all"
 
       proxyMetadata:
-        POLARIS_SERVER_URL: "polaris-server-address-here"
-        CLUSTER_NAME: "default"
+        polarisServerAddress: "polaris-server address"
+        clusterName: "default"
