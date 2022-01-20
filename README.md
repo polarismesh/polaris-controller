@@ -199,6 +199,7 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: test
   name: test
   annotations:
     polarismesh.cn/sync: "false"
