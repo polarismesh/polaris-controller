@@ -205,7 +205,7 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: test
+  name: default
   annotations:
     polarismesh.cn/sync: "true"
 
