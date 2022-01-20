@@ -170,7 +170,7 @@ polaris-contoller 支持两种服务同步模式：
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: test
+  name: default
   annotations:
     polarismesh.cn/sync: "true"
 ```
@@ -181,6 +181,7 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: default
   name: test
   annotations:
     polarismesh.cn/sync: "true"
@@ -199,7 +200,7 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: test
+  namespace: default
   name: test
   annotations:
     polarismesh.cn/sync: "false"
