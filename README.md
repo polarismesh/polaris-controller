@@ -24,11 +24,11 @@ polaris-sidecar 提供两个可选功能：
 
 **前提条件**
 
-在安装 polaris-controller 前，请先安装北极星服务端。安装方式请参考[北极星服务端安装文档](https://polarismesh.cn/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E5%8D%95%E6%9C%BA%E7%89%88.html)。
+在安装 polaris-controller 前，请先安装北极星服务端，安装方式请参考[北极星服务端安装文档](https://polarismesh.cn/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E5%8D%95%E6%9C%BA%E7%89%88.html)。
 
 **下载安装包**
 
-从[Releases]()下载最新版本的安装包
+从 [Releases]() 下载最新版本的安装包
 
 **修改配置文件**
 
@@ -49,7 +49,7 @@ data:
         serverAddress: "polaris-server address"
 ```
 
-polaris-controller 支持两种 K8s Service 同步模式：
+支持两种 K8s Service 同步模式：
 
 - all：全量同步服务。将 K8s Service 全部同步到北极星。
 - demand：按需同步服务。默认不会将 K8s Service 同步到北极星，需要在 Namespace 或者 Service 上添加北极星的 annotation。
@@ -58,13 +58,13 @@ polaris-controller 支持两种 K8s Service 同步模式：
 
 在安装 kubectl 的机器上运行安装脚本：
 
-```
+```shell
 bash ./install.sh 
 ```
 
 查看 polaris-controller 是否正常运行：
 
-```
+```shell
 kubectl get pod -n polaris-system
 
 NAME                                  READY   STATUS    RESTARTS   AGE
@@ -145,41 +145,21 @@ metadata:
     polarismesh.cn/aliasService: aliasTest
 ```
 
-### Sidecar自动注入
+### Sidecar 自动注入
 
-#### 开启自动注入功能
+如果需要使用 polaris-sidecar，可以在应用 Pod 中自动注入，配置方式如下：
 
-以下命令为 `default` 命名空间启用注入，`Polaris Controller` 的注入器，会将 `Envoy Sidecar` 容器注入到在此命名空间下创建的 pod 中：
-
-```
+```shell
 kubectl label namespace default polaris-injection=enabled 
 ```
 
-使用一下命令来验证 `default` 命名空间是否已经正确启用：
+查看 K8s Namespace 是否支持 polaris-sidecar 自动注入：
 
-```
+```shell
 kubectl get namespace -L polaris-injection
-```
 
-此时应该返回：
-
-```
 NAME             STATUS   AGE    POLARIS-INJECTION
 default          Active   3d2h   enabled
 ```
 
-这时已经打开了自动注入，新创建的 pod 会自动被注入 sidecar 容器。存量的 pod 需要删除重建来触发自动注入。如果您使用的是工作负载，可以使用下面的命令滚动更新：
-
-```
-kubectl rollout restart deployment xxx --namespace xxxx
-```
-
-#### 自动注入配置
-
-Polaris Controller 允许您在 pod 的 Annotations 中指定一些配置来控制自动注入的行为，目前支持的配置有：
-
-- sidecar.istio.io/inject: 您可以对命名空间开启自动注入，并对某些特殊的 pod 配置 annotation sidecar.istio.io/inject=false ，关闭这个 pod 的自动注入。
-- polarismesh.cn/proxyCPU: 自动注入的 Envoy 的 cpu request。
-- polarismesh.cn/proxyMemory: 自动注入的 Envoy 的 memory request。
-- polarismesh.cn/proxyCPULimit: 自动注入的 Envoy 的 cpu limit。
-- polarismesh.cn/proxyMemoryLimit: 自动注入的 Envoy 的 memory limit。
+在开启自动注入后，新建的 Pod 会自动注入，存量的 Pod 不会自动注入 polaris-sidecar。
