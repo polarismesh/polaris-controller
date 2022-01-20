@@ -25,13 +25,14 @@ spec:
     spec:
       containers:
         - name: polaris-controller
-          image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-controller:v1.0.2-beta
+          image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-controller:v1.1.0
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
                  "--v=4",
                  "--cluster-name=default",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
+                 "--sync-mode=ALL",
                  "--stderrthreshold=0",
                  "--log-dir=/polaris-controller/log",
                  "--log-file=/polaris-controller/log/test.log",
