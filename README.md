@@ -3,7 +3,7 @@
 README：
 
 - [介绍](#介绍)
-- [快速入门](#快速入门)
+- [安装说明](#安装说明)
 - [使用指南](#使用指南)
 
 ## 介绍
@@ -20,27 +20,15 @@ polaris-sidecar 提供两个可选功能：
 
 本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
 
-## 编译打包
-
-获取 Polaris Controller 代码
-
-```
-git clone https://github.com/PolarisMesh/polaris-controller.git
-
-cd polaris-controller/deploy/polaris-controller
-```
-
-## 快速入门
-
-### 安装步骤
+## 安装说明
 
 **前提条件**
 
 在安装 polaris-controller 前，请先安装北极星服务端。安装方式请参考[北极星服务端安装文档](https://polarismesh.cn/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E5%8D%95%E6%9C%BA%E7%89%88.html)。
 
-**安装 polaris-controller**
+**下载安装包**
 
-下载release包
+从[Releases]()下载最新版本的安装包
 
 **修改配置文件**
 
@@ -53,7 +41,7 @@ metadata:
   name: injector-mesh
   namespace: polaris-system
 data:
-  mesh: |-
+  mesh:
     serviceSync:
       # service sync mode: all, demand
       mode: "all"
@@ -63,14 +51,8 @@ data:
 
 polaris-controller 支持两种 K8s Service 同步模式：
 
-- all：全量同步服务的模式。将 K8s Service 全部同步到北极星。
-- demand：按需同步服务的模式。默认不会将 K8s Service 同步到北极星，需要在 Namespace 或者 Service 上添加北极星的 annotation。
-
-修改 configmap.yaml 和 polaris-controller.yaml，配置下面的参数：
-
-将 `deploy/polaris-controller/polaris-controller.yaml` 中 `polaris-controller` 容器的启动参数 `cluster-name`替换为您需要的值（默认为`default`）。
-北极星支持多集群接入的方案，即多个集群的同名服务，同步到北极星是一个服务，通过北极星的服务发现，可以发现多个 k8s 的同名服务的实例列表。
-当使用多集群方案时，您需要为多个集群指定不同的 `cluster-name` ， Polaris Controller 会只处理自己所在的集群的实例，若多个集群使用了相同的`cluster-name`，且多个集群有同名的service，会出现多个 Controller 相互覆盖对方同步到北极星上的实例的情况。
+- all：全量同步服务。将 K8s Service 全部同步到北极星。
+- demand：按需同步服务。默认不会将 K8s Service 同步到北极星，需要在 Namespace 或者 Service 上添加北极星的 annotation。
 
 **运行安装脚本**
 
@@ -89,53 +71,15 @@ NAME                                  READY   STATUS    RESTARTS   AGE
 polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```
 
-### K8s annotation
-
-您可以在 k8s 的 service 和 namespace 指定注解，控制 polaris-controller 同步的行为，当前支持以下注解。
-
-```
-polarismesh.cn/sync
-
-支持添加 annotation 的资源：Namespace、Service
-值类型：true/false
-功能：1. 配置在命名空间上：只在按命名空间同步模式下生效，表示打开或关闭某个 namespace 的自动同步功能。2.配置在 service 上，在按集群同步模式、按命名空间同步模式下均生效，可以配置关闭特定 service 的自动同步。
-```
-
-```
-polarismesh.cn/enableRegister（已废弃）
-
-效果等同polarismesh.cn/sync。兼容存量，不建议使用
-```
-
-```
-polarismesh.cn/aliasNamespace 和 polarismesh.cn/aliasService
-
-支持添加 annotation 的资源：Service
-值类型：字符串
-功能：在 Service 同步到北极星时，为其创建北极星的服务别名
-```
-
 ## 使用指南
 
 ### 全量同步服务
 
-以全量同步服务的模式启动 polaris-controller，启动配置如下：
-
-```
---sync-mode=all
-```
-
-在全量同步服务的模式下，将 K8s Service 全部同步到北极星。
+以全量同步服务的模式启动 polaris-controller，将 K8s Service 全部同步到北极星。
 
 ### 按需同步服务
 
-以按需同步服务的模式启动 polaris-controller，启动配置如下：
-
-```
---sync-mode=demand
-```
-
-在按需同步服务的模式下，默认不会将 K8s Service 同步到北极星。
+以按需同步服务的模式启动 polaris-controller，默认不会将 K8s Service 同步到北极星。
 
 如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
 
