@@ -12,6 +12,11 @@ Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要�
 
 本文档将介绍如何在 k8s 集群上安装、配置 Polaris Controller 。
 
+polaris-contoller 支持两种服务同步模式：
+
+- 全量同步：在启动之后，将 K8s namespace 和 serivce 全量同步到 Polaris，可以指定某些 namespace 或者 service 不同步
+- 按需同步：在启动之后，不同步任何 K8s namespace 和 serivce 到 Polaris
+
 ## 快速入门
 
 ### 环境准备
@@ -153,18 +158,25 @@ metadata:
 
 ### 全量同步服务
 
-polaris-contoller 支持两种服务同步模式：
+以全量同步服务的模式启动 polaris-controller，启动配置如下：
 
-- 全量同步：在启动之后，将 K8s namespace 和 serivce 全量同步到 Polaris，可以指定某些 namespace 或者 service 不同步
-- 按需同步：在启动之后，不同步任何 K8s namespace 和 serivce 到 Polaris
+```
+--sync-mode=all
+```
+
+在全量同步服务的模式下，将 K8s Service 全部同步到北极星
 
 ### 按需同步服务
 
-配置 `--sync-mode=NAMESPACE` ，以`命名空间同步模式`启动 polaris-controller
+以按需同步服务的模式启动 polaris-controller，启动配置如下：
 
-在按需同步服务的模式下，如果 K8s namespace 和 service 没有添加北极星的annotation，默认不会同步服务到北极星
+```
+--sync-mode=demand
+```
 
-如果需要将某个 namespace 中的全部服务同步到北极星，请在 namespace 上添加北极星的 annotations，配置方式如下： 
+在按需同步服务的模式下，如果没有在 K8s Namespace 或者 Service 上添加北极星的 annotation，不会同步 Service 到北极星
+
+如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
 
 ```yaml
 apiVersion: v1
@@ -175,7 +187,7 @@ metadata:
     polarismesh.cn/sync: "true"
 ```
 
-如果需要将某个 service 同步到北极星，请在 service 上添加北极星的 annotations，配置方式如下： 
+如果需要将某个 Service 同步到北极星，请在 Service 上添加北极星的 annotation，配置方式如下： 
 
 ```yaml
 apiVersion: v1
@@ -187,7 +199,7 @@ metadata:
     polarismesh.cn/sync: "true"
 ```
 
-如果需要将某个 namespace 中除某个 service 之外的服务同步到北极星，配置方式如下： 
+如果需要将某个 Namespace 中的 Service同步到北极星并且排除某个 Service，配置方式如下： 
 
 ```yaml
 apiVersion: v1
