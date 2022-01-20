@@ -8,24 +8,19 @@ README：
 
 ## 介绍
 
-Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要接入到 Polaris 的 k8s 集群中。提供将 k8s 服务自动注册到 Polaris ，和自动注入 Sidecar 的能力。
+polaris-controller 用于北极星和 K8s 生态的对接，提供两个可选功能：
 
-本文档将介绍如何在 k8s 集群上安装、配置 Polaris Controller 。
+- K8s Service 同步到北极星：将 K8s Service 同步到北极星，使用北极星进行服务发现和治理。
+- polaris-sidecar 自动注入：在应用 Pod 中注入 polaris-sidecar。
 
-polaris-contoller 支持两种服务同步模式：
+polaris-sidecar 提供两个可选功能：
 
-- 全量同步：在启动之后，将 K8s namespace 和 serivce 全量同步到 Polaris，可以指定某些 namespace 或者 service 不同步
-- 按需同步：在启动之后，不同步任何 K8s namespace 和 serivce 到 Polaris
+- 本地 DNS：使用 DNS 解析的方式访问北极星上的服务
+- 服务网格：通过劫持流量的方式实现服务发现和治理，开发侵入性低
 
-## 快速入门
+本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
 
-### 安装 polaris-controller
-
-**环境准备**
-
-您需要先下载 Polaris 并启动，详细可参考[服务端安装指南](https://github.com/polarismesh/website/blob/main/docs/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E9%9B%86%E7%BE%A4%E7%89%88.md)。
-
-**安装 polaris-controller**
+## 编译打包
 
 获取 Polaris Controller 代码
 
@@ -35,43 +30,61 @@ git clone https://github.com/PolarisMesh/polaris-controller.git
 cd polaris-controller/deploy/polaris-controller
 ```
 
-配置 Polaris Server 地址和集群信息
+## 快速入门
+
+### 安装步骤
+
+**前提条件**
+
+在安装 polaris-controller 前，请先安装北极星服务端。安装方式请参考[北极星服务端安装文档](https://polarismesh.cn/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E5%8D%95%E6%9C%BA%E7%89%88.html)。
+
+**安装 polaris-controller**
+
+下载release包
+
+**修改配置文件**
+
+修改配置文件 configmap.yaml，配置 K8s Service 同步模式和北极星服务端地址，配置示例如下：
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: injector-mesh
+  namespace: polaris-system
+data:
+  mesh: |-
+    serviceSync:
+      # service sync mode: all, demand
+      mode: "all"
+      polaris:
+        serverAddress: "polaris-server address"
+```
+
+polaris-controller 支持两种 K8s Service 同步模式：
+
+- all：全量同步服务的模式。将 K8s Service 全部同步到北极星。
+- demand：按需同步服务的模式。默认不会将 K8s Service 同步到北极星，需要在 Namespace 或者 Service 上添加北极星的 annotation。
 
 修改 configmap.yaml 和 polaris-controller.yaml，配置下面的参数：
 
-- 将 `POLARIS_SERVER_URL` 替换为 Polaris server 的 ip。Polaris Controller 会将 k8s service 同步到这个 Poarlis server。
-- 将 `deploy/polaris-controller/polaris-controller.yaml` 中 `polaris-controller` 容器的启动参数 `cluster-name`替换为您需要的值（默认为`default`）。北极星支持多集群接入的方案，即多个集群的同名服务，同步到北极星是一个服务，通过北极星的服务发现，可以发现多个 k8s 的同名服务的实例列表。当使用多集群方案时，您需要为多个集群指定不同的 `cluster-name` ， Polaris Controller 会只处理自己所在的集群的实例，若多个集群使用了相同的`cluster-name`，且多个集群有同名的service，会出现多个 Controller 相互覆盖对方同步到北极星上的实例的情况。
+将 `deploy/polaris-controller/polaris-controller.yaml` 中 `polaris-controller` 容器的启动参数 `cluster-name`替换为您需要的值（默认为`default`）。
+北极星支持多集群接入的方案，即多个集群的同名服务，同步到北极星是一个服务，通过北极星的服务发现，可以发现多个 k8s 的同名服务的实例列表。
+当使用多集群方案时，您需要为多个集群指定不同的 `cluster-name` ， Polaris Controller 会只处理自己所在的集群的实例，若多个集群使用了相同的`cluster-name`，且多个集群有同名的service，会出现多个 Controller 相互覆盖对方同步到北极星上的实例的情况。
 
-配置 polaris-controller 同步模式
+**运行安装脚本**
 
-您可以在 polaris-controller.yaml 中配置启动参数 `sync-mode` ，指定同步模式。
-
-按集群同步
-
-配置 `--sync-mode=ALL` ，以`集群同步模式`启动 polaris-controller。这种同步模式下会将 k8s 集群中所有的 namespace 和 service 同步到北极星。
-
-按命名空间同步
-
-配置 `--sync-mode=NAMESPACE` ，以`命名空间同步模式`启动 polaris-controller。这种同步模式下 polaris-controller 默认不会同步任何资源。
-您需要为 namespace 配置以下的 annotations 来启用这个 namespace 和其下 service 的自动同步。 
-
-#### 运行安装脚本
-
-您需要在安装了 kubectl 的机器上运行下面的脚本：
+在安装 kubectl 的机器上运行安装脚本：
 
 ```
 bash ./install.sh 
 ```
 
-使用下面的命令观察 Polaris Controller 是否已经正常运行：
+查看 polaris-controller 是否正常运行：
 
 ```
 kubectl get pod -n polaris-system
-```
 
-正常是可以看到：
-
-```
 NAME                                  READY   STATUS    RESTARTS   AGE
 polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```
