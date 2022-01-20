@@ -164,7 +164,7 @@ metadata:
 --sync-mode=all
 ```
 
-在全量同步服务的模式下，将 K8s Service 全部同步到北极星
+在全量同步服务的模式下，将 K8s Service 全部同步到北极星。
 
 ### 按需同步服务
 
@@ -174,7 +174,9 @@ metadata:
 --sync-mode=demand
 ```
 
-在按需同步服务的模式下，默认不会将 K8s Service 同步到北极星。如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
+在按需同步服务的模式下，默认不会将 K8s Service 同步到北极星。
+
+如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
 
 ```yaml
 apiVersion: v1
