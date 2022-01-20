@@ -12,7 +12,7 @@ Polaris Controller 是 Polaris 网格方案中的组件，部署在每个需要�
 
 本文档将介绍如何在 k8s 集群上安装、配置 Polaris Controller 。
 
-## 安装说明
+## 快速入门
 
 ### 环境准备
 
@@ -151,7 +151,62 @@ metadata:
 
 ## 使用指南
 
-### 开启自动注入功能
+### 全量同步服务
+
+polaris-contoller 支持两种服务同步模式：
+
+- 全量同步：在启动之后，将 K8s namespace 和 serivce 全量同步到 Polaris，可以指定某些 namespace 或者 service 不同步
+- 按需同步：在启动之后，不同步任何 K8s namespace 和 serivce 到 Polaris
+
+### 按需同步服务
+
+配置 `--sync-mode=NAMESPACE` ，以`命名空间同步模式`启动 polaris-controller
+
+在按需同步服务的模式下，如果 K8s namespace 和 service 没有添加北极星的annotation，默认不会同步服务到北极星
+
+如果需要将某个 namespace 中的全部服务同步到北极星，请在 namespace 上添加北极星的 annotations，配置方式如下： 
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test
+  annotations:
+    polarismesh.cn/sync: "true"
+```
+
+如果需要将某个 service 同步到北极星，请在 service 上添加北极星的 annotations，配置方式如下： 
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: test
+  annotations:
+    polarismesh.cn/sync: "true"
+```
+
+如果需要将某个 namespace 中除某个 service 之外的服务同步到北极星，配置方式如下： 
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test
+  annotations:
+    polarismesh.cn/sync: "true"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test
+  annotations:
+    polarismesh.cn/sync: "false"
+```
+
+### Sidecar自动注入
+
+#### 开启自动注入功能
 
 以下命令为 `default` 命名空间启用注入，`Polaris Controller` 的注入器，会将 `Envoy Sidecar` 容器注入到在此命名空间下创建的 pod 中：
 
@@ -178,7 +233,7 @@ default          Active   3d2h   enabled
 kubectl rollout restart deployment xxx --namespace xxxx
 ```
 
-### 自动注入配置
+#### 自动注入配置
 
 Polaris Controller 允许您在 pod 的 Annotations 中指定一些配置来控制自动注入的行为，目前支持的配置有：
 
