@@ -10,8 +10,8 @@ README：
 
 polaris-controller 用于北极星和 K8s 生态的对接，提供两个可选功能：
 
-- K8s Service 同步到北极星：将 K8s Service 同步到北极星，使用北极星进行服务发现和治理。
-- polaris-sidecar 自动注入：在应用 Pod 中注入 polaris-sidecar。
+- K8s Service 同步到北极星：将 K8s Service 同步到北极星，使用北极星进行服务发现和治理
+- polaris-sidecar 自动注入：在应用 Pod 中注入 polaris-sidecar
 
 polaris-sidecar 提供两个可选功能：
 
@@ -28,7 +28,7 @@ polaris-sidecar 提供两个可选功能：
 
 **下载安装包**
 
-从 [Releases]() 下载最新版本的安装包
+从 [Releases]() 下载最新版本的安装包。
 
 **修改配置文件**
 
