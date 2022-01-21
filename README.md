@@ -59,7 +59,7 @@ data:
 
 - K8s Namespace 和 Service 名称作为北极星的命名空间名称
 - 如果多个 K8s 集群存在相同的 Namespace 和 Service，全部 Pod 同步到一个北极星服务中
-- polaris-controller 在北极星服务实例上添加 K8s-cluster-name 标签，标记来自不同 K8s 集群的服务实例
+- polaris-controller 在北极星服务实例上添加 clusterName 标签，用于区分来自不同 K8s 集群的服务实例
 - 如果存在多个 K8s Service 同步到一个北极星服务的情况，每个 K8s 集群的 polaris-controller 需要配置不同的 clusterName
 
 **运行安装脚本**
