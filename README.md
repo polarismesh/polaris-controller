@@ -42,14 +42,12 @@ metadata:
   namespace: polaris-system
 data:
   mesh: |-
-    defaultConfig:
-
-      # service sync mode: all, demand
-      serviceSyncMode: "all"
-
-      proxyMetadata:
-        polarisServerAddress: "polaris-server address"
-        clusterName: "default"
+    # K8s cluster name
+    clusterName: "default"
+    # service sync
+    serviceSync
+      mode: "all"
+      serverAddress: "polaris-server address"
 ```
 
 支持两种 K8s Service 同步模式：
