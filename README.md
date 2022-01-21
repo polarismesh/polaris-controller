@@ -46,7 +46,7 @@ data:
     clusterName: "default"
     # service sync
     serviceSync
-      mode: "all"
+      mode: "all or demand"
       serverAddress: "polaris-server address"
 ```
 
