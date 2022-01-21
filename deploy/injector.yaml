@@ -90,9 +90,9 @@ data:
             fieldRef:
               fieldPath: metadata.namespace
         - name: POLARIS_SERVER_URL
-          value: {{.ProxyConfig.ProxyMetadata.POLARIS_SERVER_URL}}:15010
+          value: {{.ProxyConfig.ProxyMetadata.polarisServerAddress}}:15010
         - name: CLUSTER_NAME
-          value: {{.ProxyConfig.ProxyMetadata.CLUSTER_NAME}}
+          value: {{.ProxyConfig.ProxyMetadata.clusterName}}
         volumeMounts:
           - mountPath: /var/lib/data
             name: envoy-bootstrap

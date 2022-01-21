@@ -41,12 +41,15 @@ metadata:
   name: injector-mesh
   namespace: polaris-system
 data:
-  mesh:
-    serviceSync:
+  mesh: |-
+    defaultConfig:
+
       # service sync mode: all, demand
-      mode: "all"
-      polaris:
-        serverAddress: "polaris-server address"
+      serviceSyncMode: "all"
+
+      proxyMetadata:
+        polarisServerAddress: "polaris-server address"
+        clusterName: "default"
 ```
 
 支持两种 K8s Service 同步模式：

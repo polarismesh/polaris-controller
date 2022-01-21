@@ -86,9 +86,6 @@ const (
 	noEnableRegister            = "false"
 	polarisEvent                = "PolarisRegister"
 	IsEnableSync                = "true"
-
-	SyncModeAll       = "ALL"
-	SyncModeNamespace = "NAMESPACE"
 )
 
 // NewPolarisController
@@ -285,7 +282,7 @@ func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 
 	namespace := obj.(*v1.Namespace)
 
-	if p.config.PolarisController.SyncMode == SyncModeNamespace {
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsNamespaceNeedSync(namespace) {
 			return
 		}
@@ -300,7 +297,7 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 	curNs := cur.(*v1.Namespace)
 
 	// 给 namespace 下的所有 service 打上标签
-	if p.config.PolarisController.SyncMode == SyncModeNamespace {
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 
 		isCurPolaris := util.IsNamespaceNeedSync(curNs)
 
@@ -426,8 +423,8 @@ func (p *PolarisController) enqueueService(service *v1.Service, key string, even
 		if !util.IgnoreService(service, p.config.PolarisController.SyncMode) {
 			return
 		}
-		// NAMESPACE 模式，过滤掉，需要同步的服务
-		if p.config.PolarisController.SyncMode == SyncModeNamespace {
+		// demand 模式，过滤不需要同步的服务
+		if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 			ns, err := p.namespaceLister.Get(service.Namespace)
 			if err != nil {
 				klog.Errorf("get namespace in enqueueService error, %v", err)
@@ -549,7 +546,7 @@ func (p *PolarisController) syncService(key string) error {
 		klog.Infof("Begin to process service %s", key)
 
 		// 如果加入了按命名空间进行同步的逻辑，对 service 打标签，失败则重试
-		if p.config.PolarisController.SyncMode == SyncModeNamespace {
+		if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 			err := p.patchAnnotationToService(service)
 			if err != nil {
 				klog.Errorf("patch service annotation in syncService error, %v", err)
