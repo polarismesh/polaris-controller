@@ -476,8 +476,16 @@ type DefaultConfig struct {
 	ServiceSyncMode string        `yaml:"serviceSyncMode"`
 }
 
+// ServiceSync 服务同步相关配置
+type ServiceSync struct {
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
+}
+
 type controllerConfig struct {
 	DefaultConfig DefaultConfig `yaml:"defaultConfig"`
+	ClusterName   string        `yaml:"clusterName""`
+	ServiceSync   ServiceSync   `yaml:"serviceSync"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {

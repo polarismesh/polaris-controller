@@ -113,29 +113,17 @@ func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
 	return false
 }
 
-// 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加
+// IsPolarisService 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加
 func IsPolarisService(svc *v1.Service, syncMode string) bool {
-	// 默认忽略某些命名空间
-	for _, namespaces := range ignoredNamespaces {
-		if svc.GetNamespace() == namespaces {
-			return false
-		}
-	}
 
-	// Port是否合法 不能不设置port
-	if len(svc.Spec.Ports) < 1 {
-		klog.V(10).Infof("Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
+	// 过滤一些不合法的 service
+	if IgnoreService(svc) {
 		return false
 	}
 
-	// 没有设置 selector，polaris controller 不处理
-	if svc.Spec.Selector == nil {
-		klog.V(10).Infof("Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
-		return false
-	}
-
+	// 按需同步情况下需要判断 service 是否带有 sync 注解
 	if syncMode == SyncModeDemand {
-		if !IsServiceNeedSync(svc) {
+		if !IsServiceSyncEnable(svc) {
 			return false
 		}
 	}
@@ -144,15 +132,27 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 }
 
 // IgnoreService 添加 service 时，忽略一些不需要处理的 service
-func IgnoreService(svc *v1.Service, syncMode string) bool {
+func IgnoreService(svc *v1.Service) bool {
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if svc.GetNamespace() == namespaces {
-			return false
+			return true
 		}
 	}
 
-	return true
+	// Port是否合法 不能不设置port
+	if len(svc.Spec.Ports) < 1 {
+		klog.V(10).Infof("Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
+		return true
+	}
+
+	// 没有设置 selector，polaris controller 不处理
+	if svc.Spec.Selector == nil {
+		klog.V(10).Infof("Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
+		return true
+	}
+
+	return false
 }
 
 // IgnoreEndpoint 忽略一些命名空间下的 endpoints
@@ -191,17 +191,27 @@ func GetWeightFromService(svc *v1.Service) int {
 	return DefaultWeight
 }
 
-func IsNamespaceNeedSync(ns *v1.Namespace) bool {
+func IsNamespaceHasSyncAnno(ns *v1.Namespace) bool {
 	sync, ok := ns.Annotations[PolarisSync]
-	if ok && sync == "true" {
+	if ok && sync == IsEnableSync {
 		return true
 	}
 	return false
 }
 
-func IsServiceNeedSync(service *v1.Service) bool {
-	sync, ok := service.Annotations[PolarisServiceSyncAnno]
-	if ok && sync == "true" {
+// IsServiceSyncEnable service 是否启用了自动注册
+func IsServiceSyncEnable(service *v1.Service) bool {
+	sync, ok := service.Annotations[PolarisSync]
+	if ok && sync == IsEnableSync {
+		return true
+	}
+	return false
+}
+
+// IsServiceSyncDisable service 是否关闭了自动注册
+func IsServiceSyncDisable(service *v1.Service) bool {
+	sync, ok := service.Annotations[PolarisSync]
+	if ok && sync == IsDisableSync {
 		return true
 	}
 	return false

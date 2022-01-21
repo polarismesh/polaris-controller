@@ -5,11 +5,12 @@ metadata:
   namespace: polaris-system
 data:
   mesh: |-
+    # k8s cluster name
+    clusterName: "default"
+    # service sync
+    serviceSync:
+      mode: "all"
+      serverAddress: "polaris-server address"
     defaultConfig:
-
-      # service sync mode: all, demand
-      serviceSyncMode: "all"
-
       proxyMetadata:
         polarisServerAddress: "polaris-server address"
-        clusterName: "default"
