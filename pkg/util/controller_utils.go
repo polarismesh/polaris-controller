@@ -42,18 +42,18 @@ func GenServiceQueueKey(svc *v1.Service) (string, error) {
 }
 
 // GetServiceRealKeyWithFlag 从 service queue 中的 key ，解析出 namespace、service、flag
-func GetServiceRealKeyWithFlag(queueKey string) (string, string, string, error) {
+func GetServiceRealKeyWithFlag(queueKey string) (string, string, string, string, error) {
 	if queueKey == "" {
-		return "", "", "", nil
+		return "", "", "", "", nil
 	}
 	op := ""
 	ss := strings.Split(queueKey, "~")
 	namespace, service, err := cache.SplitMetaNamespaceKey(ss[0])
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 	if len(ss) != 1 {
 		op = ss[1]
 	}
-	return namespace, service, op, nil
+	return ss[0], namespace, service, op, nil
 }

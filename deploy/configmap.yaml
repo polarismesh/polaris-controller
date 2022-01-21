@@ -13,4 +13,4 @@ data:
       serverAddress: "polaris-server address"
     defaultConfig:
       proxyMetadata:
-        polarisServerAddress: "polaris-server address"
+        serverAddress: "polaris-server address"

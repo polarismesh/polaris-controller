@@ -95,6 +95,9 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 
 // CompareServiceChange 判断本次更新是什么类型的
 func CompareServiceChange(old, new *v1.Service, syncMode string) ServiceChangeType {
+
+	klog.Infof("CompareServiceChange new is %v", new.Annotations)
+
 	if !IsPolarisService(new, syncMode) {
 		return ServicePolarisDelete
 	}
@@ -191,7 +194,7 @@ func GetWeightFromService(svc *v1.Service) int {
 	return DefaultWeight
 }
 
-func IsNamespaceHasSyncAnno(ns *v1.Namespace) bool {
+func IsNamespaceSyncEnable(ns *v1.Namespace) bool {
 	sync, ok := ns.Annotations[PolarisSync]
 	if ok && sync == IsEnableSync {
 		return true
