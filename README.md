@@ -59,7 +59,7 @@ data:
 
 - K8s Namespace 和 Service 名称作为北极星的命名空间名称
 - 如果多个 K8s 集群存在相同的 Namespace 和 Service，全部 Pod 同步到一个北极星服务中
-- polaris-controller 在北极星服务实例上添加 K8s-cluster-name 标签，用于区分服务实例的来源
+- polaris-controller 在北极星服务实例上添加 K8s-cluster-name 标签，标记来自不同 K8s 集群的服务实例
 - 如果存在多个 K8s Service 同步到一个北极星服务的情况，每个 K8s 集群的 polaris-controller 需要配置不同的 clusterName
 
 **运行安装脚本**
@@ -83,11 +83,29 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 
 ### 全量同步服务
 
-以全量同步服务的模式启动 polaris-controller，将 K8s Service 全部同步到北极星。
+以全量同步服务的模式启动 polaris-controller，将 K8s Service 全部同步到北极星，启动配置如下：
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+data:
+  mesh:
+    serviceSync
+      mode: "all"
+```
 
 ### 按需同步服务
 
-以按需同步服务的模式启动 polaris-controller，默认不会将 K8s Service 同步到北极星。
+以按需同步服务的模式启动 polaris-controller，默认不会将 K8s Service 同步到北极星，启动配置如下：
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+data:
+  mesh:
+    serviceSync
+      mode: "demand"
+```
 
 如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
 
