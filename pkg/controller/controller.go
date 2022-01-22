@@ -216,7 +216,7 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 	klog.V(6).Infof("Service %s/%s is update", curService.GetNamespace(), curService.GetName())
 
-	// 如果是按需同步，则处理一下 sync 为 空 -> sync 为 false 的场景，需要删除
+	// 如果是按需同步，则处理一下 sync 为 空 -> sync 为 false 的场景，需要删除。
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsServiceHasSyncAnnotation(oldService) && util.IsServiceSyncDisable(curService) {
 			klog.Infof("Service %s is update because sync no to false", key)
@@ -483,6 +483,7 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 // 1. service sync = true ，要处理
 // 2. service sync 为 false， 不处理
 // 3. service sync 为空， namespace sync = true ，要处理
+// 4. service sync 为空， namespace sync 为空或者 false ，不处理
 func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, string, error) {
 
 	// 先检查 endpoints 的 service 上是否有注解
@@ -748,6 +749,13 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	klog.Infof("Begin to sync namespaces and service, %s", serviceMsg)
 
+	// demand 模式，service 不包含 sync 注解时，不需要创建 ns、service 和 alias
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		if !util.IsServiceSyncEnable(service) {
+			return nil
+		}
+	}
+
 	createNsResponse, err := polarisapi.CreateNamespaces(service.Namespace)
 	if err != nil {
 		klog.Errorf("Failed create namespaces in processSyncNamespaceAndService %s, err %s, resp %v",
@@ -854,7 +862,9 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		   * 仅需要同步对应的endpoint即可
 		   * 更新serviceCache缓存
 	*/
-	if util.IfNeedCreateServiceAlias(old, cur) {
+	if (p.config.PolarisController.SyncMode != util.SyncModeDemand ||
+		p.config.PolarisController.SyncMode == util.SyncModeDemand && util.IsServiceSyncEnable(cur)) &&
+		util.IfNeedCreateServiceAlias(old, cur) {
 		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
 		if err != nil {
 			serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
