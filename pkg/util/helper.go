@@ -194,6 +194,7 @@ func GetWeightFromService(svc *v1.Service) int {
 	return DefaultWeight
 }
 
+// IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
 func IsNamespaceSyncEnable(ns *v1.Namespace) bool {
 	sync, ok := ns.Annotations[PolarisSync]
 	if ok && sync == IsEnableSync {
@@ -202,7 +203,7 @@ func IsNamespaceSyncEnable(ns *v1.Namespace) bool {
 	return false
 }
 
-// IsServiceSyncEnable service 是否启用了自动注册
+// IsServiceSyncEnable service 是否启用了 sync 注解
 func IsServiceSyncEnable(service *v1.Service) bool {
 	sync, ok := service.Annotations[PolarisSync]
 	if ok && sync == IsEnableSync {
@@ -211,11 +212,17 @@ func IsServiceSyncEnable(service *v1.Service) bool {
 	return false
 }
 
-// IsServiceSyncDisable service 是否关闭了自动注册
+// IsServiceSyncDisable service 是否关闭了 sync 注解
 func IsServiceSyncDisable(service *v1.Service) bool {
 	sync, ok := service.Annotations[PolarisSync]
 	if ok && sync == IsDisableSync {
 		return true
 	}
 	return false
+}
+
+// IsServiceHasSyncAnnotation service 是否设置了 sync 注解
+func IsServiceHasSyncAnnotation(service *v1.Service) bool {
+	_, ok := service.Annotations[PolarisSync]
+	return ok
 }

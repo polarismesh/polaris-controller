@@ -16,7 +16,7 @@ const (
 
 const (
 	PolarisClusterName = "clusterName"
-	PolarisSource      = "platform"
+	PolarisSource      = "source"
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
 )
