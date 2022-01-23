@@ -13,3 +13,4 @@ data:
       proxyMetadata:
         polarisServerAddress: "polaris-server address"
         clusterName: "default"
+        polarisAccessToken: "<if polaris open auth, need to set the authentication token>"

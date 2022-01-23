@@ -3,6 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -10,7 +18,6 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"istio.io/istio/pkg/kube/inject"
 	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -29,12 +36,6 @@ import (
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog"
-	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
@@ -171,6 +172,9 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
 	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":" + strconv.Itoa(flags.httpPort)
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
+
+	// 设置北极星开启鉴权之后，需要使用的访问token
+	polarisapi.PolarisAccessToken = config.DefaultConfig.ProxyMetadata.PolarisAccessToken
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
@@ -468,6 +472,7 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 type ProxyMetadata struct {
 	PolarisServerAddress string `yaml:polarisServerAddress`
 	ClusterName          string `yaml:clusterName`
+	PolarisAccessToken   string `yaml:"polarisAccessToken"`
 }
 
 // DefaultConfig controller 用到的配置

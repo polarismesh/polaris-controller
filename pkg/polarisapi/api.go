@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	PolarisHttpURL = "http://127.0.0.1:8080"
-	PolarisGrpc    = "127.0.0.1:8090"
+	PolarisHttpURL     = "http://127.0.0.1:8080"
+	PolarisGrpc        = "127.0.0.1:8090"
+	PolarisAccessToken = ""
 )
 
 const (
@@ -765,6 +766,7 @@ func polarisHttpRequest(
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Request-Id", requestID)
+	req.Header.Set(AccessTokenHeader, PolarisAccessToken)
 
 	resp, err := client.Do(req)
 
