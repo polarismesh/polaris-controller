@@ -470,8 +470,8 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 
 // ServiceSync controller 用到的配置
 type ProxyMetadata struct {
-	PolarisServerAddress string `yaml:polarisServerAddress`
-	ClusterName          string `yaml:clusterName`
+	PolarisServerAddress string `yaml:"polarisServerAddress"`
+	ClusterName          string `yaml:"clusterName"`
 	PolarisAccessToken   string `yaml:"polarisAccessToken"`
 }
 
