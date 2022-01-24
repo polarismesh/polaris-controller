@@ -1,6 +1,6 @@
 .PHONY: build
 
-REGISTRY = ccr.ccs.tencentyun.com
+REGISTRY = docker.io
 REPO = polaris_mesh_test/polaris-controller
 IMAGE_TAG = v1.0.0
 
@@ -12,9 +12,6 @@ build-image:
 
 push-image: build build-image login
 	docker push $(REGISTRY)/$(REPO):$(IMAGE_TAG)
-
-push-image-dockerhub: build build-image login
-	docker push $(REPO):$(IMAGE_TAG)
 
 login:
 	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS)
