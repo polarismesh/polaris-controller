@@ -165,7 +165,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		polarisServerAddress = flags.polarisServerAddress
 	} else {
 		// 启动参数没有指定，取 mesh config 中的地址
-		polarisServerAddress = config.DefaultConfig.ProxyMetadata.PolarisServerAddress
+		polarisServerAddress = config.ServiceSync.ServerAddress
 	}
 	// 去除前后的空格字符
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
@@ -175,13 +175,13 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
 		// 优先用启动参数
-		s.PolarisController.SyncMode = config.DefaultConfig.ServiceSyncMode
+		s.PolarisController.SyncMode = config.ServiceSync.Mode
 	}
 
 	// 3. 配置 clusterName
 	if s.PolarisController.ClusterName == "" {
 		// 优先用启动参数
-		s.PolarisController.ClusterName = config.DefaultConfig.ProxyMetadata.ClusterName
+		s.PolarisController.ClusterName = config.ClusterName
 	}
 
 	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
@@ -466,18 +466,25 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 
 // ServiceSync controller 用到的配置
 type ProxyMetadata struct {
-	PolarisServerAddress string `yaml:polarisServerAddress`
-	ClusterName          string `yaml:clusterName`
+	ServerAddress string `yaml:"serverAddress""`
+	ClusterName   string `yaml:"clusterName""`
 }
 
 // DefaultConfig controller 用到的配置
 type DefaultConfig struct {
-	ProxyMetadata   ProxyMetadata `yaml:"serviceSync"`
-	ServiceSyncMode string        `yaml:"serviceSyncMode"`
+	ProxyMetadata ProxyMetadata `yaml:"serviceSync"`
+}
+
+// ServiceSync 服务同步相关配置
+type ServiceSync struct {
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
 }
 
 type controllerConfig struct {
 	DefaultConfig DefaultConfig `yaml:"defaultConfig"`
+	ClusterName   string        `yaml:"clusterName""`
+	ServiceSync   ServiceSync   `yaml:"serviceSync"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {

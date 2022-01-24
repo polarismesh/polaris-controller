@@ -534,7 +534,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 		{
 			Name:      service.Name,
 			Namespace: service.Namespace,
-			Owners:    Platform,
+			Owners:    Source,
 			Ports:     getPolarisPorts(service),
 		},
 	}
@@ -601,7 +601,7 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 		Namespace:      service.Namespace,
 		Alias:          alias,
 		AliasNamespace: aliasNs,
-		Owners:         Platform,
+		Owners:         Source,
 	}
 
 	requestByte, err := json.Marshal(createRequest)
@@ -692,7 +692,7 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 	createRequest := []CreateNamespacesRequest{
 		{
 			Name:   namespace,
-			Owners: Platform,
+			Owners: Source,
 		},
 	}
 

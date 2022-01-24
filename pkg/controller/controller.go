@@ -11,6 +11,7 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -85,7 +86,11 @@ const (
 	metricPolarisControllerName = "polaris_controller"
 	noEnableRegister            = "false"
 	polarisEvent                = "PolarisRegister"
-	IsEnableSync                = "true"
+
+	// ServiceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
+	// 后续处理流程 syncService 方法中，通过这个字段判断是否要删除服务实例
+	ServiceKeyFlagAdd    = "add"
+	ServiceKeyFlagDelete = "delete"
 )
 
 // NewPolarisController
@@ -193,14 +198,14 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	oldService, ok1 := old.(*v1.Service)
 	curService, ok2 := current.(*v1.Service)
 
-	key, err := util.KeyFunc(curService)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", curService, err))
+	if !(ok1 && ok2) {
+		klog.Errorf("Error get update services old %v, new %v", old, current)
 		return
 	}
 
-	if !(ok1 && ok2) {
-		klog.Errorf("Error get update services old %v, new %v", old, current)
+	key, err := util.GenServiceQueueKey(curService)
+	if err != nil {
+		klog.Errorf("generate service queue key in onServiceUpdate error, %v", err)
 		return
 	}
 
@@ -210,6 +215,17 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	//}
 
 	klog.V(6).Infof("Service %s/%s is update", curService.GetNamespace(), curService.GetName())
+
+	// 如果是按需同步，则处理一下 sync 为 空 -> sync 为 false 的场景，需要删除。
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		if !util.IsServiceHasSyncAnnotation(oldService) && util.IsServiceSyncDisable(curService) {
+			klog.Infof("Service %s is update because sync no to false", key)
+			metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
+			p.queue.Add(key)
+			return
+		}
+	}
+
 	// 这里需要确认是否加入svc进行更新
 	// 1. 必须是polaris类型的才需要进行更新
 	// 2. 如果: [old/polaris -> new/polaris] 需要更新
@@ -234,58 +250,107 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 // onServiceAdd 在识别到是这个北极星类型service的时候进行处理
 func (p *PolarisController) onServiceAdd(obj interface{}) {
-	key, err := util.KeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
-		return
-	}
 
 	service := obj.(*v1.Service)
 
-	p.enqueueService(service, key, "Add")
+	if !util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
+		return
+	}
 
+	key, err := util.GenServiceQueueKey(service)
+	if err != nil {
+		klog.Errorf("generate queue key for %s error, %v", err)
+		return
+	}
+
+	p.enqueueService(key, service, "Add")
 }
 
 // onServiceDelete 在识别到是这个北极星类型service删除的时候，才进行处理
 // 判断这个是否是北极星service，如果是北极星service，就加入队列。
 func (p *PolarisController) onServiceDelete(obj interface{}) {
-	key, err := util.KeyFunc(obj)
+
+	service := obj.(*v1.Service)
+
+	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		klog.Errorf("generate queue key for %s error, %v", err)
 		return
 	}
 
-	svc := obj.(*v1.Service)
-	p.enqueueService(svc, key, "Delete")
+	// demand 模式中。 删除服务时，如果 ns 的 sync 为 true ，则在 service 流程里补偿处理，因为 ns 流程感知不到 service 删除
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		ns, err := p.namespaceLister.Get(service.Namespace)
+		if err != nil {
+			klog.Errorf("get namespace for service %s/%s error, %v", service.Namespace, service.Name, err)
+			return
+		}
+		if util.IsNamespaceSyncEnable(ns) {
+			klog.Infof("Service %s is polaris type, in queue", key)
+			metrics.SyncTimes.WithLabelValues("Delete", "Service").Inc()
+			p.queue.Add(key)
+		}
+	}
 
+	if !util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
+		return
+	}
+
+	p.enqueueService(key, service, "Delete")
 }
 
 func (p *PolarisController) onEndpointAdd(obj interface{}) {
+	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
+	endpoint := obj.(*v1.Endpoints)
 
-	key, err := util.KeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+	if !util.IgnoreEndpoint(endpoint) {
+		klog.V(6).Infof("Endpoint %s/%s in ignore namespaces", endpoint.Name, endpoint.Namespace)
 		return
 	}
 
-	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
-	endpoint := obj.(*v1.Endpoints)
+	key, err := util.GenObjectQueueKey(endpoint)
+	if err != nil {
+		klog.Errorf("get object key for endpoint %s/%s error %v", endpoint.Namespace, endpoint.Name, err)
+		return
+	}
+
+	// 如果是 demand 模式，检查 endpoint 的 service 和 namespace 上是否有注解
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		sync, k, err := p.isPolarisEndpoints(endpoint)
+		if err != nil {
+			klog.Errorf("check if ep %s/%s svc/ns has sync error, %v", endpoint.Namespace, endpoint.Name, err)
+			return
+		}
+		// 没有注解，不处理
+		if !sync {
+			return
+		}
+		key = k
+	}
+
 	p.enqueueEndpoint(key, endpoint, "Add")
 }
 
 func (p *PolarisController) onNamespaceAdd(obj interface{}) {
-	key, err := util.KeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
-		return
-	}
 
 	namespace := obj.(*v1.Namespace)
 
+	if !util.IgnoreNamespace(namespace) {
+		klog.V(6).Infof("%s in ignore namespaces", namespace.Name)
+		return
+	}
+
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-		if !util.IsNamespaceNeedSync(namespace) {
+		// 过滤掉不需要处理 ns
+		if !util.IsNamespaceSyncEnable(namespace) {
 			return
 		}
+	}
+
+	key, err := util.GenObjectQueueKey(namespace)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", namespace, err))
+		return
 	}
 
 	p.enqueueNamespace(key, namespace)
@@ -296,149 +361,219 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 	oldNs := old.(*v1.Namespace)
 	curNs := cur.(*v1.Namespace)
 
-	// 给 namespace 下的所有 service 打上标签
+	if !util.IgnoreNamespace(oldNs) {
+		klog.V(6).Infof("ignore namespaces %s", oldNs.Name)
+		return
+	}
+
+	nsKey, err := util.GenObjectQueueKey(curNs)
+	if err != nil {
+		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", curNs, err))
+		return
+	}
+
+	// 处理 namespace
+	if !util.IsNamespaceSyncEnable(oldNs) && util.IsNamespaceSyncEnable(curNs) {
+		p.enqueueNamespace(nsKey, curNs)
+	}
+
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 
-		isCurPolaris := util.IsNamespaceNeedSync(curNs)
+		// 有几种情况：
+		// 1. 无 sync -> 无 sync，不处理 ns 和 service
+		// 2. 有 sync -> 有 sync，将 ns 下 service 加入队列，标志为 polaris 要处理的，即添加
+		// 3. 无 sync -> 有 sync，将 ns 下 service 加入队列，标志为 polaris 要处理的，即添加
+		// 4. 有 sync -> 无 sync，将 ns 下 service 加入队列，标志为 polaris 不需要处理的，即删除
 
-		svcs, err := p.serviceLister.Services(oldNs.Name).List(labels.NewSelector())
+		isOldSync := util.IsNamespaceSyncEnable(oldNs)
+		isCurSync := util.IsNamespaceSyncEnable(curNs)
+
+		operation := ""
+		if !isOldSync && !isCurSync {
+			// 情况 1
+			return
+		} else if isCurSync {
+			// 情况 2、3
+			operation = ServiceKeyFlagAdd
+		} else {
+			// 情况 4
+			operation = ServiceKeyFlagDelete
+		}
+
+		services, err := p.serviceLister.Services(oldNs.Name).List(labels.Everything())
 		if err != nil {
-			klog.Errorf("get services in onNamespaceUpdate error")
+			klog.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", err)
 			return
 		}
 
-		for _, item := range svcs {
-			// 如果 service 需要加上 同步 标签
-			if isCurPolaris && !util.IsServiceNeedSync(item) {
-				s := item.DeepCopy()
-				if s.Annotations == nil {
-					s.Annotations = make(map[string]string)
-				}
-				s.Annotations[util.PolarisServiceSyncAnno] = IsEnableSync
+		klog.Infof("namespace %s operation is %s", curNs.Name, operation)
 
-				_, err := p.client.CoreV1().Services(oldNs.Name).Update(s)
-				if err != nil {
-					klog.Errorf("update service %s error, %v", item.Name, err)
-					return
-				}
+		for _, service := range services {
+			// 非法的 service 不处理
+			if util.IgnoreService(service) {
+				continue
 			}
-			// 如果 service 需要去掉 同步 标签
-			if !isCurPolaris && util.IsServiceNeedSync(item) {
-				s := item.DeepCopy()
-				delete(s.Annotations, util.PolarisServiceSyncAnno)
-				_, err := p.client.CoreV1().Services(oldNs.Name).Update(s)
-				if err != nil {
-					klog.Errorf("update service %s error, %v", item.Name, err)
-					return
-				}
+			// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
+			if util.IsServiceSyncEnable(service) {
+				klog.Infof("service %s/%s is enabled", service.Namespace, service.Name)
+				continue
 			}
-		}
 
-		if !util.IsNamespaceNeedSync(curNs) {
-			return
+			// namespace 当前有 sync ，且 service sync 为 false 的场景，namespace 流程不处理， service 流程来处理。
+			// 如果由 namespace 流程处理，则每次 resync ，多需要处理一次
+			if operation == ServiceKeyFlagAdd && util.IsServiceSyncDisable(service) {
+				continue
+			}
+
+			key, err := util.GenServiceQueueKeyWithFlag(service, operation)
+			if err != nil {
+				klog.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, service.Name, err)
+				continue
+			}
+			p.queue.Add(key)
 		}
 	}
 }
 
 func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
-	// 先确认service是否是Polaris的，后再做比较，会提高效率。
-	key, err := util.KeyFunc(cur)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", cur, err))
-		return
-	}
 
+	// 先确认service是否是Polaris的，后再做比较，会提高效率。
 	oldEndpoint, ok1 := old.(*v1.Endpoints)
 	curEndpoint, ok2 := cur.(*v1.Endpoints)
 
+	// 过滤非法的 endpoints
 	if !util.IgnoreEndpoint(curEndpoint) {
 		return
 	}
 
-	service, err := p.serviceLister.Services(curEndpoint.GetNamespace()).Get(curEndpoint.GetName())
+	key, err := util.GenObjectQueueKey(old)
 	if err != nil {
-		klog.V(6).Infof("Unable to find the service of the endpoint %s, %v", key, err)
+		klog.Errorf("get object key for endpoint %s/%s error, %v", oldEndpoint.Name, oldEndpoint.Namespace, err)
 		return
 	}
 
-	if util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
-		// 这里有不严谨的情况， endpoint update 时的service有从
-		// 1. polaris -> not polaris
-		// 2. not polaris -> polaris
-		// 3. 只变更 endpoint.subsets
-		if ok1 && ok2 && !reflect.DeepEqual(oldEndpoint.Subsets, curEndpoint.Subsets) {
-			metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
-			klog.Infof("Endpoints %s is updating, in queue", key)
-			p.queue.Add(key)
+	// demand 模式下，检查 endpoint 的 service 和 namespace 上是否有注解
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		sync, k, err := p.isPolarisEndpoints(curEndpoint)
+		if err != nil {
+			klog.Errorf("check if ep %s/%s svc/ns has sync error, %v", curEndpoint.Namespace, curEndpoint.Name, err)
+			return
+		}
+		// 没有注解，不处理
+		if !sync {
+			return
+		}
+		key = k
+	}
+
+	// 这里有不严谨的情况， endpoint update 时的service有从
+	// 1. polaris -> not polaris
+	// 2. not polaris -> polaris
+	// 3. 只变更 endpoint.subsets
+	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoint.Subsets, curEndpoint.Subsets) {
+		metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
+		klog.Infof("Endpoints %s is updating, in queue", key)
+		p.queue.Add(key)
+	}
+}
+
+// isEpServiceNsOrSyncEnable endpoints 的 service 和 namespace 是否带有 sync 注解。
+// 返回是否了注解，如果带了注解，会返回应该加入到处理队列中的 key。
+// 这里有几种情况：
+// 1. service sync = true ，要处理
+// 2. service sync 为 false， 不处理
+// 3. service sync 为空， namespace sync = true ，要处理
+// 4. service sync 为空， namespace sync 为空或者 false ，不处理
+func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, string, error) {
+
+	// 先检查 endpoints 的 service 上是否有注解
+	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
+	if err != nil {
+		klog.Errorf("Unable to find the service of the endpoint %s/%s, %v",
+			endpoint.Name, endpoint.Namespace, err)
+		return false, "", err
+	}
+
+	if util.IsServiceSyncEnable(service) {
+		// 情况 1 ，要处理
+		key, err := util.GenServiceQueueKey(service)
+		if err != nil {
+			klog.Errorf("get service %s/%s key in enqueueEndpoint error, %v", service.Name, service.Namespace, err)
+			return false, "", err
+		}
+		return true, key, nil
+	} else {
+		// 检查 service 是否有 false 注解
+		if util.IsServiceSyncDisable(service) {
+			// 情况 2 ，不处理
+			return false, "", nil
+		}
+		// 再检查 namespace 上是否有注解
+		namespace, err := p.namespaceLister.Get(service.Namespace)
+		if err != nil {
+			klog.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
+				endpoint.Name, endpoint.Namespace, err)
+			return false, "", err
+		}
+		if util.IsNamespaceSyncEnable(namespace) {
+			// 情况 3 ，要处理
+			key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
+			if err != nil {
+				klog.Errorf("Unable to find the key of the service %s/%s, %v",
+					service.Name, service.Namespace, err)
+			}
+			return true, key, nil
 		}
 	}
 
+	return false, "", nil
 }
 
 func (p *PolarisController) onEndpointDelete(obj interface{}) {
-	key, err := util.KeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
+	endpoint := obj.(*v1.Endpoints)
+
+	if !util.IgnoreEndpoint(endpoint) {
+		klog.V(6).Infof("Endpoint %s/%s in ignore namespaces", endpoint.Name, endpoint.Namespace)
 		return
 	}
 
-	// 考虑删除service的时候，此时同上endpoint还完全剔除。当endpoint delete监听到时，一般已经完成剔除逻辑
-	endpoint := obj.(*v1.Endpoints)
-	p.enqueueEndpoint(key, endpoint, "Delete")
+	key, err := util.GenObjectQueueKey(endpoint)
+	if err != nil {
+		klog.Errorf("get object key for endpoint %s/%s error %v", endpoint.Namespace, endpoint.Name, err)
+		return
+	}
 
+	// 如果是 demand 模式，检查 endpoint 的 service 和 namespace 上是否有注解
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		sync, k, err := p.isPolarisEndpoints(endpoint)
+		if err != nil {
+			klog.Errorf("check if ep %s/%s svc/ns has sync error, %v", endpoint.Namespace, endpoint.Name, err)
+			return
+		}
+		// 没有注解，不处理
+		if !sync {
+			return
+		}
+		key = k
+	}
+
+	p.enqueueEndpoint(key, endpoint, "Delete")
 }
 
 func (p *PolarisController) enqueueNamespace(key string, namespace *v1.Namespace) {
 
-	if !util.IgnoreNamespace(namespace) {
-		klog.V(6).Infof("%s in ignore namespaces", key)
-		return
-	}
 	p.queue.Add(key)
 }
 
 func (p *PolarisController) enqueueEndpoint(key string, endpoint *v1.Endpoints, eventType string) {
 
-	if !util.IgnoreEndpoint(endpoint) {
-		klog.V(6).Infof("Endpoint %s in ignore namespaces", key)
-		return
-	}
-
-	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
-	if err != nil {
-		klog.V(6).Infof("Unable to find the service of the endpoint %s, %v", key, err)
-		return
-	}
-	if util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
-		klog.Infof("Endpoint %s is polaris, in queue", key)
-		metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
-		p.queue.Add(key)
-	}
+	klog.Infof("Endpoint %s is polaris, in queue", key)
+	metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
+	p.queue.Add(key)
 }
 
-func (p *PolarisController) enqueueService(service *v1.Service, key string, eventType string) {
-
-	if eventType == "Add" {
-		// 如果是添加事件，过滤一些命名空间
-		if !util.IgnoreService(service, p.config.PolarisController.SyncMode) {
-			return
-		}
-		// demand 模式，过滤不需要同步的服务
-		if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-			ns, err := p.namespaceLister.Get(service.Namespace)
-			if err != nil {
-				klog.Errorf("get namespace in enqueueService error, %v", err)
-				return
-			}
-			if !util.IsNamespaceNeedSync(ns) {
-				return
-			}
-		}
-	} else {
-		if !util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
-			return
-		}
-	}
+func (p *PolarisController) enqueueService(key string, service *v1.Service, eventType string) {
 
 	klog.Infof("Service %s is polaris type, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "Service").Inc()
@@ -508,24 +643,24 @@ func (p *PolarisController) syncService(key string) error {
 	defer func() {
 		klog.V(4).Infof("Finished syncing service %q service. (%v)", key, time.Since(startTime))
 	}()
-	namespaces, name, err := cache.SplitMetaNamespaceKey(key)
+
+	realKey, namespaces, name, op, err := util.GetServiceRealKeyWithFlag(key)
 	if err != nil {
-		klog.Errorf("SplitMetaNamespaceKey %s failed, %v", key, err)
+		klog.Errorf("GetServiceRealKeyWithFlag %s error, %v", key, err)
 		return err
 	}
 
 	service, err := p.serviceLister.Services(namespaces).Get(name)
-
 	switch {
 	case errors.IsNotFound(err):
 		// 发现对应的service不存在，即已经被删除了，那么需要从cache中查询之前注册的北极星是什么，然后把它从实例中删除
-		cachedService, ok := p.serviceCache.Load(key)
+		cachedService, ok := p.serviceCache.Load(realKey)
 		if !ok {
 			// 如果之前的数据也已经不存在那么就跳过不在处理
-			klog.Errorf("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", key)
+			klog.Errorf("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
 			return nil
 		}
-		klog.Infof("Service %s is in cache, cache info %v", key, cachedService.Name)
+		klog.Infof("Service %s is in cache, cache info %v", realKey, cachedService.Name)
 		// 查询原svc是啥，删除对应实例
 		processError := p.processDeleteService(cachedService)
 		if processError != nil {
@@ -534,81 +669,78 @@ func (p *PolarisController) syncService(key string) error {
 				processError)
 			return processError
 		}
-		p.serviceCache.Delete(key)
+		p.serviceCache.Delete(realKey)
 	case err != nil:
-		klog.Errorf("Unable to retrieve service %v from store: %v", key, err)
+		klog.Errorf("Unable to retrieve service %v from store: %v", realKey, err)
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建service
 		// 2. 更新service
 		//    a. 北极星相关信息不变，更新了对应的metadata,ttl,权重信息
 		//    b. 北极星相关信息改变，相当于删除旧的北极星信息，注册新的北极星信息。
-		klog.Infof("Begin to process service %s", key)
+		klog.Infof("Begin to process service %s, operation is %s", realKey, op)
 
-		// 如果加入了按命名空间进行同步的逻辑，对 service 打标签，失败则重试
-		if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-			err := p.patchAnnotationToService(service)
-			if err != nil {
-				klog.Errorf("patch service annotation in syncService error, %v", err)
-				return err
-			}
+		operationService := service
+
+		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 service 打上 sync 标签
+		if op == ServiceKeyFlagAdd {
+			operationService = service.DeepCopy()
+			v12.SetMetaDataAnnotation(&operationService.ObjectMeta, util.PolarisSync, util.IsEnableSync)
 		}
 
-		cachedService, ok := p.serviceCache.Load(key)
+		cachedService, ok := p.serviceCache.Load(realKey)
 		if !ok {
 			// 1. cached中没有数据，为首次添加场景
-			klog.Infof("Service %s not in cache, begin to add new polaris", key)
+			klog.Infof("Service %s not in cache, begin to add new polaris", realKey)
 
 			// 同步 k8s 的 namespace 和 service 到 polaris，失败投入队列重试
-			if processError := p.processSyncNamespaceAndService(service); processError != nil {
-				klog.Errorf("ns/svc %s sync failed", key)
+			if processError := p.processSyncNamespaceAndService(operationService); processError != nil {
+				klog.Errorf("ns/svc %s sync failed", realKey)
 				return processError
 			}
 
-			if !util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
+			if !util.IsPolarisService(operationService, p.config.PolarisController.SyncMode) {
 				// 不合法的 service ，只把 service 同步到北极星，不做后续的实例处理
-				klog.Info("service is not valid, do not process ", key)
+				klog.Info("service is not valid, do not process ", realKey)
 				return nil
 			}
 
-			if processError := p.processSyncInstance(service); processError != nil {
-				klog.Errorf("Service %s first add failed", key)
+			if processError := p.processSyncInstance(operationService); processError != nil {
+				klog.Errorf("Service %s first add failed", realKey)
 				return processError
 			}
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
-			if processError := p.processUpdateService(cachedService, service); processError != nil {
-				klog.Errorf("Service %s update add failed", key)
+			if processError := p.processUpdateService(cachedService, operationService); processError != nil {
+				klog.Errorf("Service %s update add failed", realKey)
 				return processError
 			}
 		}
-		p.serviceCache.Store(key, service)
+		p.serviceCache.Store(realKey, service)
 	}
 	return nil
 }
 
 func (p *PolarisController) processDeleteService(service *v1.Service) (err error) {
-	if util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
 
-		klog.Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
+	klog.Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
 
-		instances, err := p.getAllInstance(service)
-		if err != nil {
-			return err
-		}
-		// 筛选出来只属于这个service的IP
-		// 更简单的做法，直接从cachedEndpoint删除，处理简单
-		// 通过查询北极星得到被注册的实例，直接删除，更加可靠。
-		polarisIPs := p.filterPolarisMetadata(service, instances)
-
-		klog.V(6).Infof("deRegistered [%s/%s] IPs , FilterPolarisMetadata \n %v \n %v",
-			service.GetNamespace(), service.GetName(),
-			instances, polarisIPs)
-
-		// 平台接口
-		return p.deleteInstances(service, polarisIPs)
+	instances, err := p.getAllInstance(service)
+	if err != nil {
+		return err
 	}
-	return nil
+	// 筛选出来只属于这个service的IP
+	// 更简单的做法，直接从cachedEndpoint删除，处理简单
+	// 通过查询北极星得到被注册的实例，直接删除，更加可靠。
+	polarisIPs := p.filterPolarisMetadata(service, instances)
+
+	klog.V(6).Infof("deRegistered [%s/%s] IPs , FilterPolarisMetadata \n %v \n %v",
+		service.GetNamespace(), service.GetName(),
+		instances, polarisIPs)
+
+	// 平台接口
+	return p.deleteInstances(service, polarisIPs)
+
 }
 
 // processSyncNamespaceAndService 通过 k8s ns 和 service 到 polaris
@@ -616,6 +748,13 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) (err error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	klog.Infof("Begin to sync namespaces and service, %s", serviceMsg)
+
+	// demand 模式，service 不包含 sync 注解时，不需要创建 ns、service 和 alias
+	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
+		if !util.IsServiceSyncEnable(service) {
+			return nil
+		}
+	}
 
 	createNsResponse, err := polarisapi.CreateNamespaces(service.Namespace)
 	if err != nil {
@@ -723,7 +862,9 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		   * 仅需要同步对应的endpoint即可
 		   * 更新serviceCache缓存
 	*/
-	if util.IfNeedCreateServiceAlias(old, cur) {
+	if (p.config.PolarisController.SyncMode != util.SyncModeDemand ||
+		p.config.PolarisController.SyncMode == util.SyncModeDemand && util.IsServiceSyncEnable(cur)) &&
+		util.IfNeedCreateServiceAlias(old, cur) {
 		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
 		if err != nil {
 			serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
@@ -787,37 +928,4 @@ func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 		p.CounterPolarisService()
 	}
 	<-stopCh
-}
-
-func (p *PolarisController) patchAnnotationToService(service *v1.Service) error {
-	ns, err := p.namespaceLister.Get(service.Namespace)
-	if err != nil {
-		klog.Errorf("find namespace in onServiceAdd error, %v", err)
-		return err
-	}
-	if util.IsNamespaceNeedSync(ns) {
-		if !util.IsServiceNeedSync(service) {
-			s := service.DeepCopy()
-			if s.Annotations == nil {
-				s.Annotations = make(map[string]string)
-			}
-			s.Annotations[util.PolarisServiceSyncAnno] = IsEnableSync
-			_, err := p.client.CoreV1().Services(ns.Name).Update(s)
-			if err != nil {
-				klog.Errorf("update service in onServiceUpdate error, %v", err)
-				return err
-			}
-		}
-	} else {
-		if util.IsServiceNeedSync(service) {
-			s := service.DeepCopy()
-			delete(s.Annotations, util.PolarisServiceSyncAnno)
-			_, err := p.client.CoreV1().Services(ns.Name).Update(s)
-			if err != nil {
-				klog.Errorf("update service in onServiceUpdate error, %v", err)
-				return err
-			}
-		}
-	}
-	return nil
 }

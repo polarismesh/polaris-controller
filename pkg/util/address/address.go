@@ -3,9 +3,9 @@ package address
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
+	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 	"strings"
@@ -119,13 +119,13 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 	*/
 	for _, instance := range instances {
 		clusterName := instance.GetMetadata()[util.PolarisClusterName]
-		platform := instance.GetMetadata()[util.PolarisPlatform]
+		source := instance.GetMetadata()[util.PolarisSource]
 
 		/**
 			只处理本 k8s 集群该 service 对应的 polaris 实例。之所以要加上 platform ，是因为
 		    防止不用 polaris-controller 的客户端，也使用 clusterName 这个 metadata。
 		*/
-		flag := clusterName == cluster && platform == polarisapi.Platform
+		flag := clusterName == cluster && source == polarisapi.Source
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {

@@ -1,41 +1,41 @@
 package util
 
 const (
-	PolarisWeight         = "polarismesh.cn/weight"
-	PolarisHeartBeatTTL   = "polarismesh.cn/ttl"
+	PolarisSync           = "polarismesh.cn/sync"
 	PolarisEnableRegister = "polarismesh.cn/enableRegister"
-	WorkloadKind          = "polarismesh.cn/workloadKind"
-	PolarisMetadata       = "polarismesh.cn/metadata"
-	PolarisCustomWeight   = "polarismesh.cn/customWeight"
 	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
 	PolarisAliasService   = "polarismesh.cn/aliasService"
-	PolarisSync           = "polarismesh.cn/sync"
 
-	// PolarisServiceSyncAnno 当同步模式是 demand 时，会给 ns 下的 service 上打下面这个 anno
-	// 这个 anno 只在 polaris-controller 内部用，用户无需关心。
-	PolarisServiceSyncAnno = "polarismesh.cn/namespaceSync"
+	PolarisMetadata     = "polarismesh.cn/metadata"
+	PolarisWeight       = "polarismesh.cn/weight"
+	PolarisHeartBeatTTL = "polarismesh.cn/ttl"
+
+	WorkloadKind        = "polarismesh.cn/workloadKind"
+	PolarisCustomWeight = "polarismesh.cn/customWeight"
 )
 
 const (
 	PolarisClusterName = "clusterName"
-	PolarisPlatform    = "platform"
+	PolarisSource      = "source"
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
 )
 
 const (
-	SyncModeAll = "all"
+	SyncModeAll    = "all"
 	SyncModeDemand = "demand"
+	IsEnableSync   = "true"
+	IsDisableSync  = "false"
 )
 
 // PolarisSystemMetaSet 由 polaris controller 决定的 meta，用户如果在 custom meta 中设置了，不会生效
-var PolarisSystemMetaSet = map[string]struct{}{PolarisClusterName: {}, PolarisPlatform: {}}
+var PolarisSystemMetaSet = map[string]struct{}{PolarisClusterName: {}, PolarisSource: {}}
 
 // PolarisDefaultMetaSet 由 polaris controller 托管的 service ，注册的实例必定会带的 meta，
 // 用于判断用户的 custom meta 是否发生了更新
 var PolarisDefaultMetaSet = map[string]struct{}{
 	PolarisClusterName: {},
-	PolarisPlatform:    {},
+	PolarisSource:      {},
 	PolarisVersion:     {},
 	PolarisProtocol:    {},
 }
