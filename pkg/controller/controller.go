@@ -259,7 +259,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		klog.Errorf("generate queue key for %s error, %v", err)
+		klog.Errorf("generate queue key for %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 
@@ -274,7 +274,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		klog.Errorf("generate queue key for %s error, %v", err)
+		klog.Errorf("generate queue key for %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 
@@ -402,7 +402,7 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 
 		services, err := p.serviceLister.Services(oldNs.Name).List(labels.Everything())
 		if err != nil {
-			klog.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", err)
+			klog.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", curNs.Name, err)
 			return
 		}
 
