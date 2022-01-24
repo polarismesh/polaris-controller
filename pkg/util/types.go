@@ -19,6 +19,10 @@ const (
 	PolarisSource      = "source"
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
+
+	// PolarisOldSource 旧版本 controller 用来标志是 controller 同步的服务实例。
+	// 已经废弃，项目中当前用来兼容存量的实例。
+	PolarisOldSource = "platform"
 )
 
 const (
