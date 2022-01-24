@@ -330,7 +330,11 @@ func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances
 		clusterName := instance.GetMetadata()[util.PolarisClusterName]
 		source := instance.GetMetadata()[util.PolarisSource]
 
-		flag := clusterName == p.config.PolarisController.ClusterName && source == Source
+		// 存量使用 platform 字段，这里兼容存量字段
+		oldSource := instance.GetMetadata()[util.PolarisOldSource]
+
+		flag := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
+			(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
 
 		// 新增字段flag，或者使用原来判断条件
 		if flag {
