@@ -28,7 +28,7 @@ polaris-sidecar 提供两个可选功能：
 
 **下载安装包**
 
-从 [Releases]() 下载最新版本的安装包。
+从 [Releases](https://github.com/polarismesh/polaris-controller/releases) 下载最新版本的安装包。
 
 **修改配置文件**
 
