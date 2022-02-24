@@ -6,3 +6,4 @@ tags
 # Build output
 bin
 .vscode/
+vendor
