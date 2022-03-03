@@ -2,6 +2,10 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
+	"time"
+
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
@@ -25,9 +29,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog"
-	"reflect"
-	"strings"
-	"time"
 )
 
 // PolarisController
@@ -765,6 +766,14 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		return err
 	}
 
+	createSvcResponse, err := polarisapi.CreateService(service)
+	if err != nil {
+		klog.Errorf("Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
+		return err
+	}
+
 	if service.Annotations[util.PolarisAliasNamespace] != "" &&
 		service.Annotations[util.PolarisAliasService] != "" {
 		createAliasResponse, err := polarisapi.CreateServiceAlias(service)
@@ -777,13 +786,6 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		}
 	}
 
-	createSvcResponse, err := polarisapi.CreateService(service)
-	if err != nil {
-		klog.Errorf("Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
-		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-			"Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
-		return err
-	}
 	return nil
 }
 
