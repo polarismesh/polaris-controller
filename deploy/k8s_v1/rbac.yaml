@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: polaris-controller
+  namespace: polaris-system
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: polaris-controller
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - endpoints
+  - events
+  - statefulsets
+  - services
+  - namespaces
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind:  ClusterRoleBinding
+metadata:
+  name: polaris-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: polaris-controller
+subjects:
+  - kind: ServiceAccount
+    name: polaris-controller
+    namespace: polaris-system

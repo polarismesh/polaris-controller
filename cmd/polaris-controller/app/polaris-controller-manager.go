@@ -3,16 +3,24 @@ package app
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
+	"github.com/polarismesh/polaris-controller/pkg/inject/istio/pkg/kube/inject"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
+	"github.com/polarismesh/polaris-controller/common"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
-	"istio.io/istio/pkg/kube/inject"
-	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -29,12 +37,6 @@ import (
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog"
-	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
@@ -184,6 +186,9 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		s.PolarisController.ClusterName = config.ClusterName
 	}
 
+	common.PolarisServerAddress = polarisServerAddress
+	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
+
 	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
 		polarisServerAddress, s.PolarisController.SyncMode, s.PolarisController.ClusterName)
 }
@@ -208,7 +213,7 @@ func closeGrpcLog() {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(infoW, warningW, errorW))
 }
 
-func initPolarisSidecarInjector() error {
+func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 	parameters := inject.WebhookParameters{
 		ConfigFile:          ConfigFile,
@@ -220,6 +225,9 @@ func initPolarisSidecarInjector() error {
 		HealthCheckInterval: 3,
 		HealthCheckFile:     "/tmp/health",
 		MonitoringPort:      flags.monitoringPort,
+		Client: SimpleControllerClientBuilder{
+			ClientConfig: c.Kubeconfig,
+		}.ClientOrDie("polaris-injector"),
 	}
 
 	wh, err := inject.NewWebhook(parameters)
@@ -244,7 +252,7 @@ func initPolarisSidecarInjector() error {
 func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 
 	// init sidecar injector
-	if err := initPolarisSidecarInjector(); err != nil {
+	if err := initPolarisSidecarInjector(c); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
