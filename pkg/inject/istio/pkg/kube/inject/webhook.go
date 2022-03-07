@@ -15,21 +15,25 @@
 package inject
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"net/http"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
-	"github.com/ghodss/yaml"
+	gyaml "github.com/ghodss/yaml"
 	"github.com/howeyc/fsnotify"
+	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/polarismesh/polaris-controller/common"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
@@ -98,7 +102,7 @@ func loadConfig(injectFile, meshFile, valuesFile string, env *model.Environment)
 		return nil, nil, "", err
 	}
 	var c Config
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := gyaml.Unmarshal(data, &c); err != nil {
 		klog.Warningf("Failed to parse injectFile %s", string(data))
 		return nil, nil, "", err
 	}
@@ -407,42 +411,9 @@ func (wh *Webhook) addContainer(pod *corev1.Pod, target, added []corev1.Containe
 			add.VolumeMounts = append(add.VolumeMounts, saJwtSecretMount)
 		}
 		if add.Name == "polaris-sidecar" {
-			// 这里主要是处理北极星 sidecar
-			sidecarMode := "dns"
-			ns, err := wh.k8sClient.CoreV1().Namespaces().Get(pod.Namespace, metav1.GetOptions{})
-			if err != nil {
-				// 如果出现异常，则就采用默认dns的注入方式
-				klog.Errorf("get pod namespace %q failed: %v", pod.Namespace, err)
-			} else {
-				if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
-					sidecarMode = val
-				}
-			}
-
-			dnsMode := true
-			meshMode := false
-
-			if val, ok := pod.Labels[utils.PolarisSidecarMode]; ok {
-				sidecarMode = val
-			}
-
-			if sidecarMode == "mesh" {
-				dnsMode = false
-				meshMode = true
-			}
-
-			add.Args = []string{
-				"start",
-				"-p",
-				"53",
-				"-r",
-				"false",
-				"-d",
-				strconv.FormatBool(dnsMode),
-				"-m",
-				strconv.FormatBool(meshMode),
-				"-s",
-				common.PolarisServerGrpcAddress,
+			klog.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
+			if _, err := wh.handlePolarisSideInject(pod, &add); err != nil {
+				klog.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
 		}
 		value = add
@@ -460,6 +431,117 @@ func (wh *Webhook) addContainer(pod *corev1.Pod, target, added []corev1.Containe
 		})
 	}
 	return patch
+}
+
+type PolarisGoConfig struct {
+	Name          string
+	Namespace     string
+	PolarisServer string
+}
+
+func (wh *Webhook) handlePolarisSideInject(pod *corev1.Pod, add *corev1.Container) (bool, error) {
+	// 这里主要是处理北极星 sidecar
+	sidecarMode := "dns"
+	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(pod.Namespace, metav1.GetOptions{})
+	if err != nil {
+		// 如果出现异常，则就采用默认dns的注入方式
+		klog.Errorf("get pod namespace %q failed: %v", pod.Namespace, err)
+		return false, err
+	} else {
+		if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
+			sidecarMode = val
+		}
+	}
+
+	if _, err := wh.handlePolarisSidecarConfig(pod, add); err != nil {
+		return false, err
+	}
+
+	dnsMode := true
+	meshMode := false
+
+	if val, ok := pod.Labels[utils.PolarisSidecarMode]; ok {
+		sidecarMode = val
+	}
+
+	if sidecarMode == "mesh" {
+		dnsMode = false
+		meshMode = true
+	}
+
+	add.Args = []string{
+		"start",
+		"-p",
+		"53",
+		"-r",
+		"'false'",
+		"-d",
+		"'" + strconv.FormatBool(dnsMode)  + "'",
+		"-m",
+		"'" + strconv.FormatBool(meshMode) + "'",
+		"-s",
+		common.PolarisServerGrpcAddress,
+	}
+
+	return true, nil
+}
+
+//handlePolarisSidecarConfig 处理 polaris-sidecar 的配置注入逻辑
+func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Container) (bool, error) {
+	ret, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Get(utils.PolarisGoConfigFile, metav1.GetOptions{})
+	klog.Infof("get polaris-sidecar's configmap=%s namespace %q ret=%v err=%v", utils.PolarisGoConfigFile, pod.Namespace, ret, err)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			klog.Errorf("get polaris-sidecar's configmap=%s namespace %q failed: %v", utils.PolarisGoConfigFile, pod.Namespace, err)
+			return false, err
+		}
+		if errors.IsNotFound(err) {
+			cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				return false, err
+			}
+			tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
+			if err != nil {
+				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				return false, err
+			}
+			buf := new(bytes.Buffer)
+			if err := tmp.Execute(buf, PolarisGoConfig{
+				Name:          utils.PolarisGoConfigFile,
+				Namespace:     pod.Namespace,
+				PolarisServer: common.PolarisServerGrpcAddress,
+			}); err != nil {
+				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				return false, err
+			}
+
+			//挂载 polaris.yaml 文件
+			configMap := corev1.ConfigMap{}
+			str := buf.String()
+			if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
+				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				return false, err
+			}
+
+			if _, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Create(&configMap); err != nil {
+				if !errors.IsAlreadyExists(err) {
+					klog.Errorf("create polaris-sidecar configmap for %s failed: %v", pod.Name, err)
+					return false, err
+				}
+			}
+		}
+	}
+
+	//将刚刚创建好的 configmap 挂载到 pod 的 container 中去
+	add.VolumeMounts = []corev1.VolumeMount{
+		{
+			Name:      utils.PolarisGoConfigFile,
+			SubPath:   "polaris.yaml",
+			MountPath: "/root/polaris.yaml",
+		},
+	}
+	return true, nil
 }
 
 func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (patch []rfc6902PatchOperation) {

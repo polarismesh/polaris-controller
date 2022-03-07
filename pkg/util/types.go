@@ -61,5 +61,10 @@ const (
 	ServiceCustomWeightChanged   ServiceChangeType = "serviceCustomWeightChanged"
 )
 
+const (
+	PolarisGoConfigFileTpl string = "polaris-client-config-tpl"
+	PolarisGoConfigFile string = "polaris-client-config"
+)
+
 // IndexPortMap 对应{"index-port":weight}
 type IndexPortMap map[string]int

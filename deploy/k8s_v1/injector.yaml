@@ -140,6 +140,10 @@ data:
           runAsNonRoot: false
           runAsUser: 0
       volumes:
+        - name: polaris-client-config
+          configMap:
+            defaultMode: 420
+            name: polaris-client-config
         - name: envoy-bootstrap
           emptyDir: {}
 ---

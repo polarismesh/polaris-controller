@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: polaris-controller
-          image: chuntaojun/polaris-controller:v1.0.0
+          image: ccr.ccs.tencentyun.com/chuntaojun/polaris-controller:v1.0.0
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
                  "--v=4",
@@ -38,6 +38,11 @@ spec:
                  "--log-file-max-size=1800",
                  "--leader-elect=true"
           ]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           imagePullPolicy: Always
           volumeMounts:
             - mountPath: /polaris-controller/log

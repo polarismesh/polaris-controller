@@ -68,12 +68,13 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
-      - image: chuntaojun/polaris-sidecar:lastest
+      - image: ccr.ccs.tencentyun.com/chuntaojun/polaris-sidecar:latest
         name: polaris-sidecar
         securityContext:
           runAsUser: 1337
           runAsGroup: 1337
         imagePullPolicy: Always
+        command: ["./polaris-sidecar"]
         resources:
           limits:
             cpu: 200m
@@ -140,6 +141,10 @@ data:
           runAsNonRoot: false
           runAsUser: 0
       volumes:
+        - name: polaris-client-config
+          configMap:
+            defaultMode: 420
+            name: polaris-client-config
         - name: envoy-bootstrap
           emptyDir: {}
 ---
@@ -177,9 +182,6 @@ webhooks:
         apiVersions: ["v1"]
         resources: ["pods"]
     failurePolicy: Fail
-    objectSelector:
-      matchLabels:
-        polaris-injection: enabled
     namespaceSelector:
       matchLabels:
         polaris-injection: enabled
