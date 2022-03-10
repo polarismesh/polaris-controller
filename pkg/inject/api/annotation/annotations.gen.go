@@ -49,7 +49,7 @@ type Instance struct {
 }
 
 var (
-	
+
 		AlphaCanonicalServiceAccounts = Instance {
           Name: "alpha.istio.io/canonical-serviceaccounts",
           Description: "Specifies the non-Kubernetes service accounts that are "+
@@ -59,7 +59,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Service, },
         }
-	
+
 		AlphaIdentity = Instance {
           Name: "alpha.istio.io/identity",
           Description: "Identity for the workload. NOTE This API is Alpha and has "+
@@ -68,7 +68,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		AlphaKubernetesServiceAccounts = Instance {
           Name: "alpha.istio.io/kubernetes-serviceaccounts",
           Description: "Specifies the Kubernetes service accounts that are "+
@@ -78,7 +78,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Service, },
         }
-	
+
 		GalleyAnalyzeSuppress = Instance {
           Name: "galley.istio.io/analyze-suppress",
           Description: "A comma separated list of configuration analysis message "+
@@ -93,7 +93,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Any, },
         }
-	
+
 		OperatorInstallChartOwner = Instance {
           Name: "install.operator.istio.io/chart-owner",
           Description: "Represents the name of the chart used to create this "+
@@ -102,7 +102,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Any, },
         }
-	
+
 		OperatorInstallOwnerGeneration = Instance {
           Name: "install.operator.istio.io/owner-generation",
           Description: "Represents the generation to which the resource was last "+
@@ -111,7 +111,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Any, },
         }
-	
+
 		OperatorInstallVersion = Instance {
           Name: "install.operator.istio.io/version",
           Description: "Represents the Istio version associated with the resource",
@@ -119,7 +119,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Any, },
         }
-	
+
 		IoKubernetesIngressClass = Instance {
           Name: "kubernetes.io/ingress.class",
           Description: "Annotation on an Ingress resources denoting the class of "+
@@ -128,7 +128,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Ingress, },
         }
-	
+
 		AlphaNetworkingEndpointsVersion = Instance {
           Name: "networking.alpha.istio.io/endpointsVersion",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
@@ -139,7 +139,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ ServiceEntry, },
         }
-	
+
 		AlphaNetworkingNotReadyEndpoints = Instance {
           Name: "networking.alpha.istio.io/notReadyEndpoints",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
@@ -150,7 +150,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ ServiceEntry, },
         }
-	
+
 		AlphaNetworkingServiceVersion = Instance {
           Name: "networking.alpha.istio.io/serviceVersion",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
@@ -162,7 +162,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ ServiceEntry, },
         }
-	
+
 		NetworkingExportTo = Instance {
           Name: "networking.istio.io/exportTo",
           Description: "Specifies the namespaces to which this service should be "+
@@ -173,7 +173,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Service, },
         }
-	
+
 		PolicyCheck = Instance {
           Name: "policy.istio.io/check",
           Description: "Determines the policy for behavior when unable to connect "+
@@ -183,7 +183,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		PolicyCheckBaseRetryWaitTime = Instance {
           Name: "policy.istio.io/checkBaseRetryWaitTime",
           Description: "Base time to wait between retries, will be adjusted by "+
@@ -193,7 +193,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		PolicyCheckMaxRetryWaitTime = Instance {
           Name: "policy.istio.io/checkMaxRetryWaitTime",
           Description: "Maximum time to wait between retries to Mixer. In "+
@@ -202,7 +202,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		PolicyCheckRetries = Instance {
           Name: "policy.istio.io/checkRetries",
           Description: "The maximum number of retries on transport errors to "+
@@ -211,7 +211,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		PolicyLang = Instance {
           Name: "policy.istio.io/lang",
           Description: "Selects the attribute expression language runtime for "+
@@ -220,7 +220,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatusReadinessApplicationPorts = Instance {
           Name: "readiness.status.sidecar.istio.io/applicationPorts",
           Description: "Specifies the list of ports exposed by the application "+
@@ -231,7 +231,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatusReadinessFailureThreshold = Instance {
           Name: "readiness.status.sidecar.istio.io/failureThreshold",
           Description: "Specifies the failure threshold for the Envoy sidecar "+
@@ -240,7 +240,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatusReadinessInitialDelaySeconds = Instance {
           Name: "readiness.status.sidecar.istio.io/initialDelaySeconds",
           Description: "Specifies the initial delay (in seconds) for the Envoy "+
@@ -249,7 +249,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatusReadinessPeriodSeconds = Instance {
           Name: "readiness.status.sidecar.istio.io/periodSeconds",
           Description: "Specifies the period (in seconds) for the Envoy sidecar "+
@@ -258,7 +258,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SecurityAutoMTLS = Instance {
           Name: "security.istio.io/autoMTLS",
           Description: "Determines whether the client proxy uses auto mTLS. This "+
@@ -268,7 +268,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarBootstrapOverride = Instance {
           Name: "sidecar.istio.io/bootstrapOverride",
           Description: "Specifies an alternative Envoy bootstrap configuration "+
@@ -277,7 +277,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarComponentLogLevel = Instance {
           Name: "sidecar.istio.io/componentLogLevel",
           Description: "Specifies the component log level for Envoy.",
@@ -285,7 +285,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarControlPlaneAuthPolicy = Instance {
           Name: "sidecar.istio.io/controlPlaneAuthPolicy",
           Description: "Specifies the auth policy used by the Istio control "+
@@ -296,7 +296,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarDiscoveryAddress = Instance {
           Name: "sidecar.istio.io/discoveryAddress",
           Description: "Specifies the XDS discovery address to be used by the "+
@@ -305,7 +305,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarEnableCoreDump = Instance {
           Name: "sidecar.istio.io/enableCoreDump",
           Description: "Specifies whether or not an Envoy sidecar should enable "+
@@ -314,7 +314,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarInject = Instance {
           Name: "sidecar.istio.io/inject",
           Description: "Specifies whether or not an Envoy sidecar should be "+
@@ -323,7 +323,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarInterceptionMode = Instance {
           Name: "sidecar.istio.io/interceptionMode",
           Description: "Specifies the mode used to redirect inbound connections "+
@@ -332,7 +332,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarLogLevel = Instance {
           Name: "sidecar.istio.io/logLevel",
           Description: "Specifies the log level for Envoy.",
@@ -340,7 +340,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarProxyCPU = Instance {
           Name: "sidecar.istio.io/proxyCPU",
           Description: "Specifies the requested CPU setting for the Envoy "+
@@ -349,7 +349,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarProxyImage = Instance {
           Name: "sidecar.istio.io/proxyImage",
           Description: "Specifies the Docker image to be used by the Envoy "+
@@ -358,7 +358,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarProxyMemory = Instance {
           Name: "sidecar.istio.io/proxyMemory",
           Description: "Specifies the requested memory setting for the Envoy "+
@@ -367,7 +367,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarRewriteAppHTTPProbers = Instance {
           Name: "sidecar.istio.io/rewriteAppHTTPProbers",
           Description: "Rewrite HTTP readiness and liveness probes to be "+
@@ -376,7 +376,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatsInclusionPrefixes = Instance {
           Name: "sidecar.istio.io/statsInclusionPrefixes",
           Description: "Specifies the comma separated list of prefixes of the "+
@@ -385,7 +385,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatsInclusionRegexps = Instance {
           Name: "sidecar.istio.io/statsInclusionRegexps",
           Description: "Specifies the comma separated list of regexes the stats "+
@@ -394,7 +394,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatsInclusionSuffixes = Instance {
           Name: "sidecar.istio.io/statsInclusionSuffixes",
           Description: "Specifies the comma separated list of suffixes of the "+
@@ -403,7 +403,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatus = Instance {
           Name: "sidecar.istio.io/status",
           Description: "Generated by Envoy sidecar injection that indicates the "+
@@ -414,7 +414,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarUserVolume = Instance {
           Name: "sidecar.istio.io/userVolume",
           Description: "Specifies one or more user volumes (as a JSON array) to "+
@@ -423,7 +423,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarUserVolumeMount = Instance {
           Name: "sidecar.istio.io/userVolumeMount",
           Description: "Specifies one or more user volume mounts (as a JSON "+
@@ -432,7 +432,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarStatusPort = Instance {
           Name: "status.sidecar.istio.io/port",
           Description: "Specifies the HTTP status Port for the Envoy sidecar. If "+
@@ -441,7 +441,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficExcludeInboundPorts = Instance {
           Name: "traffic.sidecar.istio.io/excludeInboundPorts",
           Description: "A comma separated list of inbound ports to be excluded "+
@@ -451,7 +451,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficExcludeOutboundIPRanges = Instance {
           Name: "traffic.sidecar.istio.io/excludeOutboundIPRanges",
           Description: "A comma separated list of IP ranges in CIDR form to be "+
@@ -461,7 +461,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficExcludeOutboundPorts = Instance {
           Name: "traffic.sidecar.istio.io/excludeOutboundPorts",
           Description: "A comma separated list of outbound ports to be excluded "+
@@ -470,7 +470,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficIncludeInboundPorts = Instance {
           Name: "traffic.sidecar.istio.io/includeInboundPorts",
           Description: "A comma separated list of inbound ports for which traffic "+
@@ -481,7 +481,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficIncludeOutboundIPRanges = Instance {
           Name: "traffic.sidecar.istio.io/includeOutboundIPRanges",
           Description: "A comma separated list of IP ranges in CIDR form to "+
@@ -492,7 +492,7 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 		SidecarTrafficKubevirtInterfaces = Instance {
           Name: "traffic.sidecar.istio.io/kubevirtInterfaces",
           Description: "A comma separated list of virtual interfaces whose "+
@@ -501,67 +501,5 @@ var (
           Deprecated: false,
 		  Resources: []ResourceTypes{ Pod, },
         }
-	
+
 )
-
-func AllResourceAnnotations() []*Instance {
-	return []*Instance {
-		&AlphaCanonicalServiceAccounts,
-		&AlphaIdentity,
-		&AlphaKubernetesServiceAccounts,
-		&GalleyAnalyzeSuppress,
-		&OperatorInstallChartOwner,
-		&OperatorInstallOwnerGeneration,
-		&OperatorInstallVersion,
-		&IoKubernetesIngressClass,
-		&AlphaNetworkingEndpointsVersion,
-		&AlphaNetworkingNotReadyEndpoints,
-		&AlphaNetworkingServiceVersion,
-		&NetworkingExportTo,
-		&PolicyCheck,
-		&PolicyCheckBaseRetryWaitTime,
-		&PolicyCheckMaxRetryWaitTime,
-		&PolicyCheckRetries,
-		&PolicyLang,
-		&SidecarStatusReadinessApplicationPorts,
-		&SidecarStatusReadinessFailureThreshold,
-		&SidecarStatusReadinessInitialDelaySeconds,
-		&SidecarStatusReadinessPeriodSeconds,
-		&SecurityAutoMTLS,
-		&SidecarBootstrapOverride,
-		&SidecarComponentLogLevel,
-		&SidecarControlPlaneAuthPolicy,
-		&SidecarDiscoveryAddress,
-		&SidecarEnableCoreDump,
-		&SidecarInject,
-		&SidecarInterceptionMode,
-		&SidecarLogLevel,
-		&SidecarProxyCPU,
-		&SidecarProxyImage,
-		&SidecarProxyMemory,
-		&SidecarRewriteAppHTTPProbers,
-		&SidecarStatsInclusionPrefixes,
-		&SidecarStatsInclusionRegexps,
-		&SidecarStatsInclusionSuffixes,
-		&SidecarStatus,
-		&SidecarUserVolume,
-		&SidecarUserVolumeMount,
-		&SidecarStatusPort,
-		&SidecarTrafficExcludeInboundPorts,
-		&SidecarTrafficExcludeOutboundIPRanges,
-		&SidecarTrafficExcludeOutboundPorts,
-		&SidecarTrafficIncludeInboundPorts,
-		&SidecarTrafficIncludeOutboundIPRanges,
-		&SidecarTrafficKubevirtInterfaces,
-	}
-}
-
-func AllResourceTypes() []string {
-	return []string {
-		"Any",
-		"Ingress",
-		"Pod",
-		"Service",
-		"ServiceEntry",
-	}
-}
