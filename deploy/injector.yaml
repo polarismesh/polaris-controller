@@ -34,7 +34,7 @@ data:
 
     template: |
       containers:
-      - image: ccr.ccs.tencentyun.com/chuntaojun/polaris-sidecar:latest
+      - image: polarismesh/polaris-sidecar:latest
         name: polaris-sidecar
         securityContext:
           allowPrivilegeEscalation: true
@@ -67,7 +67,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-sidecar-init
-        image: ccr.ccs.tencentyun.com/chuntaojun/polaris-sidecar-init:v1.0.0
+        image: polarismesh/polaris-sidecar-init:v1.0.0
         imagePullPolicy: Always
         command: ["./start.sh"]
         resources:
@@ -148,7 +148,7 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
-      - image: ccr.ccs.tencentyun.com/chuntaojun/polaris-sidecar:latest
+      - image: polarismesh/polaris-sidecar:latest
         name: polaris-sidecar
         securityContext:
           allowPrivilegeEscalation: true

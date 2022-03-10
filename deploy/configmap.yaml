@@ -11,7 +11,7 @@ data:
     # service sync
     serviceSync:
       mode: "all"
-      serverAddress: "10.0.0.151"
+      serverAddress: "polaris-server address"
     defaultConfig:
       proxyMetadata:
-        serverAddress: "10.0.0.151"
+        serverAddress: "polaris-server address"
