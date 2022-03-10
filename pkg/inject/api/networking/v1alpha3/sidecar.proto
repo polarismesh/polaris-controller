@@ -24,10 +24,10 @@ import "networking/v1alpha3/gateway.proto";
 // $aliases: [/docs/reference/config/networking/v1alpha3/sidecar]
 
 // `Sidecar` describes the configuration of the sidecar proxy that mediates
-// inbound and outbound communication to the workload instance it is attached
-// to. By default, Istio will program all sidecar proxies in the mesh with the
-// necessary configuration required to reach every workload instance in the
-// mesh, as well as accept traffic on all the ports associated with the
+// inbound and outbound communication to the workload instance it is attached to. By
+// default, Istio will program all sidecar proxies in the mesh with the
+// necessary configuration required to reach every workload instance in the mesh, as
+// well as accept traffic on all the ports associated with the
 // workload. The `Sidecar` configuration provides a way to fine tune the set of
 // ports, protocols that the proxy will accept when forwarding traffic to
 // and from the workload. In addition, it is possible to restrict the set
@@ -36,23 +36,22 @@ import "networking/v1alpha3/gateway.proto";
 //
 // Services and configuration in a mesh are organized into one or more
 // namespaces (e.g., a Kubernetes namespace or a CF org/space). A `Sidecar`
-// configuration in a namespace will apply to one or more workload instances in
-// the same namespace, selected using the `workloadSelector` field. In the
-// absence of a `workloadSelector`, it will apply to all workload instances in
-// the same namespace. When determining the `Sidecar` configuration to be
-// applied to a workload instance, preference will be given to the resource with
-// a `workloadSelector` that selects this workload instance, over a `Sidecar`
-// configuration without any `workloadSelector`.
+// configuration in a namespace will apply to one or more workload instances in the same
+// namespace, selected using the `workloadSelector` field. In the absence of a
+// `workloadSelector`, it will apply to all workload instances in the same
+// namespace. When determining the `Sidecar` configuration to be applied to a
+// workload instance, preference will be given to the resource with a
+// `workloadSelector` that selects this workload instance, over a `Sidecar` configuration
+// without any `workloadSelector`.
 //
-// NOTE 1: *_Each namespace can have only one `Sidecar` configuration without
-// any `workloadSelector`_*. The behavior of the system is undefined if more
-// than one selector-less `Sidecar` configurations exist in a given namespace.
-// The behavior of the system is undefined if two or more `Sidecar`
-// configurations with a `workloadSelector` select the same workload instance.
+// NOTE 1: *_Each namespace can have only one `Sidecar` configuration without any
+// `workloadSelector`_*. The behavior of the system is undefined if more
+// than one selector-less `Sidecar` configurations exist in a given namespace. The
+// behavior of the system is undefined if two or more `Sidecar` configurations
+// with a `workloadSelector` select the same workload instance.
 //
 // NOTE 2: *_A `Sidecar` configuration in the `MeshConfig`
-// [root
-// namespace](https://istio.io/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig)
+// [root namespace](https://istio.io/docs/reference/config/istio.mesh.v1alpha1/#MeshConfig)
 // will be applied by default to all namespaces without a `Sidecar`
 // configuration_*. This global default `Sidecar` configuration should not have
 // any `workloadSelector`.
@@ -134,9 +133,9 @@ import "networking/v1alpha3/gateway.proto";
 // {{</tab>}}
 // {{</tabset>}}
 //
-// The example below declares a `Sidecar` configuration in the `prod-us1`
-// namespace that accepts inbound HTTP traffic on port 9080 and forwards it to
-// the attached workload instance listening on a Unix domain socket. In the
+// The example below declares a `Sidecar` configuration in the `prod-us1` namespace
+// that accepts inbound HTTP traffic on port 9080 and forwards
+// it to the attached workload instance listening on a Unix domain socket. In the
 // egress direction, in addition to the `istio-system` namespace, the sidecar
 // proxies only HTTP traffic bound for port 9080 for services in the
 // `prod-us1` namespace.
@@ -222,8 +221,9 @@ import "networking/v1alpha3/gateway.proto";
 //       app: productpage
 //   ingress:
 //   - port:
-//       number: 9080 # binds to proxy_instance_ip:9080 (0.0.0.0:9080, if no
-//       unicast IP is available for the instance) protocol: HTTP name: somename
+//       number: 9080 # binds to proxy_instance_ip:9080 (0.0.0.0:9080, if no unicast IP is available for the instance)
+//       protocol: HTTP
+//       name: somename
 //     defaultEndpoint: 127.0.0.1:8080
 //     captureMode: NONE # not needed if metadata is set for entire proxy
 //   egress:
@@ -251,8 +251,9 @@ import "networking/v1alpha3/gateway.proto";
 //       app: productpage
 //   ingress:
 //   - port:
-//       number: 9080 # binds to proxy_instance_ip:9080 (0.0.0.0:9080, if no
-//       unicast IP is available for the instance) protocol: HTTP name: somename
+//       number: 9080 # binds to proxy_instance_ip:9080 (0.0.0.0:9080, if no unicast IP is available for the instance)
+//       protocol: HTTP
+//       name: somename
 //     defaultEndpoint: 127.0.0.1:8080
 //     captureMode: NONE # not needed if metadata is set for entire proxy
 //   egress:
@@ -386,7 +387,7 @@ import "networking/v1alpha3/gateway.proto";
 //
 package istio.networking.v1alpha3;
 
-option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/networking/v1alpha3";
+option go_package = "istio.io/api/networking/v1alpha3";
 
 // `Sidecar` describes the configuration of the sidecar proxy that mediates
 // inbound and outbound communication of the workload instance to which it is
@@ -412,23 +413,21 @@ option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/ne
 message Sidecar {
   // Criteria used to select the specific set of pods/VMs on which this
   // `Sidecar` configuration should be applied. If omitted, the `Sidecar`
-  // configuration will be applied to all workload instances in the same
-  // namespace.
+  // configuration will be applied to all workload instances in the same namespace.
   WorkloadSelector workload_selector = 1;
 
   // Ingress specifies the configuration of the sidecar for processing
   // inbound traffic to the attached workload instance. If omitted, Istio will
-  // automatically configure the sidecar based on the information about the
-  // workload obtained from the orchestration platform (e.g., exposed ports,
-  // services, etc.). If specified, inbound ports are configured if and only if
-  // the workload instance is associated with a service.
+  // automatically configure the sidecar based on the information about the workload
+  // obtained from the orchestration platform (e.g., exposed ports, services,
+  // etc.). If specified, inbound ports are configured if and only if the
+  // workload instance is associated with a service.
   repeated IstioIngressListener ingress = 2;
 
   // Egress specifies the configuration of the sidecar for processing
-  // outbound traffic from the attached workload instance to other services in
-  // the mesh.
-  repeated IstioEgressListener egress = 3
-      [ (google.api.field_behavior) = REQUIRED ];
+  // outbound traffic from the attached workload instance to other services in the
+  // mesh.
+  repeated IstioEgressListener egress = 3 [(google.api.field_behavior) = REQUIRED];
 
   // This allows to configure the outbound traffic policy.
   // If your application uses one or more external
@@ -442,7 +441,7 @@ message Sidecar {
 // traffic listener on the sidecar proxy attached to a workload instance.
 message IstioIngressListener {
   // The port associated with the listener.
-  Port port = 1 [ (google.api.field_behavior) = REQUIRED ];
+  Port port = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The IP to which the listener should be bound. Must be in the
   // format `x.x.x.x`. Unix domain socket addresses are not allowed in
@@ -458,11 +457,10 @@ message IstioIngressListener {
 
   // The loopback IP endpoint or Unix domain socket to which
   // traffic should be forwarded to. This configuration can be used to
-  // redirect traffic arriving at the bind `IP:Port` on the sidecar to a
-  // `localhost:port` or Unix domain socket where the application workload
-  // instance is listening for connections. Format should be `127.0.0.1:PORT` or
-  // `unix:///path/to/socket`
-  string default_endpoint = 4 [ (google.api.field_behavior) = REQUIRED ];
+  // redirect traffic arriving at the bind `IP:Port` on the sidecar to a `localhost:port`
+  // or Unix domain socket where the application workload instance is listening for
+  // connections. Format should be `127.0.0.1:PORT` or `unix:///path/to/socket`
+  string default_endpoint = 4 [(google.api.field_behavior) = REQUIRED];
 }
 
 // `IstioEgressListener` specifies the properties of an outbound traffic
@@ -483,8 +481,8 @@ message IstioEgressListener {
   // to. Port MUST be specified if bind is not empty. Format: `x.x.x.x` or
   // `unix:///path/to/uds` or `unix://@foobar` (Linux abstract namespace). If
   // omitted, Istio will automatically configure the defaults based on imported
-  // services, the workload instances to which this configuration is applied to
-  // and the captureMode. If captureMode is `NONE`, bind will default to
+  // services, the workload instances to which this configuration is applied to and
+  // the captureMode. If captureMode is `NONE`, bind will default to
   // 127.0.0.1.
   string bind = 2;
 
@@ -502,19 +500,18 @@ message IstioEgressListener {
   // associated `DestinationRule` in the same namespace will also be used.
   //
   // The `dnsName` should be specified using FQDN format, optionally including
-  // a wildcard character in the left-most component (e.g.,
-  // `prod/*.example.com`). Set the `dnsName` to `*` to select all services from
-  // the specified namespace (e.g., `prod/*`).
+  // a wildcard character in the left-most component (e.g., `prod/*.example.com`).
+  // Set the `dnsName` to `*` to select all services from the specified namespace
+  // (e.g., `prod/*`).
   //
-  // The `namespace` can be set to `*`, `.`, or `~`, representing any, the
-  // current, or no namespace, respectively. For example, `*/foo.example.com`
-  // selects the service from any available namespace while `./foo.example.com`
-  // only selects the service from the namespace of the sidecar. If a host is
-  // set to `*/*`, Istio will configure the sidecar to be able to reach every
-  // service in the mesh that is exported to the sidecar's namespace. The value
-  // `~/*` can be used to completely trim the configuration for sidecars that
-  // simply receive traffic and respond, but make no outbound connections of
-  // their own.
+  // The `namespace` can be set to `*`, `.`, or `~`, representing any, the current,
+  // or no namespace, respectively. For example, `*/foo.example.com` selects the
+  // service from any available namespace while `./foo.example.com` only selects
+  // the service from the namespace of the sidecar. If a host is set to `*/*`,
+  // Istio will configure the sidecar to be able to reach every service in the
+  // mesh that is exported to the sidecar's namespace. The value `~/*` can be used
+  // to completely trim the configuration for sidecars that simply receive traffic
+  // and respond, but make no outbound connections of their own.
   //
   // NOTE: Only services and configuration artifacts exported to the sidecar's
   // namespace (e.g., `exportTo` value of `*`) can be referenced.
@@ -530,23 +527,22 @@ message IstioEgressListener {
   // policy is enabled, or add `istio-system/*` to allow all services in the
   // `istio-system` namespace. This requirement is temporary and will be removed
   // in a future Istio release.
-  repeated string hosts = 4 [ (google.api.field_behavior) = REQUIRED ];
+  repeated string hosts = 4 [(google.api.field_behavior) = REQUIRED];
 }
 
 // `WorkloadSelector` specifies the criteria used to determine if the `Gateway`,
-// `Sidecar`, or `EnvoyFilter` configuration can be applied to a proxy. The
-// matching criteria includes the metadata associated with a proxy, workload
-// instance info such as labels attached to the pod/VM, or any other info that
-// the proxy provides to Istio during the initial handshake. If multiple
-// conditions are specified, all conditions need to match in order for the
-// workload instance to be selected. Currently, only label based selection
-// mechanism is supported.
+// `Sidecar`, or `EnvoyFilter` configuration can be applied to a proxy. The matching criteria
+// includes the metadata associated with a proxy, workload instance info such as
+// labels attached to the pod/VM, or any other info that the proxy provides
+// to Istio during the initial handshake. If multiple conditions are
+// specified, all conditions need to match in order for the workload instance to be
+// selected. Currently, only label based selection mechanism is supported.
 message WorkloadSelector {
   // One or more labels that indicate a specific set of pods/VMs
   // on which this `Sidecar` configuration should be applied. The scope of
   // label search is restricted to the configuration namespace in which the
   // the resource is present.
-  map<string, string> labels = 1 [ (google.api.field_behavior) = REQUIRED ];
+  map<string, string> labels = 1 [(google.api.field_behavior) = REQUIRED];
 
   // $hide_from_docs
   // other forms of identification supplied by the proxy
@@ -560,22 +556,21 @@ message WorkloadSelector {
 // services that are not known apriori, setting the policy to `ALLOW_ANY`
 // will cause the sidecars to route any unknown traffic originating from
 // the application to its requested destination.  Users are strongly
-// encouraged to use `ServiceEntry` configurations to explicitly declare any
-// external dependencies, instead of using `ALLOW_ANY`, so that traffic to these
+// encouraged to use `ServiceEntry` configurations to explicitly declare any external
+// dependencies, instead of using `ALLOW_ANY`, so that traffic to these
 // services can be monitored.
 message OutboundTrafficPolicy {
   enum Mode {
     // Outbound traffic will be restricted to services defined in the
-    // service registry as well as those defined through `ServiceEntry`
-    // configurations.
+    // service registry as well as those defined through `ServiceEntry` configurations.
     REGISTRY_ONLY = 0;
     // Outbound traffic to unknown destinations will be allowed, in case
-    // there are no services or `ServiceEntry` configurations for the
-    // destination port.
+    // there are no services or `ServiceEntry` configurations for the destination port.
     ALLOW_ANY = 1;
   }
   Mode mode = 1;
 }
+
 
 // `CaptureMode` describes how traffic to a listener is expected to be
 // captured. Applicable only when the listener is bound to an IP.

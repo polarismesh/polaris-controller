@@ -1,7 +1,8 @@
 .PHONY: build
 
 REGISTRY = docker.io
-REPO = polaris_mesh_test/polaris-controller
+REPO = polarismesh/polaris-controller
+SIDECAR_INIT_REPO = polarismesh/polaris-sidecar-init
 IMAGE_TAG = v1.0.0
 
 build:
@@ -10,8 +11,12 @@ build:
 build-image:
 	docker build . -f ./docker/Dockerfile -t $(REGISTRY)/$(REPO):$(IMAGE_TAG)
 
-push-image: build build-image login
+build-sidecar-init:
+	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
+
+push-image: build build-image build-sidecar-init login
 	docker push $(REGISTRY)/$(REPO):$(IMAGE_TAG)
+	docker push $(REGISTRY)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
 login:
-	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS)
+	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)

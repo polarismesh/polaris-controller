@@ -369,7 +369,7 @@ package v1alpha3
 import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
-	_ "github.com/polarismesh/polaris-controller/pkg/inject/gogo-genproto/googleapis/google/api"
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/googleapis/google/api"
 	math "math"
 )
 

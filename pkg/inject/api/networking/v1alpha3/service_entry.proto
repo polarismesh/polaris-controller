@@ -20,8 +20,7 @@ import "networking/v1alpha3/gateway.proto";
 // $schema: istio.networking.v1alpha3.ServiceEntry
 // $title: Service Entry
 // $description: Configuration affecting service registry.
-// $location:
-// https://istio.io/docs/reference/config/networking/service-entry.html
+// $location: https://istio.io/docs/reference/config/networking/service-entry.html
 // $aliases: [/docs/reference/config/networking/v1alpha3/service-entry]
 
 // `ServiceEntry` enables adding additional entries into Istio's internal
@@ -266,9 +265,9 @@ import "networking/v1alpha3/gateway.proto";
 // The following example demonstrates the use of a dedicated egress gateway
 // through which all external service traffic is forwarded.
 // The 'exportTo' field allows for control over the visibility of a service
-// declaration to other namespaces in the mesh. By default, a service is
-// exported to all namespaces. The following example restricts the visibility to
-// the current namespace, represented by ".", so that it cannot be used by other
+// declaration to other namespaces in the mesh. By default, a service is exported
+// to all namespaces. The following example restricts the visibility to the
+// current namespace, represented by ".", so that it cannot be used by other
 // namespaces.
 //
 // {{<tabset category-name="example">}}
@@ -596,8 +595,7 @@ import "networking/v1alpha3/gateway.proto";
 //
 // The following example illustrates the usage of a `ServiceEntry`
 // containing a subject alternate name
-// whose format conforms to the [SPIFFE
-// standard](https://github.com/spiffe/spiffe/blob/master/standards/SPIFFE-ID.md):
+// whose format conforms to the [SPIFFE standard](https://github.com/spiffe/spiffe/blob/master/standards/SPIFFE-ID.md):
 //
 // {{<tabset category-name="example">}}
 // {{<tab name="v1alpha3" category-value="v1alpha3">}}
@@ -651,7 +649,7 @@ import "networking/v1alpha3/gateway.proto";
 //
 package istio.networking.v1alpha3;
 
-option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/networking/v1alpha3";
+option go_package = "istio.io/api/networking/v1alpha3";
 
 // ServiceEntry enables adding additional entries into Istio's internal
 // service registry.
@@ -665,19 +663,15 @@ option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/ne
 // +cue-gen:ServiceEntry:subresource:status
 // +cue-gen:ServiceEntry:scope:Namespaced
 // +cue-gen:ServiceEntry:resource:categories=istio-io,networking-istio-io,shortNames=se,plural=serviceentries
-// +cue-gen:ServiceEntry:printerColumn:name=Hosts,type=string,JSONPath=.spec.hosts,description="The
-// hosts associated with the ServiceEntry"
-// +cue-gen:ServiceEntry:printerColumn:name=Location,type=string,JSONPath=.spec.location,description="Whether
-// the service is external to the mesh or part of the mesh (MESH_EXTERNAL or
-// MESH_INTERNAL)"
-// +cue-gen:ServiceEntry:printerColumn:name=Resolution,type=string,JSONPath=.spec.resolution,description="Service
-// discovery mode for the hosts (NONE, STATIC, or DNS)"
-// +cue-gen:ServiceEntry:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp
-// is a timestamp representing the server time when this object was created. It
-// is not guaranteed to be set in happens-before order across separate
-// operations. Clients may not set this value. It is represented in RFC3339 form
-// and is in UTC. Populated by the system. Read-only. Null for lists. More info:
-// https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
+// +cue-gen:ServiceEntry:printerColumn:name=Hosts,type=string,JSONPath=.spec.hosts,description="The hosts associated with the ServiceEntry"
+// +cue-gen:ServiceEntry:printerColumn:name=Location,type=string,JSONPath=.spec.location,description="Whether the service is external to the
+// mesh or part of the mesh (MESH_EXTERNAL or MESH_INTERNAL)"
+// +cue-gen:ServiceEntry:printerColumn:name=Resolution,type=string,JSONPath=.spec.resolution,description="Service discovery mode for the hosts
+// (NONE, STATIC, or DNS)"
+// +cue-gen:ServiceEntry:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp is a timestamp
+// representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations.
+// Clients may not set this value. It is represented in RFC3339 form and is in UTC.
+// Populated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
 // -->
 //
 // <!-- go code generation tags
@@ -690,37 +684,36 @@ message ServiceEntry {
   // The hosts associated with the ServiceEntry. Could be a DNS
   // name with wildcard prefix.
   //
-  // 1. The hosts field is used to select matching hosts in VirtualServices and
-  // DestinationRules.
-  // 2. For HTTP traffic the HTTP Host/Authority header will be matched against
-  // the hosts field.
-  // 3. For HTTPs or TLS traffic containing Server Name Indication (SNI), the
-  // SNI value will be matched against the hosts field.
+  // 1. The hosts field is used to select matching hosts in VirtualServices and DestinationRules.
+  // 2. For HTTP traffic the HTTP Host/Authority header will be matched against the hosts field.
+  // 3. For HTTPs or TLS traffic containing Server Name Indication (SNI), the SNI value
+  // will be matched against the hosts field.
   //
   // Note that when resolution is set to type DNS
   // and no endpoints are specified, the host field will be used as the DNS name
   // of the endpoint to route traffic to.
-  repeated string hosts = 1 [ (google.api.field_behavior) = REQUIRED ];
+  repeated string hosts = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The virtual IP addresses associated with the service. Could be CIDR
-  // prefix. For HTTP traffic, generated route configurations will include http
-  // route domains for both the `addresses` and `hosts` field values and the
-  // destination will be identified based on the HTTP Host/Authority header. If
-  // one or more IP addresses are specified, the incoming traffic will be
-  // identified as belonging to this service if the destination IP matches the
-  // IP/CIDRs specified in the addresses field. If the Addresses field is empty,
-  // traffic will be identified solely based on the destination port. In such
-  // scenarios, the port on which the service is being accessed must not be
-  // shared by any other service in the mesh. In other words, the sidecar will
-  // behave as a simple TCP proxy, forwarding incoming traffic on a specified
-  // port to the specified destination endpoint IP/host. Unix domain socket
+  // prefix. For HTTP traffic, generated route configurations will include http route
+  // domains for both the `addresses` and `hosts` field values and the destination will
+  // be identified based on the HTTP Host/Authority header.
+  // If one or more IP addresses are specified,
+  // the incoming traffic will be identified as belonging to this service
+  // if the destination IP matches the IP/CIDRs specified in the addresses
+  // field. If the Addresses field is empty, traffic will be identified
+  // solely based on the destination port. In such scenarios, the port on
+  // which the service is being accessed must not be shared by any other
+  // service in the mesh. In other words, the sidecar will behave as a
+  // simple TCP proxy, forwarding incoming traffic on a specified port to
+  // the specified destination endpoint IP/host. Unix domain socket
   // addresses are not supported in this field.
   repeated string addresses = 2;
 
   // The ports associated with the external service. If the
   // Endpoints are Unix domain socket addresses, there must be exactly one
   // port.
-  repeated Port ports = 3 [ (google.api.field_behavior) = REQUIRED ];
+  repeated Port ports = 3 [(google.api.field_behavior) = REQUIRED];
 
   // Location specifies whether the service is part of Istio mesh or
   // outside the mesh.  Location determines the behavior of several
@@ -780,7 +773,7 @@ message ServiceEntry {
   // when setting the resolution mode to NONE for a TCP port without
   // accompanying IP addresses. In such cases, traffic to any IP on
   // said port will be allowed (i.e. `0.0.0.0:<port>`).
-  Resolution resolution = 5 [ (google.api.field_behavior) = REQUIRED ];
+  Resolution resolution = 5 [(google.api.field_behavior) = REQUIRED];
 
   // Endpoint defines a network address (IP or hostname) associated with
   // the mesh service.
@@ -789,7 +782,7 @@ message ServiceEntry {
     // port.  Domain names can be used if and only if the resolution is set
     // to DNS, and must be fully-qualified without wildcards. Use the form
     // unix:///absolute/path/to/socket for Unix domain socket endpoints.
-    string address = 1 [ (google.api.field_behavior) = REQUIRED ];
+    string address = 1 [(google.api.field_behavior) = REQUIRED];
 
     // Set of ports associated with the endpoint. The ports must be
     // associated with a port name that was declared as part of the

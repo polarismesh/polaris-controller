@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
+	"github.com/polarismesh/polaris-controller/common"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
-	"github.com/polarismesh/polaris-controller/pkg/inject/istio/pkg/kube/inject"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
-	"github.com/polarismesh/polaris-controller/common"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
@@ -49,26 +48,23 @@ const (
 	DefaultLockObjectName           = "polaris-controller"
 	DefaultLeaderElectionName       = "polaris-controller"
 
-	ConfigFile = "/etc/polaris-inject/inject/config"
-	ValuesFile = "/etc/polaris-inject/inject/values"
-	MeshFile   = "/etc/polaris-inject/config/mesh"
-	CertFile   = "/etc/polaris-inject/certs/cert.pem"
-	KeyFile    = "/etc/polaris-inject/certs/key.pem"
+	MeshConfigFile = "/etc/polaris-inject/inject/mesh-config"
+	DnsConfigFile  = "/etc/polaris-inject/inject/dns-config"
+	ValuesFile     = "/etc/polaris-inject/inject/values"
+	MeshFile       = "/etc/polaris-inject/config/mesh"
+	CertFile       = "/etc/polaris-inject/certs/cert.pem"
+	KeyFile        = "/etc/polaris-inject/certs/key.pem"
 )
 
 var (
 	flags = struct {
-		loggingOptions *log.Options
-
 		injectPort     int
 		httpPort       int
 		grpcPort       int
 		monitoringPort int
 
 		polarisServerAddress string
-	}{
-		loggingOptions: log.DefaultOptions(),
-	}
+	}{}
 )
 
 // ControllerContext defines the context object for controller
@@ -200,8 +196,6 @@ func assignFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().StringVar(&(flags.polarisServerAddress), "polarisServerAddress", "",
 		"polaris api address")
 	rootCmd.PersistentFlags().IntVar(&flags.monitoringPort, "monitoringPort", 15014, "Webhook monitoring port")
-
-	flags.loggingOptions.AttachCobraFlags(rootCmd)
 }
 
 func closeGrpcLog() {
@@ -216,7 +210,9 @@ func closeGrpcLog() {
 func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 	parameters := inject.WebhookParameters{
-		ConfigFile:          ConfigFile,
+		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+		MeshConfigFile:      MeshConfigFile,
+		DnsConfigFile:       DnsConfigFile,
 		ValuesFile:          ValuesFile,
 		MeshFile:            MeshFile,
 		CertFile:            CertFile,
@@ -224,7 +220,6 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		Port:                flags.injectPort,
 		HealthCheckInterval: 3,
 		HealthCheckFile:     "/tmp/health",
-		MonitoringPort:      flags.monitoringPort,
 		Client: SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
 		}.ClientOrDie("polaris-injector"),
@@ -233,11 +228,6 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 	wh, err := inject.NewWebhook(parameters)
 	if err != nil {
 		fmt.Printf("failed to create injection webhook, %s \n", err)
-		return err
-	}
-
-	if err := log.Configure(flags.loggingOptions); err != nil {
-		fmt.Printf("config log error, %s \n", err)
 		return err
 	}
 

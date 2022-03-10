@@ -20,13 +20,12 @@ import "google/protobuf/wrappers.proto";
 
 // $schema: istio.networking.v1alpha3.VirtualService
 // $title: Virtual Service
-// $description: Configuration affecting label/content routing, sni routing,
-// etc. $location:
-// https://istio.io/docs/reference/config/networking/virtual-service.html
+// $description: Configuration affecting label/content routing, sni routing, etc.
+// $location: https://istio.io/docs/reference/config/networking/virtual-service.html
 // $aliases: [/docs/reference/config/networking/v1alpha3/virtual-service]
 
-// Configuration affecting traffic routing. Here are a few terms useful to
-// define in the context of traffic routing.
+// Configuration affecting traffic routing. Here are a few terms useful to define
+// in the context of traffic routing.
 //
 // `Service` a unit of application behavior bound to a unique name in a
 // service registry. Services consist of multiple network *endpoints*
@@ -54,13 +53,13 @@ import "google/protobuf/wrappers.proto";
 // application code to decouple itself from the evolution of dependent
 // services.
 //
-// A `VirtualService` defines a set of traffic routing rules to apply when a
-// host is addressed. Each routing rule defines matching criteria for traffic of
-// a specific protocol. If the traffic is matched, then it is sent to a named
-// destination service (or subset/version of it) defined in the registry.
+// A `VirtualService` defines a set of traffic routing rules to apply when a host is
+// addressed. Each routing rule defines matching criteria for traffic of a specific
+// protocol. If the traffic is matched, then it is sent to a named destination service
+// (or subset/version of it) defined in the registry.
 //
-// The source of traffic can also be matched in a routing rule. This allows
-// routing to be customized for specific client contexts.
+// The source of traffic can also be matched in a routing rule. This allows routing
+// to be customized for specific client contexts.
 //
 // The following example on Kubernetes, routes all HTTP traffic by default to
 // pods of the reviews service with label "version: v1". In addition,
@@ -174,7 +173,7 @@ import "google/protobuf/wrappers.proto";
 //
 package istio.networking.v1alpha3;
 
-option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/networking/v1alpha3";
+option go_package = "istio.io/api/networking/v1alpha3";
 
 // Configuration affecting traffic routing.
 //
@@ -187,16 +186,13 @@ option go_package = "github.com/polarismesh/polaris-controller/pkg/inject/api/ne
 // +cue-gen:VirtualService:subresource:status
 // +cue-gen:VirtualService:scope:Namespaced
 // +cue-gen:VirtualService:resource:categories=istio-io,networking-istio-io,shortNames=vs
-// +cue-gen:VirtualService:printerColumn:name=Gateways,type=string,JSONPath=.spec.gateways,description="The
-// names of gateways and sidecars that should apply these routes"
-// +cue-gen:VirtualService:printerColumn:name=Hosts,type=string,JSONPath=.spec.hosts,description="The
-// destination hosts to which traffic is being sent"
-// +cue-gen:VirtualService:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp
-// is a timestamp representing the server time when this object was created. It
-// is not guaranteed to be set in happens-before order across separate
-// operations. Clients may not set this value. It is represented in RFC3339 form
-// and is in UTC. Populated by the system. Read-only. Null for lists. More info:
-// https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
+// +cue-gen:VirtualService:printerColumn:name=Gateways,type=string,JSONPath=.spec.gateways,description="The names of gateways and sidecars 
+// that should apply these routes"
+// +cue-gen:VirtualService:printerColumn:name=Hosts,type=string,JSONPath=.spec.hosts,description="The destination hosts to which traffic is being sent"
+// +cue-gen:VirtualService:printerColumn:name=Age,type=date,JSONPath=.metadata.creationTimestamp,description="CreationTimestamp is a timestamp 
+// representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations. 
+// Clients may not set this value. It is represented in RFC3339 form and is in UTC.
+// Populated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata"
 // -->
 //
 // <!-- go code generation tags
@@ -217,8 +213,7 @@ message VirtualService {
   // HTTP and TCP ports. Alternatively, the traffic properties of a host
   // can be defined using more than one VirtualService, with certain
   // caveats. Refer to the
-  // [Operations
-  // Guide](https://istio.io/docs/ops/best-practices/traffic-management/#split-virtual-services)
+  // [Operations Guide](https://istio.io/docs/ops/best-practices/traffic-management/#split-virtual-services)
   // for details.
   //
   // *Note for Kubernetes users*: When short names are used (e.g. "reviews"
@@ -234,7 +229,7 @@ message VirtualService {
   // the mesh, i.e., those found in the service registry, must always be
   // referred to using their alphanumeric names. IP addresses are allowed
   // only for services defined via the Gateway.
-  repeated string hosts = 1 [ (google.api.field_behavior) = REQUIRED ];
+  repeated string hosts = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The names of gateways and sidecars that should apply these routes.
   // Gateways in other namespaces may be referred to by
@@ -252,10 +247,10 @@ message VirtualService {
   repeated string gateways = 2;
 
   // An ordered list of route rules for HTTP traffic. HTTP routes will be
-  // applied to platform service ports named 'http-*'/'http2-*'/'grpc-*',
-  // gateway ports with protocol HTTP/HTTP2/GRPC/ TLS-terminated-HTTPS and
-  // service entry ports using HTTP/HTTP2/GRPC protocols.  The first rule
-  // matching an incoming request is used.
+  // applied to platform service ports named 'http-*'/'http2-*'/'grpc-*', gateway
+  // ports with protocol HTTP/HTTP2/GRPC/ TLS-terminated-HTTPS and service
+  // entry ports using HTTP/HTTP2/GRPC protocols.  The first rule matching
+  // an incoming request is used.
   repeated HTTPRoute http = 3;
 
   // An ordered list of route rule for non-terminated TLS & HTTPS
@@ -298,8 +293,7 @@ message VirtualService {
 // registry. Istio's service registry is composed of all the services found
 // in the platform's service registry (e.g., Kubernetes services, Consul
 // services), as well as services declared through the
-// [ServiceEntry](https://istio.io/docs/reference/config/networking/service-entry/#ServiceEntry)
-// resource.
+// [ServiceEntry](https://istio.io/docs/reference/config/networking/service-entry/#ServiceEntry) resource.
 //
 // *Note for Kubernetes users*: When short names are used (e.g. "reviews"
 // instead of "reviews.default.svc.cluster.local"), Istio will interpret
@@ -538,10 +532,8 @@ message Destination {
   // The name of a service from the service registry. Service
   // names are looked up from the platform's service registry (e.g.,
   // Kubernetes services, Consul services, etc.) and from the hosts
-  // declared by
-  // [ServiceEntry](https://istio.io/docs/reference/config/networking/service-entry/#ServiceEntry).
-  // Traffic forwarded to destinations that are not found in either of the two,
-  // will be dropped.
+  // declared by [ServiceEntry](https://istio.io/docs/reference/config/networking/service-entry/#ServiceEntry). Traffic forwarded to
+  // destinations that are not found in either of the two, will be dropped.
   //
   // *Note for Kubernetes users*: When short names are used (e.g. "reviews"
   // instead of "reviews.default.svc.cluster.local"), Istio will interpret
@@ -551,7 +543,7 @@ message Destination {
   // the actual namespace associated with the reviews service. To avoid
   // potential misconfiguration, it is recommended to always use fully
   // qualified domain names over short names.
-  string host = 1 [ (google.api.field_behavior) = REQUIRED ];
+  string host = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The name of a subset within the service. Applicable only to services
   // within the mesh. The subset must be defined in a corresponding
@@ -620,7 +612,7 @@ message HTTPRoute {
   // Percentage of the traffic to be mirrored by the `mirror` field.
   // Use of integer `mirror_percent` value is deprecated. Use the
   // double `mirror_percentage` field instead
-  google.protobuf.UInt32Value mirror_percent = 18 [ deprecated = true ];
+  google.protobuf.UInt32Value mirror_percent = 18 [deprecated=true];
 
   // Percentage of the traffic to be mirrored by the `mirror` field.
   // If this field is absent, all the traffic (100%) will be mirrored.
@@ -633,9 +625,7 @@ message HTTPRoute {
   CorsPolicy cors_policy = 10;
 
   reserved 11 to 15;
-  reserved "append_headers", "remove_response_headers",
-      "append_response_headers", "remove_request_headers",
-      "append_request_headers";
+  reserved "append_headers", "remove_response_headers", "append_response_headers","remove_request_headers", "append_request_headers";
 
   // Header manipulation rules
   Headers headers = 16;
@@ -800,8 +790,7 @@ message TLSRoute {
   // activated. All conditions inside a single match block have AND
   // semantics, while the list of match blocks have OR semantics. The rule
   // is matched if any one of the match blocks succeed.
-  repeated TLSMatchAttributes match = 1
-      [ (google.api.field_behavior) = REQUIRED ];
+  repeated TLSMatchAttributes match = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The destination to which the connection should be forwarded to.
   repeated RouteDestination route = 2;
@@ -981,8 +970,7 @@ message HTTPMatchRequest {
   //
   // - `regex: "value"` for ECMAscript style regex-based match
   //
-  // **Note:** The keys `uri`, `scheme`, `method`, and `authority` will be
-  // ignored.
+  // **Note:** The keys `uri`, `scheme`, `method`, and `authority` will be ignored.
   map<string, StringMatch> headers = 5;
 
   // Specifies the ports on the host that is being addressed. Many services
@@ -992,13 +980,13 @@ message HTTPMatchRequest {
 
   // One or more labels that constrain the applicability of a rule to
   // workloads with the given labels. If the VirtualService has a list of
-  // gateways specified in the top-level `gateways` field, it must include the
-  // reserved gateway `mesh` for this field to be applicable.
+  // gateways specified in the top-level `gateways` field, it must include the reserved gateway
+  // `mesh` for this field to be applicable.
   map<string, string> source_labels = 7;
 
   // Names of gateways where the rule should be applied. Gateway names
-  // in the top-level `gateways` field of the VirtualService (if any) are
-  // overridden. The gateway match is independent of sourceLabels.
+  // in the top-level `gateways` field of the VirtualService (if any) are overridden. The gateway
+  // match is independent of sourceLabels.
   repeated string gateways = 8;
 
   // Query parameters for matching.
@@ -1164,7 +1152,7 @@ message HTTPMatchRequest {
 message HTTPRouteDestination {
   // Destination uniquely identifies the instances of a service
   // to which the request/connection should be forwarded to.
-  Destination destination = 1 [ (google.api.field_behavior) = REQUIRED ];
+  Destination destination = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The proportion of traffic to be forwarded to the service
   // version. (0-100). Sum of weights across destinations SHOULD BE == 100.
@@ -1173,8 +1161,7 @@ message HTTPRouteDestination {
   int32 weight = 2;
 
   reserved 3 to 6;
-  reserved "remove_response_headers", "append_response_headers",
-      "remove_request_headers", "append_request_headers";
+  reserved "remove_response_headers", "append_response_headers", "remove_request_headers", "append_request_headers";
 
   // Header manipulation rules
   Headers headers = 7;
@@ -1184,7 +1171,7 @@ message HTTPRouteDestination {
 message RouteDestination {
   // Destination uniquely identifies the instances of a service
   // to which the request/connection should be forwarded to.
-  Destination destination = 1 [ (google.api.field_behavior) = REQUIRED ];
+  Destination destination = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The proportion of traffic to be forwarded to the service
   // version. If there is only one destination in a rule, all traffic will be
@@ -1211,13 +1198,13 @@ message L4MatchAttributes {
 
   // One or more labels that constrain the applicability of a rule to
   // workloads with the given labels. If the VirtualService has a list of
-  // gateways specified in the top-level `gateways` field, it should include the
-  // reserved gateway `mesh` in order for this field to be applicable.
+  // gateways specified in the top-level `gateways` field, it should include the reserved gateway
+  // `mesh` in order for this field to be applicable.
   map<string, string> source_labels = 4;
 
   // Names of gateways where the rule should be applied. Gateway names
-  // in the top-level `gateways` field of the VirtualService (if any) are
-  // overridden. The gateway match is independent of sourceLabels.
+  // in the top-level `gateways` field of the VirtualService (if any) are overridden. The gateway
+  // match is independent of sourceLabels.
   repeated string gateways = 5;
 }
 
@@ -1227,7 +1214,7 @@ message TLSMatchAttributes {
   // can be used in the SNI value, e.g., *.com will match foo.example.com
   // as well as example.com. An SNI value must be a subset (i.e., fall
   // within the domain) of the corresponding virtual serivce's hosts.
-  repeated string sni_hosts = 1 [ (google.api.field_behavior) = REQUIRED ];
+  repeated string sni_hosts = 1 [(google.api.field_behavior) = REQUIRED];
 
   // IPv4 or IPv6 ip addresses of destination with optional subnet.  E.g.,
   // a.b.c.d/xx form or just a.b.c.d.
@@ -1244,13 +1231,13 @@ message TLSMatchAttributes {
 
   // One or more labels that constrain the applicability of a rule to
   // workloads with the given labels. If the VirtualService has a list of
-  // gateways specified in the top-level `gateways` field, it should include the
-  // reserved gateway `mesh` in order for this field to be applicable.
+  // gateways specified in the top-level `gateways` field, it should include the reserved gateway
+  // `mesh` in order for this field to be applicable.
   map<string, string> source_labels = 5;
 
   // Names of gateways where the rule should be applied. Gateway names
-  // in the top-level `gateways` field of the VirtualService (if any) are
-  // overridden. The gateway match is independent of sourceLabels.
+  // in the top-level `gateways` field of the VirtualService (if any) are overridden. The gateway
+  // match is independent of sourceLabels.
   repeated string gateways = 6;
 }
 
@@ -1447,27 +1434,21 @@ message HTTPRetry {
   // Number of retries for a given request. The interval
   // between retries will be determined automatically (25ms+). Actual
   // number of retries attempted depends on the request `timeout` of the
-  // [HTTP
-  // route](https://istio.io/docs/reference/config/networking/virtual-service/#HTTPRoute).
-  int32 attempts = 1 [ (google.api.field_behavior) = REQUIRED ];
+  // [HTTP route](https://istio.io/docs/reference/config/networking/virtual-service/#HTTPRoute).
+  int32 attempts = 1 [(google.api.field_behavior) = REQUIRED];
 
-  // Timeout per retry attempt for a given request. format: 1h/1m/1s/1ms. MUST
-  // BE >=1ms.
+  // Timeout per retry attempt for a given request. format: 1h/1m/1s/1ms. MUST BE >=1ms.
   google.protobuf.Duration per_try_timeout = 2;
 
   // Specifies the conditions under which retry takes place.
   // One or more policies can be specified using a ‘,’ delimited list.
-  // See the [retry
-  // policies](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#x-envoy-retry-on)
-  // and [gRPC retry
-  // policies](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#x-envoy-retry-grpc-on)
-  // for more details.
+  // See the [retry policies](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#x-envoy-retry-on)
+  // and [gRPC retry policies](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter#x-envoy-retry-grpc-on) for more details.
   string retry_on = 3;
 }
 
 // Describes the Cross-Origin Resource Sharing (CORS) policy, for a given
-// service. Refer to
-// [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS)
+// service. Refer to [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS)
 // for further details about cross origin resource sharing. For example,
 // the following rule restricts cross origin requests to those originating
 // from example.com domain using HTTP POST/GET, and sets the
@@ -1535,12 +1516,11 @@ message CorsPolicy {
   // content will be serialized into the Access-Control-Allow-Origin
   // header. Wildcard * will allow all origins.
   // $hide_from_docs
-  repeated string allow_origin = 1 [ deprecated = true ];
+  repeated string allow_origin = 1 [deprecated=true];
 
   // String patterns that match allowed origins.
   // An origin is allowed if any of the string matchers match.
-  // If a match is found, then the outgoing Access-Control-Allow-Origin would be
-  // set to the origin as provided by the client.
+  // If a match is found, then the outgoing Access-Control-Allow-Origin would be set to the origin as provided by the client.
   repeated StringMatch allow_origins = 7;
 
   // List of HTTP methods allowed to access the resource. The content will
@@ -1646,16 +1626,15 @@ message HTTPFaultInjection {
     // Percentage of requests on which the delay will be injected (0-100).
     // Use of integer `percent` value is deprecated. Use the double `percentage`
     // field instead.
-    int32 percent = 1 [ deprecated = true ];
+    int32 percent = 1 [deprecated=true];
 
     oneof http_delay_type {
       // Add a fixed delay before forwarding the request. Format:
       // 1h/1m/1s/1ms. MUST be >=1ms.
-      google.protobuf.Duration fixed_delay = 2
-          [ (google.api.field_behavior) = REQUIRED ];
+      google.protobuf.Duration fixed_delay = 2 [(google.api.field_behavior) = REQUIRED];
 
       // $hide_from_docs
-      google.protobuf.Duration exponential_delay = 3;
+      google.protobuf.Duration exponential_delay = 3 ;
     }
 
     // Percentage of requests on which the delay will be injected.
@@ -1722,7 +1701,7 @@ message HTTPFaultInjection {
 
     oneof error_type {
       // HTTP status code to use to abort the Http request.
-      int32 http_status = 2 [ (google.api.field_behavior) = REQUIRED ];
+      int32 http_status = 2 [(google.api.field_behavior) = REQUIRED];
 
       // $hide_from_docs
       string grpc_status = 3;
@@ -1747,4 +1726,6 @@ message PortSelector {
 }
 
 // Percent specifies a percentage in the range of [0.0, 100.0].
-message Percent { double value = 1; }
+message Percent {
+  double value = 1;
+}

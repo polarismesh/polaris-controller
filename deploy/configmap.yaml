@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: injector-mesh
+  namespace: polaris-system
+data:
+  mesh: |-
+    # k8s cluster name
+    clusterName: "default"
+    sidecarMode: "mesh"
+    # service sync
+    serviceSync:
+      mode: "all"
+      serverAddress: "10.0.0.151"
+    defaultConfig:
+      proxyMetadata:
+        serverAddress: "10.0.0.151"
