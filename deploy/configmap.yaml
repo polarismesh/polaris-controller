@@ -7,7 +7,10 @@ data:
   mesh: |-
     # k8s cluster name
     clusterName: "default"
+    # polaris-sidecar 注入的默认启动模式
     sidecarMode: "mesh"
+    # polaris-access-token 北极星开启鉴权时需要配置
+    accessToken: ""
     # service sync
     serviceSync:
       mode: "all"

@@ -170,6 +170,9 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":" + strconv.Itoa(flags.httpPort)
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
 
+	// 设置北极星开启鉴权之后，需要使用的访问token
+	polarisapi.PolarisAccessToken = config.PolarisAccessToken
+
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
 		// 优先用启动参数
@@ -480,9 +483,9 @@ type ServiceSync struct {
 }
 
 type controllerConfig struct {
-	DefaultConfig DefaultConfig `yaml:"defaultConfig"`
-	ClusterName   string        `yaml:"clusterName"`
-	ServiceSync   ServiceSync   `yaml:"serviceSync"`
+	ClusterName        string      `yaml:"clusterName"`
+	ServiceSync        ServiceSync `yaml:"serviceSync"`
+	PolarisAccessToken string      `yaml:"accessToken"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {
