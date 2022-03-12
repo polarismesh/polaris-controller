@@ -467,6 +467,17 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 	return nil, nil
 }
 
+// ServiceSync controller 用到的配置
+type ProxyMetadata struct {
+	ServerAddress string `yaml:"serverAddress"`
+	ClusterName   string `yaml:"clusterName"`
+}
+
+// DefaultConfig controller 用到的配置
+type DefaultConfig struct {
+	ProxyMetadata ProxyMetadata `yaml:"serviceSync"`
+}
+
 // ServiceSync 服务同步相关配置
 type ServiceSync struct {
 	Mode          string `yaml:"mode"`
