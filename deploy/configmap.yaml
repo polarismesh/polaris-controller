@@ -5,12 +5,14 @@ metadata:
   namespace: polaris-system
 data:
   mesh: |-
+    # k8s cluster name
+    clusterName: "default"
+    # polaris-access-token 北极星开启鉴权时需要配置
+    accessToken: ""
+    # service sync
+    serviceSync:
+      mode: "all"
+      serverAddress: "polaris-server address"
     defaultConfig:
-
-      # service sync mode: all, demand
-      serviceSyncMode: "all"
-
       proxyMetadata:
-        polarisServerAddress: "polaris-server address"
-        clusterName: "default"
-        polarisAccessToken: "<if polaris open auth, need to set the authentication token>"
+        serverAddress: "polaris-server address"

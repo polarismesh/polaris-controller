@@ -1,0 +1,42 @@
+name: DockerImage
+
+on:
+  workflow_dispatch:
+    inputs:
+      polaris_controller_tag:
+        description: 'tag for polaris-controller'
+        required: true
+      docker_username:
+        description: 'docker username for login'
+        required: true
+      docker_password:
+        description: 'docker password for login'
+        required: true
+
+jobs:
+  release:
+    name: Release Polaris Docker Image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.polaris_tag }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.5
+
+      - name: Build
+        id: build
+        env:
+          DOCKER_TAG: ${{ github.event.inputs.polaris_controller_tag }}
+          DOCKER_USER: ${{ github.event.inputs.docker_username }}
+          DOCKER_PASS: ${{ github.event.inputs.docker_password }}
+        run: |
+          make push-image REPO=polarismesh/polaris-controller IMAGE_TAG=${DOCKER_TAG} DOCKER_USER=${DOCKER_USER} DOCKER_PASS=${DOCKER_PASS}

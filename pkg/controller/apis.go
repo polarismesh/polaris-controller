@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	Platform       = "polaris-controller"
+	Source         = "polaris-controller"
 	defaultMetaNum = 8
 	globalToken    = "polaris@12345678"
 )
@@ -328,9 +328,13 @@ func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances
 	*/
 	for _, instance := range instances {
 		clusterName := instance.GetMetadata()[util.PolarisClusterName]
-		platform := instance.GetMetadata()[util.PolarisPlatform]
+		source := instance.GetMetadata()[util.PolarisSource]
 
-		flag := clusterName == p.config.PolarisController.ClusterName && platform == Platform
+		// 存量使用 platform 字段，这里兼容存量字段
+		oldSource := instance.GetMetadata()[util.PolarisOldSource]
+
+		flag := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
+			(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
 
 		// 新增字段flag，或者使用原来判断条件
 		if flag {
@@ -364,7 +368,7 @@ func formMetadataFromService(service *v1.Service, clusterName string) map[string
 		_ = json.Unmarshal([]byte(metadataStr), &metadata)
 	}
 
-	metadata[util.PolarisPlatform] = Platform
+	metadata[util.PolarisSource] = Source
 	metadata[util.PolarisClusterName] = clusterName
 
 	return metadata

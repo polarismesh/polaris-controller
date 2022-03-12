@@ -3,14 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -18,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"istio.io/istio/pkg/kube/inject"
 	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -36,6 +29,12 @@ import (
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog"
+	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
@@ -166,7 +165,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		polarisServerAddress = flags.polarisServerAddress
 	} else {
 		// 启动参数没有指定，取 mesh config 中的地址
-		polarisServerAddress = config.DefaultConfig.ProxyMetadata.PolarisServerAddress
+		polarisServerAddress = config.ServiceSync.ServerAddress
 	}
 	// 去除前后的空格字符
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
@@ -174,18 +173,18 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
 
 	// 设置北极星开启鉴权之后，需要使用的访问token
-	polarisapi.PolarisAccessToken = config.DefaultConfig.ProxyMetadata.PolarisAccessToken
+	polarisapi.PolarisAccessToken = config.PolarisAccessToken
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
 		// 优先用启动参数
-		s.PolarisController.SyncMode = config.DefaultConfig.ServiceSyncMode
+		s.PolarisController.SyncMode = config.ServiceSync.Mode
 	}
 
 	// 3. 配置 clusterName
 	if s.PolarisController.ClusterName == "" {
 		// 优先用启动参数
-		s.PolarisController.ClusterName = config.DefaultConfig.ProxyMetadata.ClusterName
+		s.PolarisController.ClusterName = config.ClusterName
 	}
 
 	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
@@ -468,21 +467,16 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 	return nil, nil
 }
 
-// ServiceSync controller 用到的配置
-type ProxyMetadata struct {
-	PolarisServerAddress string `yaml:"polarisServerAddress"`
-	ClusterName          string `yaml:"clusterName"`
-	PolarisAccessToken   string `yaml:"polarisAccessToken"`
-}
-
-// DefaultConfig controller 用到的配置
-type DefaultConfig struct {
-	ProxyMetadata   ProxyMetadata `yaml:"serviceSync"`
-	ServiceSyncMode string        `yaml:"serviceSyncMode"`
+// ServiceSync 服务同步相关配置
+type ServiceSync struct {
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
 }
 
 type controllerConfig struct {
-	DefaultConfig DefaultConfig `yaml:"defaultConfig"`
+	ClusterName        string      `yaml:"clusterName"`
+	ServiceSync        ServiceSync `yaml:"serviceSync"`
+	PolarisAccessToken string      `yaml:"accessToken"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {

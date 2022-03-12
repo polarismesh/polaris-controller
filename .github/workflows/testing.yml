@@ -1,4 +1,4 @@
-name: Go
+name: Testing
 
 on:
   push:
@@ -20,6 +20,9 @@ jobs:
 
     - name: vert check
       run: bash vert.sh -install && bash vert.sh
+
+    - name: Build polairs-controller
+      run: make build
 
     - name: Test
       run: go test -v ./...
