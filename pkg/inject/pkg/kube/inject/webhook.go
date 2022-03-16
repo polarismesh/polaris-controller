@@ -401,7 +401,7 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 	first := len(target) == 0
 	var value interface{}
 	for _, add := range added {
-		if add.Name == "istio-proxy" && saJwtSecretMountName != "" {
+		if add.Name == ProxyContainerName && saJwtSecretMountName != "" {
 			// add service account secret volume mount(/var/run/secrets/kubernetes.io/serviceaccount,
 			// https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#service-account-automation) to istio-proxy container,
 			// so that envoy could fetch/pass k8s sa jwt and pass to sds server, which will be used to request workload identity for the pod.
@@ -690,8 +690,8 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 // backwards compatible migration to the new SidecarInjectionStatus.
 var (
 	legacyInitContainerNames = []string{"istio-init", "enable-core-dump"}
-	legacyContainerNames     = []string{"istio-proxy"}
-	legacyVolumeNames        = []string{"istio-certs", "istio-envoy"}
+	legacyContainerNames     = []string{ProxyContainerName}
+	legacyVolumeNames        = []string{"polaris-certs", "polaris-envoy"}
 )
 
 func injectionStatus(pod *corev1.Pod) *SidecarInjectionStatus {

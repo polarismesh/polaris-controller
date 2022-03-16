@@ -124,7 +124,7 @@ const (
 
 const (
 	// ProxyContainerName is used by e2e integration tests for fetching logs
-	ProxyContainerName = "istio-proxy"
+	ProxyContainerName = "polaris-proxy"
 )
 
 // SidecarInjectionSpec collects all container types and volumes for

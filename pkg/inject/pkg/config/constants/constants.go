@@ -16,17 +16,17 @@ package constants
 
 const (
 	// ConfigPathDir config directory for storing envoy json config files.
-	ConfigPathDir = "/etc/istio/proxy"
+	ConfigPathDir = "/etc/polaris/proxy"
 
 	// BinaryPathFilename envoy binary location
 	BinaryPathFilename = "/usr/local/bin/envoy"
 
 	// ServiceClusterName service cluster name used in xDS calls
-	ServiceClusterName = "istio-proxy"
+	ServiceClusterName = "polaris-proxy"
 
 	// DiscoveryPlainAddress discovery IP address:port with plain text
-	DiscoveryPlainAddress = "istio-pilot:15010"
+	DiscoveryPlainAddress = "polaris.default:15010"
 
 	// IstioSystemNamespace is the namespace where Istio's components are deployed
-	IstioSystemNamespace = "istio-system"
+	IstioSystemNamespace = "polaris-system"
 )
