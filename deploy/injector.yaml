@@ -67,7 +67,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-sidecar-init
-        image: polarismesh/polaris-sidecar-init:v1.0.0
+        image: polarismesh/polaris-sidecar-init:latest
         imagePullPolicy: Always
         command: ["./start.sh"]
         resources:
@@ -151,18 +151,8 @@ data:
       - image: polarismesh/polaris-sidecar:latest
         name: polaris-sidecar
         securityContext:
-          allowPrivilegeEscalation: true
-          capabilities:
-            add:
-            - NET_ADMIN
-            - NET_RAW
-            drop:
-            - ALL
-          privileged: true
-          readOnlyRootFilesystem: false
-          runAsGroup: 0
-          runAsNonRoot: false
-          runAsUser: 0
+          runAsUser: 1337
+          runAsGroup: 1337
         imagePullPolicy: Always
         command: ["./polaris-sidecar"]
         resources:
@@ -172,6 +162,13 @@ data:
           requests:
             cpu: 100m
             memory: 50Mi
+        volumeMounts:
+          - mountPath: /root/polaris
+            defaultMode: 777
+            name: polaris-dir
+          - mountPath: /root/log
+            defaultMode: 777
+            name: polaris-log
       initContainers:
       - name: polaris-bootstrap-writer
         image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:v1.0.0
