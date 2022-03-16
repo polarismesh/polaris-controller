@@ -34,7 +34,7 @@ func (o *PolarisControllerOptions) AddFlags(fs *pflag.FlagSet) {
 		o.MinAccountingPeriod.Duration,
 		"The resync period in reflectors will be random between MinResyncPeriod and 2*MinResyncPeriod.")
 	fs.StringVar(&o.SyncMode, "sync-mode", "", "polaris-controller sync mode, supports 'all', 'demand'")
-	fs.StringVar(&o.SidecarMode, "sidecar-mode", "", "polaris-controller sidecar mode, supports 'mesh', 'dns'")
+	fs.StringVar(&o.SidecarMode, "sidecarinject-mode", "", "polaris-controller sidecarinject mode, supports 'mesh', 'dns'")
 }
 
 // ApplyTo fills up generic config with options.

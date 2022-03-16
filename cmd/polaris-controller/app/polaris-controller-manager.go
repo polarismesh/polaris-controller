@@ -171,7 +171,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
 
 	// 设置北极星开启鉴权之后，需要使用的访问token
-	polarisapi.PolarisAccessToken = config.PolarisAccessToken
+	polarisapi.PolarisAccessToken = config.ServiceSync.PolarisAccessToken
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
@@ -184,6 +184,9 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		// 优先用启动参数
 		s.PolarisController.ClusterName = config.ClusterName
 	}
+
+	// 4. 配置 polaris-sidecar 注入模式的
+	s.PolarisController.SidecarMode = config.SidecarInject.Mode
 
 	common.PolarisServerAddress = polarisServerAddress
 	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
@@ -478,14 +481,20 @@ type DefaultConfig struct {
 
 // ServiceSync 服务同步相关配置
 type ServiceSync struct {
-	Mode          string `yaml:"mode"`
-	ServerAddress string `yaml:"serverAddress"`
+	Mode               string `yaml:"mode"`
+	ServerAddress      string `yaml:"serverAddress"`
+	PolarisAccessToken string `yaml:"accessToken"`
+}
+
+// SidecarInject sidecar 注入相关
+type SidecarInject struct {
+	Mode string `yaml:"mode"`
 }
 
 type controllerConfig struct {
-	ClusterName        string      `yaml:"clusterName"`
-	ServiceSync        ServiceSync `yaml:"serviceSync"`
-	PolarisAccessToken string      `yaml:"accessToken"`
+	ClusterName   string        `yaml:"clusterName"`
+	ServiceSync   ServiceSync   `yaml:"serviceSync"`
+	SidecarInject SidecarInject `yaml:"sidecarInject"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {
