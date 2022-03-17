@@ -14,7 +14,9 @@ build-image:
 build-sidecar-init:
 	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
-push-image: build build-image build-sidecar-init login
+push-image-withlogin: build build-image build-sidecar-init login push-image
+
+push-image: build build-image build-sidecar-init
 	docker push $(REGISTRY)$(REPO):$(IMAGE_TAG)
 	docker tag $(REGISTRY)$(REPO):$(IMAGE_TAG) $(REGISTRY)$(REPO):latest
 	docker push $(REGISTRY)$(REPO):latest
