@@ -16,7 +16,12 @@ build-sidecar-init:
 
 push-image: build build-image build-sidecar-init login
 	docker push $(REGISTRY)/$(REPO):$(IMAGE_TAG)
+	docker tag $(REGISTRY)/$(REPO):$(IMAGE_TAG) $(REGISTRY)/$(REPO):latest
+	docker push $(REGISTRY)/$(REPO):latest
+
 	docker push $(REGISTRY)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
+	docker tag $(REGISTRY)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG) $(REGISTRY)/$(SIDECAR_INIT_REPO):latest
+	docker push $(REGISTRY)/$(SIDECAR_INIT_REPO):latest
 
 login:
 	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)
