@@ -207,4 +207,15 @@ NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
 default           Active   10d   mesh
 ```
 
-After automatic injection is enabled, newly created Pods will be automatically injected, and existing Pods will not be automatically injected into polaris-sidecar.
+After automatic injection is enabled, newly created Pods will be automatically injected, and existing Pods will not be automatically injected into polaris-sidecar. If you want stock pods to experience polaris-sidecar as well, for pods managed by Deployment, DaemonSet or StatefulSet controllers, you can run the following command
+
+```shell
+# Deployment
+kubectl rollout restart deployment/DEPLOYMENT_NAME --namespace NAMESPACE
+
+# DaemonSet
+kubectl rollout restart daemonset/DAEMONSET_NAME --namespace NAMESPACE
+
+# StatefulSet
+kubectl rollout restart statefulset/STATEFULSET_NAME --namespace NAMESPACE
+```

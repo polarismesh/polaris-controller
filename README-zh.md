@@ -210,4 +210,16 @@ NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
 default           Active   10d   mesh
 ```
 
-在开启自动注入后，新建的 Pod 会自动注入，存量的 Pod 不会自动注入 polaris-sidecar。
+在开启自动注入后，新建的 Pod 会自动注入，存量的 Pod 不会自动注入 polaris-sidecar。如果希望存量的 Pod 也能体验 polaris-sidecar， 则对于由 Deployment、DaemonSet 或 StatefulSet 控制器管理的 pod，可以运行以下命令
+
+```shell
+# Deployment
+kubectl rollout restart deployment/DEPLOYMENT_NAME --namespace NAMESPACE
+
+# DaemonSet
+kubectl rollout restart daemonset/DAEMONSET_NAME --namespace NAMESPACE
+
+# StatefulSet
+kubectl rollout restart statefulset/STATEFULSET_NAME --namespace NAMESPACE
+```
+
