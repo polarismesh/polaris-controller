@@ -150,7 +150,7 @@ import (
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	types "github.com/gogo/protobuf/types"
 	io "io"
-	_ "github.com/polarismesh/polaris-controller/pkg/inject/gogo-genproto/googleapis/google/api"
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/googleapis/google/api"
 	math "math"
 	math_bits "math/bits"
 	time "time"
