@@ -3,16 +3,23 @@ package app
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
+	"github.com/polarismesh/polaris-controller/common"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
-	"istio.io/istio/pkg/kube/inject"
-	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -29,12 +36,6 @@ import (
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 	"k8s.io/klog"
-	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
@@ -47,26 +48,23 @@ const (
 	DefaultLockObjectName           = "polaris-controller"
 	DefaultLeaderElectionName       = "polaris-controller"
 
-	ConfigFile = "/etc/polaris-inject/inject/config"
-	ValuesFile = "/etc/polaris-inject/inject/values"
-	MeshFile   = "/etc/polaris-inject/config/mesh"
-	CertFile   = "/etc/polaris-inject/certs/cert.pem"
-	KeyFile    = "/etc/polaris-inject/certs/key.pem"
+	MeshConfigFile = "/etc/polaris-inject/inject/mesh-config"
+	DnsConfigFile  = "/etc/polaris-inject/inject/dns-config"
+	ValuesFile     = "/etc/polaris-inject/inject/values"
+	MeshFile       = "/etc/polaris-inject/config/mesh"
+	CertFile       = "/etc/polaris-inject/certs/cert.pem"
+	KeyFile        = "/etc/polaris-inject/certs/key.pem"
 )
 
 var (
 	flags = struct {
-		loggingOptions *log.Options
-
 		injectPort     int
 		httpPort       int
 		grpcPort       int
 		monitoringPort int
 
 		polarisServerAddress string
-	}{
-		loggingOptions: log.DefaultOptions(),
-	}
+	}{}
 )
 
 // ControllerContext defines the context object for controller
@@ -173,7 +171,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
 
 	// 设置北极星开启鉴权之后，需要使用的访问token
-	polarisapi.PolarisAccessToken = config.PolarisAccessToken
+	polarisapi.PolarisAccessToken = config.ServiceSync.PolarisAccessToken
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
@@ -187,6 +185,12 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		s.PolarisController.ClusterName = config.ClusterName
 	}
 
+	// 4. 配置 polaris-sidecar 注入模式的
+	s.PolarisController.SidecarMode = config.SidecarInject.Mode
+
+	common.PolarisServerAddress = polarisServerAddress
+	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
+
 	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
 		polarisServerAddress, s.PolarisController.SyncMode, s.PolarisController.ClusterName)
 }
@@ -198,8 +202,6 @@ func assignFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().StringVar(&(flags.polarisServerAddress), "polarisServerAddress", "",
 		"polaris api address")
 	rootCmd.PersistentFlags().IntVar(&flags.monitoringPort, "monitoringPort", 15014, "Webhook monitoring port")
-
-	flags.loggingOptions.AttachCobraFlags(rootCmd)
 }
 
 func closeGrpcLog() {
@@ -211,10 +213,12 @@ func closeGrpcLog() {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(infoW, warningW, errorW))
 }
 
-func initPolarisSidecarInjector() error {
+func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 	parameters := inject.WebhookParameters{
-		ConfigFile:          ConfigFile,
+		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+		MeshConfigFile:      MeshConfigFile,
+		DnsConfigFile:       DnsConfigFile,
 		ValuesFile:          ValuesFile,
 		MeshFile:            MeshFile,
 		CertFile:            CertFile,
@@ -222,17 +226,14 @@ func initPolarisSidecarInjector() error {
 		Port:                flags.injectPort,
 		HealthCheckInterval: 3,
 		HealthCheckFile:     "/tmp/health",
-		MonitoringPort:      flags.monitoringPort,
+		Client: SimpleControllerClientBuilder{
+			ClientConfig: c.Kubeconfig,
+		}.ClientOrDie("polaris-injector"),
 	}
 
 	wh, err := inject.NewWebhook(parameters)
 	if err != nil {
 		fmt.Printf("failed to create injection webhook, %s \n", err)
-		return err
-	}
-
-	if err := log.Configure(flags.loggingOptions); err != nil {
-		fmt.Printf("config log error, %s \n", err)
 		return err
 	}
 
@@ -247,7 +248,7 @@ func initPolarisSidecarInjector() error {
 func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 
 	// init sidecar injector
-	if err := initPolarisSidecarInjector(); err != nil {
+	if err := initPolarisSidecarInjector(c); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
@@ -480,14 +481,20 @@ type DefaultConfig struct {
 
 // ServiceSync 服务同步相关配置
 type ServiceSync struct {
-	Mode          string `yaml:"mode"`
-	ServerAddress string `yaml:"serverAddress"`
+	Mode               string `yaml:"mode"`
+	ServerAddress      string `yaml:"serverAddress"`
+	PolarisAccessToken string `yaml:"accessToken"`
+}
+
+// SidecarInject sidecar 注入相关
+type SidecarInject struct {
+	Mode string `yaml:"mode"`
 }
 
 type controllerConfig struct {
-	ClusterName        string      `yaml:"clusterName"`
-	ServiceSync        ServiceSync `yaml:"serviceSync"`
-	PolarisAccessToken string      `yaml:"accessToken"`
+	ClusterName   string        `yaml:"clusterName"`
+	ServiceSync   ServiceSync   `yaml:"serviceSync"`
+	SidecarInject SidecarInject `yaml:"sidecarInject"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {
