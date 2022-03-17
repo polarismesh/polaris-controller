@@ -1,17 +1,8 @@
-name: DockerImage
+name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      polaris_controller_tag:
-        description: 'tag for polaris-controller'
-        required: true
-      docker_username:
-        description: 'docker username for login'
-        required: true
-      docker_password:
-        description: 'docker password for login'
-        required: true
+  release:
+    types: [published]
 
 jobs:
   release:
@@ -35,8 +26,8 @@ jobs:
       - name: Build
         id: build
         env:
-          DOCKER_TAG: ${{ github.event.inputs.polaris_controller_tag }}
-          DOCKER_USER: ${{ github.event.inputs.docker_username }}
-          DOCKER_PASS: ${{ github.event.inputs.docker_password }}
+          DOCKER_USER: ${{ secrets.POLARIS_DOCKER_NAME }}
+          DOCKER_PASS: ${{ secrets.POLARIS_DOCKER_PASSWORD }}
         run: |
+          DOCKER_TAG=$(cat version)
           make push-image REPO=polarismesh/polaris-controller IMAGE_TAG=${DOCKER_TAG} DOCKER_USER=${DOCKER_USER} DOCKER_PASS=${DOCKER_PASS}
