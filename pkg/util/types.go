@@ -12,6 +12,8 @@ const (
 
 	WorkloadKind        = "polarismesh.cn/workloadKind"
 	PolarisCustomWeight = "polarismesh.cn/customWeight"
+
+	PolarisSidecarMode = "polaris-sidecar-mode"
 )
 
 const (
@@ -19,6 +21,10 @@ const (
 	PolarisSource      = "source"
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
+
+	// PolarisOldSource 旧版本 controller 用来标志是 controller 同步的服务实例。
+	// 已经废弃，项目中当前用来兼容存量的实例。
+	PolarisOldSource = "platform"
 )
 
 const (
@@ -54,6 +60,42 @@ const (
 	ServiceMetadataChanged       ServiceChangeType = "serviceMetadataChanged"
 	ServiceCustomWeightChanged   ServiceChangeType = "serviceCustomWeightChanged"
 )
+
+const (
+	PolarisGoConfigFileTpl string = "polaris-client-config-tpl"
+	PolarisGoConfigFile string = "polaris-client-config"
+)
+
+type SidecarMode int
+
+const (
+	SidecarForUnknown SidecarMode = iota
+	SidecarForMesh
+	SidecarForDns
+
+	SidecarMeshModeName string = "mesh"
+	SidecarDnsModeName string = "dns"
+)
+
+func ParseSidecarMode(val string) SidecarMode {
+	if val == SidecarMeshModeName {
+		return SidecarForMesh
+	}
+	if val == SidecarDnsModeName {
+		return SidecarForDns
+	}
+	return SidecarForMesh
+}
+
+func ParseSidecarModeName(mode SidecarMode) string {
+	if mode == SidecarForMesh {
+		return SidecarMeshModeName
+	}
+	if mode == SidecarForDns {
+		return SidecarDnsModeName
+	}
+	return SidecarMeshModeName
+}
 
 // IndexPortMap 对应{"index-port":weight}
 type IndexPortMap map[string]int

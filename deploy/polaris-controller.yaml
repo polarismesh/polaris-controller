@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: polaris-controller
-          image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-controller:v1.1.0
+          image: polarismesh/polaris-controller:v1.0.0
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
                  "--v=4",
@@ -38,6 +38,11 @@ spec:
                  "--log-file-max-size=1800",
                  "--leader-elect=true"
           ]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           imagePullPolicy: Always
           volumeMounts:
             - mountPath: /polaris-controller/log
@@ -66,8 +71,10 @@ spec:
           configMap:
             name: polaris-sidecar-injector
             items:
-              - key: config
-                path: config
+              - key: mesh-config
+                path: mesh-config
+              - key: dns-config
+                path: dns-config
               - key: values
                 path: values
         - name: config-volume

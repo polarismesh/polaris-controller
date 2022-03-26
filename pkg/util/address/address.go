@@ -121,11 +121,17 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 		clusterName := instance.GetMetadata()[util.PolarisClusterName]
 		source := instance.GetMetadata()[util.PolarisSource]
 
+		// 存量使用 platform 字段，这里兼容存量字段
+		oldSource := instance.GetMetadata()[util.PolarisOldSource]
+
 		/**
-			只处理本 k8s 集群该 service 对应的 polaris 实例。之所以要加上 platform ，是因为
+			只处理本 k8s 集群该 service 对应的 polaris 实例。之所以要加上 source ，是因为
 		    防止不用 polaris-controller 的客户端，也使用 clusterName 这个 metadata。
 		*/
-		flag := clusterName == cluster && source == polarisapi.Source
+		flag := (clusterName == cluster && source == polarisapi.Source) ||
+			(clusterName == cluster && oldSource == polarisapi.Source)
+
+		klog.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {

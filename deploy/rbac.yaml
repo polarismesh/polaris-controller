@@ -19,6 +19,7 @@ rules:
   - statefulsets
   - services
   - namespaces
+  - configmaps
   verbs:
   - create
   - get
