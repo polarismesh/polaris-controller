@@ -224,7 +224,7 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
 		Port:                flags.injectPort,
-		HealthCheckInterval: 3,
+		HealthCheckInterval: 3 * time.Second,
 		HealthCheckFile:     "/tmp/health",
 		Client: SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
