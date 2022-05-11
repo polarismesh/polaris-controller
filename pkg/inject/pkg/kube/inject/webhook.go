@@ -149,7 +149,7 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 // webhook.
 type WebhookParameters struct {
 	// DefaultSidecarMode polaris-sidecar 默认的运行模式
-	DefaultSidecarMode         utils.SidecarMode
+	DefaultSidecarMode utils.SidecarMode
 
 	// MeshConfigFile 处理 polaris-sidecar 运行模式为 mesh 的配置文件
 	MeshConfigFile string
