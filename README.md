@@ -89,6 +89,16 @@ NAME                                  READY   STATUS    RESTARTS   AGE
 polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```
 
+## Annotations
+
+| Annotations name              | Annotations description                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| polarismesh.cn/sync           | Whether to synchronize this service to Polarismesh.TRUE synchronization, False is not synchronized, default is not synchronized |
+| polarismesh.cn/aliasService   | Synchronize K8S Service to PolarisMesh, and the name of the service alias created at the same time                              |
+| polarismesh.cn/aliasNamespace | The named space where the owner is located, with PolarisMesh.cn/aliasservice use                                                |
+| polarismesh.cn/customVersion | Define the version information of the instance, It can exist in the metadata.labels or POD's metadata.labels. The priority of Pod is higher than the service |
+
+
 ## Guidance
 
 ### Full synchronization service

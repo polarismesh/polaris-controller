@@ -554,6 +554,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 			Namespace: service.Namespace,
 			Owners:    Source,
 			Ports:     getPolarisPorts(service),
+			Metadata:  service.Labels,
 		},
 	}
 

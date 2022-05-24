@@ -71,21 +71,33 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 		}
 	}
 
-	metadata := formMetadataFromService(service, p.config.PolarisController.ClusterName)
+	serviceMetadata := formMetadataFromService(service, p.config.PolarisController.ClusterName)
 
 	var instances []polarisapi.Instance
 
 	// 装载Instances
-	for _, i := range address {
-		*healthy = *healthy && i.Healthy
+	for i := range address {
+		addr := address[i]
+
+		metadata := addr.Metadata
+		for k, v := range serviceMetadata {
+			if _, ok := metadata[k]; ok {
+				continue
+			}
+			metadata[k] = v
+		}
+
+		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
 			Service:           service.Name,
 			Namespace:         service.Namespace,
 			ServiceToken:      globalToken,
 			HealthCheck:       &healthCheck,
-			Host:              i.IP,
-			Port:              util.IntPtr(i.Port),
-			Weight:            util.IntPtr(i.Weight),
+			Host:              addr.IP,
+			Protocol:          addr.Protocol,
+			Version:           metadata[util.PolarisCustomVersion],
+			Port:              util.IntPtr(addr.Port),
+			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
@@ -188,6 +200,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 
 // getAllInstance 通过SDK获取全量Instances
 func (p *PolarisController) getAllInstance(service *v1.Service) (instances []model.Instance, err error) {
+
 	startTime := time.Now()
 	getInstancesReq := &api.GetAllInstancesRequest{}
 	getInstancesReq.FlowID = rand.Uint64()
@@ -202,8 +215,9 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 			service.GetNamespace(), service.GetName(), err)
 		return nil, err
 	}
-	metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Success", "500").
+	metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Success", "200").
 		Observe(time.Since(startTime).Seconds())
+
 	return registered.GetInstances(), nil
 }
 

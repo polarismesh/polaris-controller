@@ -30,6 +30,8 @@ const (
 	WorkloadKind        = "polarismesh.cn/workloadKind"
 	PolarisCustomWeight = "polarismesh.cn/customWeight"
 
+	PolarisCustomVersion = "polarismesh.cn/customVersion"
+
 	PolarisSidecarMode = "polaris-sidecar-mode"
 )
 

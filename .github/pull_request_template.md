@@ -4,6 +4,7 @@ Fixes #
 **To help us figure out who should review this PR, please put an X in all the areas that this PR affects.**
 
 - [ ] Docs
+- [ ] Inject Sidecar
 - [ ] Installation
 - [ ] Performance and Scalability
 - [ ] Test and Release
