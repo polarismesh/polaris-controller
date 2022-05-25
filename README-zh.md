@@ -96,7 +96,6 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 | polarismesh.cn/sync           | 是否同步这个服务到 polarismesh。true 同步，false 不同步，默认不同步    |
 | polarismesh.cn/aliasService   | 把 k8s service 同步到 polarismesh 时，同时创建的服务别名的名字         |
 | polarismesh.cn/aliasNamespace | 创建的别名所在的命名空间，配合 polarismesh.cn/aliasService 使用        |
-| polarismesh.cn/customVersion  | 设置实例的版本信息，可以放置于Service或者Pod中，Pod的优先级高于Service |
 
 ## 使用指南
 
