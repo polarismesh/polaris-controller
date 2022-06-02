@@ -71,21 +71,13 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 		}
 	}
 
-	serviceMetadata := formMetadataFromService(service, p.config.PolarisController.ClusterName)
-
-	var instances []polarisapi.Instance
+	instances := make([]polarisapi.Instance, 0, len(address))
 
 	// 装载Instances
 	for i := range address {
 		addr := address[i]
 
-		metadata := addr.Metadata
-		for k, v := range serviceMetadata {
-			if _, ok := metadata[k]; ok {
-				continue
-			}
-			metadata[k] = v
-		}
+		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
 		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
@@ -174,21 +166,22 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 		}
 	}
 
-	metadata := formMetadataFromService(service, p.config.PolarisController.ClusterName)
+	instances := make([]polarisapi.Instance, 0, len(address))
 
-	var instances []polarisapi.Instance
+	for i := range address {
+		addr := address[i]
 
-	for _, i := range address {
+		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
-		healthy := util.Bool(i.Healthy)
+		healthy := util.Bool(addr.Healthy)
 		tmpInstance := polarisapi.Instance{
 			Service:           service.Name,
 			Namespace:         service.Namespace,
 			ServiceToken:      globalToken,
 			HealthCheck:       &healthCheck,
-			Host:              i.IP,
-			Port:              util.IntPtr(i.Port),
-			Weight:            util.IntPtr(i.Weight),
+			Host:              addr.IP,
+			Port:              util.IntPtr(addr.Port),
+			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
@@ -391,7 +384,7 @@ func getCustomWeight(service *v1.Service, serviceMsg string) (indexPortMap util.
 	return
 }
 
-func formMetadataFromService(service *v1.Service, clusterName string) map[string]string {
+func mergeMetadataWithService(service *v1.Service, addr address.Address, clusterName string) map[string]string {
 	metadataStr := service.GetAnnotations()[util.PolarisMetadata]
 	metadata := make(map[string]string)
 
@@ -401,6 +394,10 @@ func formMetadataFromService(service *v1.Service, clusterName string) map[string
 
 	metadata[util.PolarisSource] = Source
 	metadata[util.PolarisClusterName] = clusterName
+
+	for k, v := range addr.Metadata {
+		metadata[k] = v
+	}
 
 	return metadata
 }

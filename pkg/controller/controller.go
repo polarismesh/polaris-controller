@@ -506,7 +506,6 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, string, error) {
 
 	// 先检查 endpoints 的 service 上是否有注解
-	p.podLister.List(labels.NewSelector())
 	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
 	if err != nil {
 		klog.Errorf("Unable to find the service of the endpoint %s/%s, %v",
