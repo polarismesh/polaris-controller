@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -816,6 +817,19 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		klog.Errorf("Get endpoint of service %s error %v, ignore", serviceMsg, err)
 		return err
 	}
+
+	selector := labels.NewSelector()
+	for k, v := range service.Spec.Selector {
+		reqiure, _ := labels.NewRequirement(k, selection.Equals, []string{v})
+		selector.Add(*reqiure)
+	}
+
+	pods, err := p.podLister.Pods(service.GetNamespace()).List(selector)
+	if err != nil {
+		klog.Errorf("Get endpoint of service %s error %v, ignore", serviceMsg, err)
+		return err
+	}
+
 	/*
 		1. 先获取当前service Endpoint中的IP信息，IP:Port:Weight
 		2. 获取北极星中注册的Service，经过过滤，获取对应的 IP:Port:Weight
@@ -828,7 +842,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		return err
 	}
 	ipPortMap := getCustomWeight(service, serviceMsg)
-	specIPs := address.GetAddressMapFromEndpoints(service, endpoint, ipPortMap)
+	specIPs := address.GetAddressMapFromEndpoints(service, endpoint, pods, ipPortMap)
 	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
 
