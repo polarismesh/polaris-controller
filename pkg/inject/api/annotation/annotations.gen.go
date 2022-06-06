@@ -316,8 +316,8 @@ var (
         }
 
 		SidecarInject = Instance {
-          Name: "sidecar.istio.io/inject",
-          Description: "Specifies whether or not an Envoy sidecar should be "+
+          Name: "sidecar.polarismesh.cn/inject",
+          Description: "Specifies whether or not an Polaris sidecar should be "+
                         "automatically injected into the workload.",
           Hidden: false,
           Deprecated: false,
