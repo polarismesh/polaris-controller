@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
@@ -31,7 +32,6 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
 )
 
 const (
@@ -45,11 +45,11 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
 	if len(address) == 0 {
-		klog.Infof("No Instance need to add %s", serviceMsg)
+		log.Infof("No Instance need to add %s", serviceMsg)
 		return nil
 	}
 
-	klog.Infof("This IP need add to %s %v", serviceMsg, address)
+	log.Infof("This IP need add to %s %v", serviceMsg, address)
 	// 处理健康检查
 	var healthCheck polarisapi.HealthCheck
 	healthy := util.Bool(true)
@@ -60,7 +60,7 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 		// ttl 默认是5s
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil {
-			klog.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
+			log.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
 		} else {
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Type = util.IntPtr(0)
@@ -105,14 +105,14 @@ func (p *PolarisController) deleteInstances(service *v1.Service, address []addre
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
 	if len(address) == 0 {
-		klog.Infof("No Instance need to delete %s", serviceMsg)
+		log.Infof("No Instance need to delete %s", serviceMsg)
 		return nil
 	}
-	klog.Infof("Start to delete all %s IP is %v", serviceMsg, address)
+	log.Infof("Start to delete all %s IP is %v", serviceMsg, address)
 
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
+		log.Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	var instances []polarisapi.Instance
@@ -136,15 +136,15 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
 	if len(address) == 0 {
-		klog.Infof("No Instance need to update %s", serviceMsg)
+		log.Infof("No Instance need to update %s", serviceMsg)
 		return nil
 	}
 
-	klog.Infof("Start to update all %s IP is %v", serviceMsg, address)
+	log.Infof("Start to update all %s IP is %v", serviceMsg, address)
 
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
+		log.Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	// 处理健康检查
@@ -156,7 +156,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 		// ttl 默认是5s
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil {
-			klog.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
+			log.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
 		} else {
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Type = util.IntPtr(0)
@@ -204,7 +204,7 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-		klog.Errorf("Fail [%s/%s] sync GetAllInstances, err is %v",
+		log.Errorf("Fail [%s/%s] sync GetAllInstances, err is %v",
 			service.GetNamespace(), service.GetName(), err)
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 		if cur[index] != nil {
 			// 如果存在，判断是否要更新
 			if p.compareInstanceUpdate(service, instance, cur[index]) {
-				klog.Errorf("need update %v", instance.IP)
+				log.Errorf("need update %v", instance.IP)
 				updateIns = append(updateIns, *instance)
 			}
 		} else {
@@ -235,7 +235,7 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 	// 对比当前北极星的跟预期列表，删除没有用的。
 	for i, ins := range cur {
 		if spec[i] == nil {
-			klog.Errorf("need delete %v-%v", ins.IP, ins.Port)
+			log.Errorf("need delete %v-%v", ins.IP, ins.Port)
 			deleteIns = append(deleteIns, *ins)
 		}
 	}
@@ -272,7 +272,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	}
 
 	if cur.PolarisInstance.IsEnableHealthCheck() != *enableHealthCheck {
-		klog.Errorf("%s healthy check changed", cur.PolarisInstance.GetHost())
+		log.Errorf("%s healthy check changed", cur.PolarisInstance.GetHost())
 		return true
 	}
 
@@ -290,7 +290,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	newMetadataStr := service.GetAnnotations()[util.PolarisMetadata]
 	oldMetadata := cur.PolarisInstance.GetMetadata()
 	if oldMetadata == nil {
-		klog.Errorf("%s old metadata is nil", cur.PolarisInstance.GetHost())
+		log.Errorf("%s old metadata is nil", cur.PolarisInstance.GetHost())
 		return true
 	}
 
@@ -305,7 +305,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 		newMetaMap := make(map[string]string)
 		err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
 		if err != nil {
-			klog.Errorf("unmarshal json from service annotations error %v", err)
+			log.Errorf("unmarshal json from service annotations error %v", err)
 			return false
 		}
 
@@ -379,7 +379,7 @@ func getCustomWeight(service *v1.Service, serviceMsg string) (indexPortMap util.
 	}
 	err := json.Unmarshal([]byte(customWeightStr), &indexPortMap)
 	if err != nil {
-		klog.Errorf("Failed %s unmarshal user %s,err %v", serviceMsg, util.PolarisCustomWeight, err)
+		log.Errorf("Failed %s unmarshal user %s,err %v", serviceMsg, util.PolarisCustomWeight, err)
 	}
 	return
 }

@@ -16,12 +16,12 @@ package inject
 
 import (
 	"fmt"
-	"k8s.io/klog"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/polarismesh/polaris-controller/common/log"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -62,7 +62,7 @@ func extractConcurrency(sidecar *corev1.Container) int {
 		}
 		c, err := strconv.Atoi(concurrency)
 		if err != nil {
-			klog.Errorf("Failed to convert concurrency to int %v, err %v", concurrency, err)
+			log.Errorf("Failed to convert concurrency to int %v, err %v", concurrency, err)
 			return 0
 		}
 		return c

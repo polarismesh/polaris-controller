@@ -30,10 +30,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
 )
 
 var (
@@ -63,14 +63,14 @@ const (
 //		namespace, service, offset, limit)
 //	req, err := http.NewRequest(http.MethodGet, url, nil)
 //	if err != nil {
-//		klog.Errorf("Failed to build request %v", err)
+//		log.Errorf("Failed to build request %v", err)
 //		return response, err
 //	}
 //
 //	resp, err := client.Do(req)
 //
 //	if err != nil {
-//		klog.Errorf("Failed to get request %v", err)
+//		log.Errorf("Failed to get request %v", err)
 //		return response, err
 //	}
 //
@@ -78,14 +78,14 @@ const (
 //
 //	body, err := ioutil.ReadAll(resp.Body)
 //	if err != nil {
-//		klog.Errorf("Failed to get request %v", err)
+//		log.Errorf("Failed to get request %v", err)
 //		return response, err
 //	}
 //
 //	err = json.Unmarshal(body, &response)
 //
 //	if err != nil {
-//		klog.Errorf("Failed to unmarshal result %v", err)
+//		log.Errorf("Failed to unmarshal result %v", err)
 //	}
 //
 //	return response, nil
@@ -94,10 +94,10 @@ const (
 // AddInstances 平台增加实例接口
 func AddInstances(instances []Instance, size int, msg string) (err error) {
 
-	klog.Infof("Start to add all %s", msg)
+	log.Infof("Start to add all %s", msg)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to add all %s (%v)", msg, time.Since(startTime))
+		log.Infof("Finish to add all %s (%v)", msg, time.Since(startTime))
 	}()
 
 	// 从这里开始拆分
@@ -116,7 +116,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 			requestByte, err := json.Marshal(v)
 
 			if err != nil {
-				klog.Errorf("Failed to marsh request %s [%d/%d], err %v. (%s)",
+				log.Errorf("Failed to marsh request %s [%d/%d], err %v. (%s)",
 					msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -129,7 +129,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 			_, body, times, err :=
 				polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 			if err != nil {
-				klog.Errorf("Failed request %s [%d/%d], err %v. (%s)", msg, i+1, page, err, requestID)
+				log.Errorf("Failed request %s [%d/%d], err %v. (%s)", msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
 					Info: fmt.Sprintf("Failed to marsh request %s [%d/%d], err %v.", msg, i+1, page, err),
@@ -141,10 +141,10 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 
 			var response AddResponse
 			err = json.Unmarshal(body, &response)
-			klog.V(6).Infof("Send add %s [%d/%d], body is %s. (%s)", msg, i+1, page, string(requestByte), requestID)
+			log.Infof("Send add %s [%d/%d], body is %s. (%s)", msg, i+1, page, string(requestByte), requestID)
 
 			if err != nil {
-				klog.Errorf("Failed unmarshal result %s [%d/%d], err %v. (%s)",
+				log.Errorf("Failed unmarshal result %s [%d/%d], err %v. (%s)",
 					msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -172,13 +172,13 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 	i int, page int, requestID string, polarisErrors *PErrors) {
 	// 添加成功或者权限错误，都跳过
 	if response.Code == 200000 {
-		klog.Infof("Success add all %s [%d/%d], info %s. (%s)",
+		log.Infof("Success add all %s [%d/%d], info %s. (%s)",
 			msg, i+1, page, response.Info, requestID)
 		return
 	}
 
 	if response.Code == 401000 {
-		klog.Infof("Failed add all %s [%d/%d], info %s. (%s)",
+		log.Infof("Failed add all %s [%d/%d], info %s. (%s)",
 			msg, i+1, page, response.Info, requestID)
 		return
 	}
@@ -189,7 +189,7 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 			// 200000 成功
 			// 确认部分成功
 			if ins.Code != 400201 && ins.Code != 200000 && ins.Code != 401000 {
-				klog.Errorf("Failed add %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.Errorf("Failed add %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 				polarisErrors.Append(PError{
 					IP:     ins.Instance.Host,
@@ -199,12 +199,12 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 					Info:   ins.Info,
 				})
 			} else {
-				klog.Infof("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.Infof("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 			}
 		}
 	} else {
-		klog.Infof("Failed add %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
+		log.Infof("Failed add %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
 		polarisErrors.Append(PError{
 			Code: util.Uint32Ptr(500),
 			Info: response.Info,
@@ -229,10 +229,10 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 			requestID := uuid.New().String()
 			requestByte, err := json.Marshal(v)
 
-			klog.Infof("Send delete %s [%d/%d], body is %s. (%s)",
+			log.Infof("Send delete %s [%d/%d], body is %s. (%s)",
 				msg, i+1, page, string(requestByte), requestID)
 			if err != nil {
-				klog.Errorf("Failed to marsh request %s [%d/%d], err %v. (%s)",
+				log.Errorf("Failed to marsh request %s [%d/%d], err %v. (%s)",
 					msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -246,7 +246,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 			if err != nil {
-				klog.Errorf("Failed to request %s [%d/%d], err %v. (%s)",
+				log.Errorf("Failed to request %s [%d/%d], err %v. (%s)",
 					msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -257,7 +257,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			if statusCode == http.StatusOK {
-				klog.Infof("Success delete all %s [%d/%d], info %s. (%s)",
+				log.Infof("Success delete all %s [%d/%d], info %s. (%s)",
 					msg, i+1, page, response.Info, requestID)
 				// 删除成功就没有返回值了，所以默认指定为2000
 				metrics.InstanceRequestSync.WithLabelValues("Add", "Platform", "Success", "2000").
@@ -265,11 +265,11 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			err = json.Unmarshal(body, &response)
-			klog.V(6).Infof("%s [%d/%d], body is %s. (%s)",
+			log.Infof("%s [%d/%d], body is %s. (%s)",
 				msg, i+1, page, string(body), requestID)
 
 			if err != nil {
-				klog.Errorf("Failed unmarshal result %s [%d/%d], err %v. (%s)",
+				log.Errorf("Failed unmarshal result %s [%d/%d], err %v. (%s)",
 					msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -289,14 +289,14 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 	times time.Duration, polarisErrors *PErrors) {
 	// 如果是成功或者未授权
 	if response.Code == 200000 {
-		klog.Infof("Success delete all %s [%d/%d], info %s. (%s)",
+		log.Infof("Success delete all %s [%d/%d], info %s. (%s)",
 			msg, i+1, page, response.Info, requestID)
 		metrics.InstanceRequestSync.WithLabelValues(
 			"Add", "Platform", response.Info, fmt.Sprint(response.Code)).Observe(times.Seconds())
 		return
 	}
 	if response.Code == 401000 {
-		klog.Infof("Failed delete all %s [%d/%d], info %s. (%s)",
+		log.Infof("Failed delete all %s [%d/%d], info %s. (%s)",
 			msg, i+1, page, response.Info, requestID)
 		metrics.InstanceRequestSync.WithLabelValues(
 			"Add", "Platform", response.Info, fmt.Sprint(response.Code)).Observe(times.Seconds())
@@ -308,7 +308,7 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 		for _, ins := range response.Responses {
 			// 200000 删除成功
 			if ins.Code != 200000 && ins.Code != 401000 {
-				klog.Errorf("Failed delete %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.Errorf("Failed delete %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 				polarisErrors.Append(PError{
 					IP:     ins.Instance.Host,
@@ -318,12 +318,12 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 					Info:   ins.Info,
 				})
 			} else {
-				klog.Infof("Success delete %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.Infof("Success delete %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 			}
 		}
 	} else {
-		klog.Infof("Failed delete %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
+		log.Infof("Failed delete %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
 		polarisErrors.Append(PError{
 			Code: util.Uint32Ptr(500),
 			Info: response.Info,
@@ -336,10 +336,10 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 // UpdateInstances 修改平台实例接口
 func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 
-	klog.Infof("Start to add all %s", msg)
+	log.Infof("Start to add all %s", msg)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to add all %s (%v)", msg, time.Since(startTime))
+		log.Infof("Finish to add all %s (%v)", msg, time.Since(startTime))
 	}()
 
 	// 从这里开始拆分
@@ -357,7 +357,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 			requestID := uuid.New().String()
 			requestByte, err := json.Marshal(v)
 			if err != nil {
-				klog.Errorf("Failed to marsh request %s] [%d/%d], err %v.",
+				log.Errorf("Failed to marsh request %s] [%d/%d], err %v.",
 					msg, i+1, page, err)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -366,10 +366,10 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 				})
 				return
 			}
-			klog.Infof("Update msg body is %s", string(requestByte))
+			log.Infof("Update msg body is %s", string(requestByte))
 			httpCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
 			if err != nil {
-				klog.Errorf("Failed request %s [%d/%d], err %v. requestId: %s", msg, i+1, page, err, requestID)
+				log.Errorf("Failed request %s [%d/%d], err %v. requestId: %s", msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
 					Info: fmt.Sprintf("Failed to marsh request %s [%d/%d], err %v.", msg, i+1, page, err),
@@ -384,7 +384,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 			var response AddResponse
 			err = json.Unmarshal(body, &response)
 			if err != nil {
-				klog.Errorf("Failed unmarshal result %s [%d/%d], err %v.",
+				log.Errorf("Failed unmarshal result %s [%d/%d], err %v.",
 					msg, i+1, page, err)
 				polarisErrors.Append(PError{
 					Code: util.Uint32Ptr(500),
@@ -393,7 +393,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 				})
 				return
 			}
-			klog.Errorf("update response is %v", response)
+			log.Errorf("update response is %v", response)
 			dealUpdateInstanceResponse(response, msg, i, page, polarisErrors)
 		}(i, v)
 	}
@@ -405,7 +405,7 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 	i int, page int, polarisErrors *PErrors) {
 	// 添加成功或者权限错误，都跳过
 	if response.Code == 200000 {
-		klog.Infof("Success add all %s [%d/%d], info %s.", msg, i+1, page, response.Info)
+		log.Infof("Success add all %s [%d/%d], info %s.", msg, i+1, page, response.Info)
 		return
 	}
 
@@ -414,7 +414,7 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 			// 200002 update data is no change, no need to update
 			// 200000 execute success
 			if ins.Code != 200002 && ins.Code != 200000 {
-				klog.Errorf("Failed add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
+				log.Errorf("Failed add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
 					msg, ins.Instance.Namespace, ins.Instance.Service,
 					ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info)
 				polarisErrors.Append(PError{
@@ -425,13 +425,13 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 					Info:   ins.Info,
 				})
 			} else {
-				klog.Infof("Success add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
+				log.Infof("Success add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
 					msg, ins.Instance.Namespace, ins.Instance.Service,
 					ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info)
 			}
 		}
 	} else {
-		klog.Infof("Failed update %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
+		log.Infof("Failed update %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
 		polarisErrors.Append(PError{
 			Code: util.Uint32Ptr(500),
 			Info: response.Info,
@@ -444,10 +444,10 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
-	klog.Infof("Start to get %s", serviceMsg)
+	log.Infof("Start to get %s", serviceMsg)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to get %s (%v)", serviceMsg, time.Since(startTime))
+		log.Infof("Finish to get %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 	var response GetServiceResponse
 	requestID := uuid.New().String()
@@ -466,21 +466,21 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
 
-	klog.Infof("Get service %s, body %s", serviceMsg, string(body))
+	log.Infof("Get service %s, body %s", serviceMsg, string(body))
 
 	if err != nil {
-		klog.Errorf("Failed to get request %s %v", serviceMsg, err)
+		log.Errorf("Failed to get request %s %v", serviceMsg, err)
 		return response, err
 	}
 
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		klog.Errorf("Failed to unmarshal result %s %v", serviceMsg, err)
+		log.Errorf("Failed to unmarshal result %s %v", serviceMsg, err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
-		klog.Errorf("Failed to get service %s %s", serviceMsg, response.Info)
+		log.Errorf("Failed to get service %s %s", serviceMsg, response.Info)
 		return response, fmt.Errorf("failed to get service %s %s", serviceMsg, response.Info)
 	}
 
@@ -491,10 +491,10 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 // GET /naming/v1/services?keys=platform&values=tke
 func ListService(clusterID string) (res GetServiceResponse, err error) {
 
-	klog.Info("Start to get platform service list")
+	log.Info("Start to get platform service list")
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to get platform service list (%v)", time.Since(startTime))
+		log.Infof("Finish to get platform service list (%v)", time.Since(startTime))
 	}()
 	var response GetServiceResponse
 	requestID := uuid.New().String()
@@ -505,18 +505,18 @@ func ListService(clusterID string) (res GetServiceResponse, err error) {
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
 
 	if err != nil {
-		klog.Errorf("Failed to get platform service list %v", err)
+		log.Errorf("Failed to get platform service list %v", err)
 		return response, err
 	}
 
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		klog.Errorf("Failed to unmarshal platform service list %v", err)
+		log.Errorf("Failed to unmarshal platform service list %v", err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
-		klog.Errorf("Failed to get platform service list %s", response.Info)
+		log.Errorf("Failed to get platform service list %s", response.Info)
 		return response, fmt.Errorf("failed to get platform service list %s", response.Info)
 	}
 
@@ -538,10 +538,10 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
-	klog.Infof("Start to create service [%s][%s]", service.Namespace, service.Name)
+	log.Infof("Start to create service [%s][%s]", service.Namespace, service.Name)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to update %s (%v)", serviceMsg, time.Since(startTime))
+		log.Infof("Finish to update %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	var response CreateServicesResponse
@@ -560,27 +560,27 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 	requestByte, err := json.Marshal(createRequest)
 	if err != nil {
-		klog.Errorf("Failed to marsh request %s %v", serviceMsg, err)
+		log.Errorf("Failed to marsh request %s %v", serviceMsg, err)
 		return response, err
 	}
 
-	klog.Infof("create service %s, body %s", serviceMsg, string(requestByte))
+	log.Infof("create service %s, body %s", serviceMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 	if err != nil {
-		klog.Errorf("Failed to create service %s %v", serviceMsg, err)
+		log.Errorf("Failed to create service %s %v", serviceMsg, err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			klog.Errorf("Failed to unmarshal result %s, %v, %s", serviceMsg, err, string(body))
+			log.Errorf("Failed to unmarshal result %s, %v, %s", serviceMsg, err, string(body))
 			return CreateServicesResponse{}, err
 		}
 		if response.Code != ExistedResource {
-			klog.Errorf("Failed to create service %s %v", serviceMsg, response.Info)
+			log.Errorf("Failed to create service %s %v", serviceMsg, response.Info)
 			return response, fmt.Errorf("create namespace failed: " + response.Info)
 		}
 	}
@@ -598,15 +598,15 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 
 	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", service.GetNamespace(), service.GetName(), aliasNs, alias)
 
-	klog.Infof("Start to create service alias %s", serviceAliasMsg)
+	log.Infof("Start to create service alias %s", serviceAliasMsg)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to create service alias %s (%v)", serviceAliasMsg, time.Since(startTime))
+		log.Infof("Finish to create service alias %s (%v)", serviceAliasMsg, time.Since(startTime))
 	}()
 
 	createNsResponse, err := CreateNamespaces(aliasNs)
 	if err != nil {
-		klog.Errorf("Failed create namespaces in CreateServiceAlias %s, err %s, resp %v",
+		log.Errorf("Failed create namespaces in CreateServiceAlias %s, err %s, resp %v",
 			serviceAliasMsg, err, createNsResponse)
 
 		return response, err
@@ -625,27 +625,27 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 
 	requestByte, err := json.Marshal(createRequest)
 	if err != nil {
-		klog.Errorf("Failed to marsh request %s %v", serviceAliasMsg, err)
+		log.Errorf("Failed to marsh request %s %v", serviceAliasMsg, err)
 		return response, err
 	}
 
-	klog.Infof("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
+	log.Infof("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 	if err != nil {
-		klog.Errorf("Failed to create service alias %s %v", serviceAliasMsg, err)
+		log.Errorf("Failed to create service alias %s %v", serviceAliasMsg, err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			klog.Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
+			log.Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
 			return CreateServiceAliasResponse{}, err
 		}
 		if response.Code != ExistedResource {
-			klog.Errorf("Failed to create service alias %s %v", serviceAliasMsg, response.Info)
+			log.Errorf("Failed to create service alias %s %v", serviceAliasMsg, response.Info)
 			return response, fmt.Errorf("create service alias failed: " + response.Info)
 		}
 	}
@@ -657,10 +657,10 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 // PUT /naming/v1/services
 func UpdateService(service *v1.Service, request []Service) (int, PutServicesResponse, error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-	klog.Infof("Start to update %s", serviceMsg)
+	log.Infof("Start to update %s", serviceMsg)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to update %s (%v)", serviceMsg, time.Since(startTime))
+		log.Infof("Finish to update %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	var response PutServicesResponse
@@ -670,26 +670,26 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 
 	requestByte, err := json.Marshal(request)
 	if err != nil {
-		klog.Errorf("Failed to marsh request %s %v", serviceMsg, err)
+		log.Errorf("Failed to marsh request %s %v", serviceMsg, err)
 		return 0, PutServicesResponse{}, err
 	}
 
-	klog.Infof("Put service %s, body %s", serviceMsg, string(requestByte))
+	log.Infof("Put service %s, body %s", serviceMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
 
 	if err != nil {
-		klog.Errorf("Failed to get request %s %v", serviceMsg, err)
+		log.Errorf("Failed to get request %s %v", serviceMsg, err)
 		return statusCode, PutServicesResponse{}, err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			klog.Errorf("Failed to unmarshal result %s, %v, %s", serviceMsg, err, string(body))
+			log.Errorf("Failed to unmarshal result %s, %v, %s", serviceMsg, err, string(body))
 			return statusCode, PutServicesResponse{}, err
 		}
-		klog.Errorf("Failed to update result %s %v", serviceMsg, response.Info)
+		log.Errorf("Failed to update result %s %v", serviceMsg, response.Info)
 		return statusCode, response, fmt.Errorf("Put service failed: " + response.Info)
 	}
 
@@ -698,10 +698,10 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 
 // CreateNamespaces 创建北极星命名空间
 func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
-	klog.Info("Start to create namespace ", namespace)
+	log.Infof("Start to create namespace %s", namespace)
 	startTime := time.Now()
 	defer func() {
-		klog.Infof("Finish to create namespace %s (%v)", namespace, time.Since(startTime))
+		log.Infof("Finish to create namespace %s (%v)", namespace, time.Since(startTime))
 	}()
 
 	var response CreateNamespacesResponse
@@ -717,28 +717,28 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 
 	requestByte, err := json.Marshal(createRequest)
 	if err != nil {
-		klog.Errorf("Failed to marsh request %s %v", namespace, err)
+		log.Errorf("Failed to marsh request %s %v", namespace, err)
 		return response, err
 	}
 
-	klog.Infof("create namespace %s, body %s", namespace, string(requestByte))
+	log.Infof("create namespace %s, body %s", namespace, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 	if err != nil {
-		klog.Errorf("Failed to get result %s %v", namespace, err)
+		log.Errorf("Failed to get result %s %v", namespace, err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			klog.Errorf("Failed to unmarshal result %s, %v, %s", namespace, err, string(body))
+			log.Errorf("Failed to unmarshal result %s, %v, %s", namespace, err, string(body))
 			return CreateNamespacesResponse{}, err
 		}
 		if response.Responses == nil || len(response.Responses) == 0 ||
 			response.Responses[0].Code != ExistedResource {
-			klog.Errorf("Failed to create namespace %s ,error response: %v", namespace, response)
+			log.Errorf("Failed to create namespace %s ,error response: %v", namespace, response)
 			return response, fmt.Errorf("create namespace failed: " + response.Info)
 		}
 	}
@@ -753,7 +753,7 @@ func splitArray(instances []Instance, size int) [][]Instance {
 	page64 := math.Ceil(float64(length) / size64)
 	page := int(page64)
 
-	klog.Infof("Current instance,size/page/total [%d/%d/%d]", length, size, page)
+	log.Infof("Current instance,size/page/total [%d/%d/%d]", length, size, page)
 	var instanceArray [][]Instance
 
 	for i := 0; i < page; i++ {
@@ -779,7 +779,7 @@ func polarisHttpRequest(
 	}
 	req, err := http.NewRequest(method, url, bytes.NewReader(requestByte))
 	if err != nil {
-		klog.Errorf("Failed to set request %v", err)
+		log.Errorf("Failed to set request %v", err)
 		return 0, nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -789,7 +789,7 @@ func polarisHttpRequest(
 	resp, err := client.Do(req)
 
 	if err != nil {
-		klog.Errorf("Failed to get request %v", err)
+		log.Errorf("Failed to get request %v", err)
 		return 0, nil, time.Since(startTime), err
 	}
 
@@ -798,7 +798,7 @@ func polarisHttpRequest(
 	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		klog.Errorf("Failed to get request %v", err)
+		log.Errorf("Failed to get request %v", err)
 		return 0, nil, time.Since(startTime), err
 	}
 

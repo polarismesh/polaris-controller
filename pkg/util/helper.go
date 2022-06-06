@@ -18,15 +18,17 @@ package util
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/polarismesh/polaris-controller/common/log"
+	"go.uber.org/zap"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
 )
 
 var ignoredNamespaces = []string{
@@ -55,7 +57,7 @@ func WaitForAPIServer(client clientset.Interface, timeout time.Duration) error {
 		if healthStatus != http.StatusOK {
 			content, _ := result.Raw()
 			lastErr = fmt.Errorf("APIServer isn't healthy: %v", string(content))
-			klog.Warningf("APIServer isn't healthy yet: %v. Waiting a little while.", string(content))
+			log.Warnf("APIServer isn't healthy yet: %v. Waiting a little while.", string(content))
 			return false, nil
 		}
 
@@ -96,7 +98,7 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 // CompareServiceChange 判断本次更新是什么类型的
 func CompareServiceChange(old, new *v1.Service, syncMode string) ServiceChangeType {
 
-	klog.Infof("CompareServiceChange new is %v", new.Annotations)
+	log.Infof("CompareServiceChange new is %v", new.Annotations)
 
 	if !IsPolarisService(new, syncMode) {
 		return ServicePolarisDelete
@@ -145,13 +147,13 @@ func IgnoreService(svc *v1.Service) bool {
 
 	// Port是否合法 不能不设置port
 	if len(svc.Spec.Ports) < 1 {
-		klog.V(10).Infof("Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
+		log.Infof("Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
 		return true
 	}
 
 	// 没有设置 selector，polaris controller 不处理
 	if svc.Spec.Selector == nil {
-		klog.V(10).Infof("Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
+		log.Infof("Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
 		return true
 	}
 
@@ -185,7 +187,7 @@ func GetWeightFromService(svc *v1.Service) int {
 	weight, ok := svc.GetAnnotations()[PolarisWeight]
 	if ok {
 		if w, err := strconv.Atoi(weight); err != nil {
-			klog.Error("error to convert weight ", err)
+			log.Error("error to convert weight ", zap.Error(err))
 			return DefaultWeight
 		} else {
 			return w

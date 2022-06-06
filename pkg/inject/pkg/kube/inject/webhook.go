@@ -20,9 +20,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
 	"io/ioutil"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -32,6 +30,10 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
+	"k8s.io/apimachinery/pkg/api/errors"
+
 	gyaml "github.com/ghodss/yaml"
 	"github.com/howeyc/fsnotify"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -40,8 +42,6 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
-
-	"k8s.io/klog"
 
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -105,7 +105,7 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 	}
 	var meshConf Config
 	if err := gyaml.Unmarshal(meshData, &meshConf); err != nil {
-		klog.Warningf("Failed to parse injectFile %s", string(meshData))
+		log.Warnf("Failed to parse injectFile %s", string(meshData))
 		return nil, nil, nil, "", err
 	}
 
@@ -116,7 +116,7 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 	}
 	var dnsConf Config
 	if err := gyaml.Unmarshal(dnsData, &dnsConf); err != nil {
-		klog.Warningf("Failed to parse injectFile %s", string(dnsData))
+		log.Warnf("Failed to parse injectFile %s", string(dnsData))
 		return nil, nil, nil, "", err
 	}
 
@@ -130,17 +130,17 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 		return nil, nil, nil, "", err
 	}
 
-	klog.Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
-	klog.Infof("[MESH] Policy: %v", meshConf.Policy)
-	klog.Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
-	klog.Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
-	klog.Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
+	log.Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
+	log.Infof("[MESH] Policy: %v", meshConf.Policy)
+	log.Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
+	log.Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
+	log.Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
 
-	klog.Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
-	klog.Infof("[DNS] Policy: %v", dnsConf.Policy)
-	klog.Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
-	klog.Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
-	klog.Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
+	log.Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
+	log.Infof("[DNS] Policy: %v", dnsConf.Policy)
+	log.Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
+	log.Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
+	log.Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
 
 	return &meshConf, &dnsConf, meshConfig, string(valuesConfig), nil
 }
@@ -260,7 +260,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 	if wh.server != nil {
 		go func() {
 			if err := wh.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				klog.Fatalf("admission webhook ListenAndServeTLS failed: %v", err)
+				log.Fatalf("admission webhook ListenAndServeTLS failed: %v", err)
 			}
 		}()
 		defer wh.server.Close()
@@ -281,13 +281,13 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			timerC = nil
 			sidecarMeshConfig, sidecarDnsConfig, meshConfig, valuesConfig, err := loadConfig(wh.meshConfigFile, wh.dnsConfigFile, wh.meshFile, wh.valuesFile)
 			if err != nil {
-				klog.Errorf("update error: %v", err)
+				log.Errorf("update error: %v", err)
 				break
 			}
 
 			pair, err := tls.LoadX509KeyPair(wh.certFile, wh.keyFile)
 			if err != nil {
-				klog.Errorf("reload cert error: %v", err)
+				log.Errorf("reload cert error: %v", err)
 				break
 			}
 			wh.mu.Lock()
@@ -301,17 +301,17 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			wh.cert = &pair
 			wh.mu.Unlock()
 		case event := <-wh.watcher.Event:
-			klog.Infof("Injector watch update: %+v", event)
+			log.Infof("Injector watch update: %+v", event)
 			// use a timer to debounce configuration updates
 			if (event.IsModify() || event.IsCreate()) && timerC == nil {
 				timerC = time.After(watchDebounceDelay)
 			}
 		case err := <-wh.watcher.Error:
-			klog.Errorf("Watcher error: %v", err)
+			log.Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
 			if err := ioutil.WriteFile(wh.healthCheckFile, content, 0644); err != nil {
-				klog.Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
+				log.Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
 			}
 		case <-stop:
 			return
@@ -408,9 +408,9 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 			add.VolumeMounts = append(add.VolumeMounts, saJwtSecretMount)
 		}
 		if add.Name == "polaris-sidecar" {
-			klog.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
+			log.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
 			if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
-				klog.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
+				log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
 		}
 		value = add
@@ -448,7 +448,7 @@ func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *c
 		meshMode = false
 	}
 
-	klog.Infof("pod=[%s, %s] inject polaris-sidecar mode %s", pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode))
+	log.Infof("pod=[%s, %s] inject polaris-sidecar mode %s", pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode))
 
 	add.Args = []string{
 		"start",
@@ -482,18 +482,18 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 	_, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Get(utils.PolarisGoConfigFile, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			klog.Errorf("get polaris-sidecar's configmap=%s namespace %q failed: %v", utils.PolarisGoConfigFile, pod.Namespace, err)
+			log.Errorf("get polaris-sidecar's configmap=%s namespace %q failed: %v", utils.PolarisGoConfigFile, pod.Namespace, err)
 			return false, err
 		}
 		if errors.IsNotFound(err) {
 			cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
 			if err != nil {
-				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				log.Errorf("parse polaris-sidecar failed: %v", err)
 				return false, err
 			}
 			tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
 			if err != nil {
-				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				log.Errorf("parse polaris-sidecar failed: %v", err)
 				return false, err
 			}
 			buf := new(bytes.Buffer)
@@ -502,7 +502,7 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 				Namespace:     pod.Namespace,
 				PolarisServer: common.PolarisServerGrpcAddress,
 			}); err != nil {
-				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				log.Errorf("parse polaris-sidecar failed: %v", err)
 				return false, err
 			}
 
@@ -510,13 +510,13 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 			configMap := corev1.ConfigMap{}
 			str := buf.String()
 			if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
-				klog.Errorf("parse polaris-sidecar failed: %v", err)
+				log.Errorf("parse polaris-sidecar failed: %v", err)
 				return false, err
 			}
 
 			if _, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Create(&configMap); err != nil {
 				if !errors.IsAlreadyExists(err) {
-					klog.Errorf("create polaris-sidecar configmap for %s failed: %v", pod.Name, err)
+					log.Errorf("create polaris-sidecar configmap for %s failed: %v", pod.Name, err)
 					return false, err
 				}
 			}
@@ -759,10 +759,10 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 		pod.ObjectMeta.Namespace = req.Namespace
 	}
 
-	klog.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
+	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	klog.Infof("Object: %v", string(req.Object.Raw))
-	klog.Infof("OldObject: %v", string(req.OldObject.Raw))
+	log.Infof("Object: %v", string(req.Object.Raw))
+	log.Infof("OldObject: %v", string(req.OldObject.Raw))
 
 	config := wh.sidecarMeshConfig
 	tempVersion := wh.sidecarMeshTemplateVersion
@@ -772,7 +772,7 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		klog.Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+		log.Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
 		return &v1beta1.AdmissionResponse{
 			Allowed: true,
 		}
@@ -852,7 +852,7 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 		return toAdmissionResponse(err)
 	}
 
-	klog.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	log.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
 
 	reviewResponse := v1beta1.AdmissionResponse{
 		Allowed: true,
@@ -905,15 +905,15 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := json.Marshal(response)
 	if err != nil {
-		klog.Errorf("Could not encode response: %v", err)
+		log.Errorf("Could not encode response: %v", err)
 		http.Error(w, fmt.Sprintf("could not encode response: %v", err), http.StatusInternalServerError)
 	}
 	if _, err := w.Write(resp); err != nil {
-		klog.Errorf("Could not write response: %v", err)
+		log.Errorf("Could not write response: %v", err)
 		http.Error(w, fmt.Sprintf("could not write response: %v", err), http.StatusInternalServerError)
 	}
 }
 
 func handleError(message string) {
-	klog.Errorf(message)
+	log.Errorf(message)
 }
