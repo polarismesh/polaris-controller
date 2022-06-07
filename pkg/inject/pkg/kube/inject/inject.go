@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
 	"io"
 	"net"
 	"os"
@@ -39,7 +38,7 @@ import (
 
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
-	"k8s.io/klog"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/batch/v2alpha1"
@@ -49,6 +48,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	yamlDecoder "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/klog"
 )
 
 type annotationValidationFunc func(value string) error
@@ -110,14 +110,14 @@ const (
 	// InjectionPolicyDisabled specifies that the sidecar injector
 	// will not inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can enable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// true.
 	InjectionPolicyDisabled InjectionPolicy = "disabled"
 
 	// InjectionPolicyEnabled specifies that the sidecar injector will
 	// inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can disable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// false.
 	InjectionPolicyEnabled InjectionPolicy = "enabled"
 )
@@ -330,6 +330,8 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 	// http://yaml.org/type/bool.html
 	case "y", "yes", "true", "on":
 		inject = true
+	case "n", "no", "false", "off":
+		inject = false
 	case "":
 		useDefault = true
 	}
