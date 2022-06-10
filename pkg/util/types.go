@@ -69,15 +69,16 @@ var PolarisDefaultMetaSet = map[string]struct{}{
 type ServiceChangeType string
 
 const (
-	ServicePolarisDelete         ServiceChangeType = "servicePolarisDelete" // 删除了北极星的服务
-	ServiceNameSpacesChanged     ServiceChangeType = "serviceNameSpacesChanged"
-	ServiceNameChanged           ServiceChangeType = "serviceNameChanged"
-	ServiceWeightChanged         ServiceChangeType = "serviceWeightChanged"
-	ServiceTokenChanged          ServiceChangeType = "serviceTokenChanged"
-	ServiceTTLChanged            ServiceChangeType = "serviceTTLChanged"
-	ServiceEnableRegisterChanged ServiceChangeType = "serviceEnableRegisterChanged"
-	ServiceMetadataChanged       ServiceChangeType = "serviceMetadataChanged"
-	ServiceCustomWeightChanged   ServiceChangeType = "serviceCustomWeightChanged"
+	ServicePolarisDelete          ServiceChangeType = "servicePolarisDelete" // 删除了北极星的服务
+	ServiceNameSpacesChanged      ServiceChangeType = "serviceNameSpacesChanged"
+	ServiceNameChanged            ServiceChangeType = "serviceNameChanged"
+	ServiceTokenChanged           ServiceChangeType = "serviceTokenChanged"
+	ServiceMetadataChanged        ServiceChangeType = "ServiceMetadataChanged"
+	InstanceTTLChanged            ServiceChangeType = "InstanceTTLChanged"
+	InstanceWeightChanged         ServiceChangeType = "InstanceWeightChanged"
+	InstanceEnableRegisterChanged ServiceChangeType = "InstanceEnableRegisterChanged"
+	InstanceMetadataChanged       ServiceChangeType = "InstanceMetadataChanged"
+	InstanceCustomWeightChanged   ServiceChangeType = "InstanceCustomWeightChanged"
 )
 
 const (

@@ -31,6 +31,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
 	"github.com/polarismesh/polaris-go/api"
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -909,6 +910,13 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 	}
 
 	k8sService := cur.GetNamespace() + "/" + cur.GetName()
+	if !reflect.DeepEqual(old.Labels, cur.Labels) {
+		// 同步 service 的标签变化情况
+		if err := p.updateService(cur); err != nil {
+			log.Error("process service update info", zap.String("service", k8sService), zap.Error(err))
+		}
+	}
+
 	changeType := util.CompareServiceChange(old, cur, p.config.PolarisController.SyncMode)
 	switch changeType {
 	case util.ServicePolarisDelete:
@@ -923,11 +931,11 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 				k8sService, syncErr, deleteErr)
 		}
 		return
-	case util.ServiceMetadataChanged, util.ServiceTTLChanged,
-		util.ServiceWeightChanged, util.ServiceCustomWeightChanged:
+	case util.InstanceMetadataChanged, util.InstanceTTLChanged,
+		util.InstanceWeightChanged, util.InstanceCustomWeightChanged:
 		log.Infof("Service %s metadata,ttl,custom weight changed, need to update", k8sService)
 		return p.processSyncInstance(cur)
-	case util.ServiceEnableRegisterChanged:
+	case util.InstanceEnableRegisterChanged:
 		log.Infof("Service %s enableRegister,service weight changed, do nothing", k8sService)
 		return
 	default:

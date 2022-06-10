@@ -76,21 +76,21 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 
 	// 以下变更,需要同步对应的Service实例信息
 	if old[PolarisHeartBeatTTL] != new[PolarisHeartBeatTTL] {
-		return ServiceTTLChanged
+		return InstanceTTLChanged
 	}
 	if old[PolarisCustomWeight] != new[PolarisCustomWeight] {
-		return ServiceCustomWeightChanged
+		return InstanceCustomWeightChanged
 	}
 	if old[PolarisMetadata] != new[PolarisMetadata] {
-		return ServiceMetadataChanged
+		return InstanceMetadataChanged
 	}
 
 	// 以下变更不会引发Service同步
 	if old[PolarisWeight] != new[PolarisWeight] {
-		return ServiceWeightChanged
+		return InstanceWeightChanged
 	}
 	if old[PolarisEnableRegister] != new[PolarisEnableRegister] {
-		return ServiceEnableRegisterChanged
+		return InstanceEnableRegisterChanged
 	}
 	return ""
 }

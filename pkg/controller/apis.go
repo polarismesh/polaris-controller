@@ -40,6 +40,30 @@ const (
 	globalToken    = "polaris@12345678"
 )
 
+// updateService 批量增加实例接口
+func (p *PolarisController) updateService(cur *v1.Service) error {
+	resp, err := polarisapi.GetService(cur)
+
+	if err != nil {
+		return err
+	}
+
+	polarisSvc := resp.Services[0]
+
+	// 合并服务的 labels 信息
+	newLabels := cur.Labels
+	curLabels := polarisSvc.Metadata
+
+	for k, v := range newLabels {
+		curLabels[k] = v
+	}
+
+	polarisSvc.Metadata = curLabels
+
+	_, _, err = polarisapi.UpdateService(cur, []polarisapi.Service{polarisSvc})
+	return err
+}
+
 // addInstances 批量增加实例接口
 func (p *PolarisController) addInstances(service *v1.Service, address []address.Address) error {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
