@@ -111,14 +111,14 @@ const (
 	// InjectionPolicyDisabled specifies that the sidecar injector
 	// will not inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can enable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// true.
 	InjectionPolicyDisabled InjectionPolicy = "disabled"
 
 	// InjectionPolicyEnabled specifies that the sidecar injector will
 	// inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can disable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// false.
 	InjectionPolicyEnabled InjectionPolicy = "enabled"
 )
@@ -331,6 +331,8 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 	// http://yaml.org/type/bool.html
 	case "y", "yes", "true", "on":
 		inject = true
+	case "n", "no", "false", "off":
+		inject = false
 	case "":
 		useDefault = true
 	}
