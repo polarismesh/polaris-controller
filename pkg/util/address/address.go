@@ -22,11 +22,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
 )
 
 // Address 记录IP端口信息
@@ -68,7 +68,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pod
 	}
 
 	res, _ := json.Marshal(endpoint)
-	klog.Infof("get endpoints %s", string(res))
+	log.Infof("get endpoints %s", string(res))
 
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
@@ -178,7 +178,7 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 		flag := (clusterName == cluster && source == polarisapi.Source) ||
 			(clusterName == cluster && oldSource == polarisapi.Source)
 
-		klog.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
+		log.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {

@@ -19,6 +19,11 @@ package options
 import (
 	"context"
 	"fmt"
+	"net/http"
+	goruntime "runtime"
+	"time"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/util/configz"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
@@ -30,10 +35,6 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/metrics/legacyregistry"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
-	"k8s.io/klog"
-	"net/http"
-	goruntime "runtime"
-	"time"
 )
 
 // BuildHandlerChain builds a handler chain with a base handler and CompletedConfig.
@@ -104,7 +105,7 @@ func RunServer(
 
 		select {
 		case <-stopCh:
-			klog.Infof("Stop Listening %s", server.Addr)
+			log.Infof("Stop Listening %s", server.Addr)
 		default:
 			panic(fmt.Sprintf("%s due to error: %v", server.Addr, err))
 		}
