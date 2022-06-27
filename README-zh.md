@@ -2,11 +2,16 @@
 
 [English Document](./README.md)
 
-README：
-
-- [介绍](#介绍)
-- [安装说明](#安装说明)
-- [使用指南](#使用指南)
+- [Polaris Controller](#polaris-controller)
+  - [介绍](#介绍)
+  - [与Kubernetes的版本支持](#与kubernetes的版本支持)
+  - [安装说明](#安装说明)
+  - [注解](#注解)
+  - [使用指南](#使用指南)
+    - [全量同步服务](#全量同步服务)
+    - [按需同步服务](#按需同步服务)
+    - [创建服务别名](#创建服务别名)
+    - [Sidecar 自动注入](#sidecar-自动注入)
 
 ## 介绍
 
@@ -21,6 +26,10 @@ polaris-sidecar 提供两个可选功能：
 - 服务网格：通过劫持流量的方式实现服务发现和治理，开发侵入性低
 
 本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
+
+## 与Kubernetes的版本支持
+
+- 当前仅支持 **kubernetes** 的版本为 (, 1.21]
 
 ## 安装说明
 
@@ -52,12 +61,14 @@ data:
     # service sync
     serviceSync:
       mode: "all"
-      serverAddress: "polaris-server address"
+      # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
+      serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
       # 当北极星开启了服务鉴权之后，这里需要配置对应用户/用户组的token
       accessToken: ""
     defaultConfig:
       proxyMetadata:
-        serverAddress: "polaris-server address"
+        # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
+        serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
 ```
 
 支持两种 K8s Service 同步模式：
