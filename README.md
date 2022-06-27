@@ -1,12 +1,16 @@
 # Polaris Controller
 
-[中文文档](./README-zh.md)
+English | [中文](./README-zh.md)
 
-README：
-
-- [Introduce](#Introduce)
-- [Installation](#Installation)
-- [Guidance](#Guidance)
+  - [Introduce](#introduce)
+  - [Kubernetes_Version](#kubernetes's-version)
+  - [Installation](#installation)
+  - [Annotations](#annotations)
+  - [Guidance](#guidance)
+    - [Full synchronization service](#full-synchronization-service)
+    - [On-demand sync service](#on-demand-sync-service)
+    - [Create service alias](#create-service-alias)
+    - [Sidecar auto inject](#sidecar-auto-inject)
 
 ## Introduce
 
@@ -21,6 +25,10 @@ polaris-sidecar Provides two optional functions：
 - Service mesh: realize service discovery and governance by hijacking traffic, with low development intrusion
 
 This document describes how to install and use polaris-controller in a K8s cluster.
+
+## Kubernetes's Version
+
+- The current version that supports only ** kubernetes ** is (, 1.21]
 
 ## Installation
 
@@ -52,12 +60,14 @@ data:
     # service sync
     serviceSync:
       mode: "all"
-      serverAddress: "polaris-server address"
+      # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
+      serverAddress: "polaris-server ip or domain"
       # When Polaris enables service authentication, the token corresponding to the user/user group needs to be configured here.
       accessToken: ""
     defaultConfig:
       proxyMetadata:
-        serverAddress: "polaris-server address"
+        # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
+        serverAddress: "polaris-server ip or domain"
 ```
 
 Two K8s Service synchronization modes are supported:

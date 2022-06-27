@@ -1,12 +1,16 @@
 # Polaris Controller
 
-[English Document](./README.md)
+[English](./README.md) | 中文
 
-README：
-
-- [介绍](#介绍)
-- [安装说明](#安装说明)
-- [使用指南](#使用指南)
+  - [介绍](#介绍)
+  - [与Kubernetes的版本支持](#与kubernetes的版本支持)
+  - [安装说明](#安装说明)
+  - [注解](#注解)
+  - [使用指南](#使用指南)
+    - [全量同步服务](#全量同步服务)
+    - [按需同步服务](#按需同步服务)
+    - [创建服务别名](#创建服务别名)
+    - [Sidecar 自动注入](#sidecar-自动注入)
 
 ## 介绍
 
@@ -21,6 +25,10 @@ polaris-sidecar 提供两个可选功能：
 - 服务网格：通过劫持流量的方式实现服务发现和治理，开发侵入性低
 
 本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
+
+## 与Kubernetes的版本支持
+
+- 当前仅支持 **kubernetes** 的版本为 (, 1.21]
 
 ## 安装说明
 
@@ -52,12 +60,14 @@ data:
     # service sync
     serviceSync:
       mode: "all"
-      serverAddress: "polaris-server address"
+      # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
+      serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
       # 当北极星开启了服务鉴权之后，这里需要配置对应用户/用户组的token
       accessToken: ""
     defaultConfig:
       proxyMetadata:
-        serverAddress: "polaris-server address"
+        # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
+        serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
 ```
 
 支持两种 K8s Service 同步模式：
@@ -91,11 +101,11 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 
 ## 注解
 
-| 注解名称                      | 注解描述                                                               |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| polarismesh.cn/sync           | 是否同步这个服务到 polarismesh。true 同步，false 不同步，默认不同步    |
-| polarismesh.cn/aliasService   | 把 k8s service 同步到 polarismesh 时，同时创建的服务别名的名字         |
-| polarismesh.cn/aliasNamespace | 创建的别名所在的命名空间，配合 polarismesh.cn/aliasService 使用        |
+| 注解名称                      | 注解描述                                                            |
+| ----------------------------- | ------------------------------------------------------------------- |
+| polarismesh.cn/sync           | 是否同步这个服务到 polarismesh。true 同步，false 不同步，默认不同步 |
+| polarismesh.cn/aliasService   | 把 k8s service 同步到 polarismesh 时，同时创建的服务别名的名字      |
+| polarismesh.cn/aliasNamespace | 创建的别名所在的命名空间，配合 polarismesh.cn/aliasService 使用     |
 
 ## 使用指南
 
