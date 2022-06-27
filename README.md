@@ -1,11 +1,16 @@
 # Polaris Controller
 
-[中文文档](./README-zh.md)
+English | [中文](./README-zh.md)
 
-- [Introduce](#Introduce)
-- [Kubernetes's Version](#Kubernetes_Version)
-- [Installation](#Installation)
-- [Guidance](#Guidance)
+  - [Introduce](#introduce)
+  - [Kubernetes_Version](#kubernetes's-version)
+  - [Installation](#installation)
+  - [Annotations](#annotations)
+  - [Guidance](#guidance)
+    - [Full synchronization service](#full-synchronization-service)
+    - [On-demand sync service](#on-demand-sync-service)
+    - [Create service alias](#create-service-alias)
+    - [Sidecar auto inject](#sidecar-auto-inject)
 
 ## Introduce
 
@@ -21,7 +26,7 @@ polaris-sidecar Provides two optional functions：
 
 This document describes how to install and use polaris-controller in a K8s cluster.
 
-## Kubernetes_Version
+## Kubernetes's Version
 
 - The current version that supports only ** kubernetes ** is (, 1.21]
 
