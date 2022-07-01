@@ -19,10 +19,10 @@ polaris-controller 用于北极星和 K8s 生态的对接，提供两个可选�
 - K8s Service 同步到北极星：将 K8s Service 同步到北极星，使用北极星进行服务发现和治理
 - polaris-sidecar 自动注入：在应用 Pod 中注入 polaris-sidecar
 
-polaris-sidecar 提供两个可选功能：
+polaris-controller 注入的*sidecar*的运行模式提供两个可选功能：
 
-- 本地 DNS：使用 DNS 解析的方式访问北极星上的服务
-- 服务网格：通过劫持流量的方式实现服务发现和治理，开发侵入性低
+- 本地DNS（dns）：注入 **polaris-sidecar**，通过拦截DNS请求的方式实现服务发现和治理
+- 服务网格（mesh）：注入 **polaris-sidecar** 以及 **envoy** ，通过劫持流量的方式实现服务发现和治理，开发侵入性低
 
 本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
 
