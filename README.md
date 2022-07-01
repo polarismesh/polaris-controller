@@ -19,10 +19,10 @@ polaris-controller For the docking of Polaris and K8s ecology, providing two opt
 - K8s Service Sync to Polaris: Sync K8s Service to Polaris, use Polaris for service discovery and governance
 - polaris-sidecar Auto-inject: inject polaris-sidecar in app pod
 
-polaris-sidecar Provides two optional functions：
+The operating mode of *sidecar* in the Polaris-Controller provides two optional functions:
 
-- Local DNS: Use DNS resolution to access services on Polaris
-- Service mesh: realize service discovery and governance by hijacking traffic, with low development intrusion
+- LocalDNS (dns): Inject **polaris-sidecar**, realize service discovery and governance by intercepting DNS requests
+- ServiceMesh (mesh): Inject **polaris-sidecar** and **envoy**, realize service discovery and governance through hijacking traffic, and develop low invasion
 
 This document describes how to install and use polaris-controller in a K8s cluster.
 
