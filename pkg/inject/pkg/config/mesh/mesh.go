@@ -125,4 +125,3 @@ func ReadMeshConfig(filename string) (*meshconfig.MeshConfig, error) {
 	}
 	return ApplyMeshConfigDefaults(string(yaml))
 }
-

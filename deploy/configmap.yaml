@@ -5,6 +5,40 @@ metadata:
   namespace: polaris-system
 data:
   mesh: |-
+    logger:
+      default:
+        rotateOutputPath: logs/polaris-default.log
+        errorRotateOutputPath: logs/polaris-default-error.log
+        rotationMaxSize: 100
+        rotationMaxBackups: 10
+        rotationMaxAge: 7
+        outputLevel: info
+        outputPaths:
+          - stdout
+        errorOutputPaths:
+          - stderr
+      sync:
+        rotateOutputPath: logs/polaris-sync.log
+        errorRotateOutputPath: logs/polaris-sync-error.log
+        rotationMaxSize: 100
+        rotationMaxBackups: 10
+        rotationMaxAge: 7
+        outputLevel: info
+        outputPaths:
+          - stdout
+        errorOutputPaths:
+          - stderr
+      inject:
+        rotateOutputPath: logs/polaris-inject.log
+        errorRotateOutputPath: logs/polaris-inject-error.log
+        rotationMaxSize: 100
+        rotationMaxBackups: 10
+        rotationMaxAge: 7
+        outputLevel: info
+        outputPaths:
+          - stdout
+        errorOutputPaths:
+          - stderr
     # k8s cluster name
     clusterName: "default"
     # polaris-sidecar 注入的默认启动模式, 可以配置 mesh 或者 dns

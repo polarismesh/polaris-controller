@@ -1,14 +1,32 @@
+/**
+ * Tencent is pleased to support the open source community by making polaris-go available.
+ *
+ * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+ *
+ * Licensed under the BSD 3-Clause License (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://opensource.org/licenses/BSD-3-Clause
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+ * CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
 package address
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
-	"strings"
 )
 
 // Address 记录IP端口信息
@@ -19,6 +37,8 @@ type Address struct {
 	Index           string // stsp,sts才存在有序Pod
 	Weight          int
 	Healthy         bool
+	Metadata        map[string]string
+	Protocol        string
 	PolarisInstance model.Instance
 }
 
@@ -33,7 +53,7 @@ type InstanceSet map[string]*Address
 //  "port": "80"
 //   }
 //  }]
-func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
+func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pods []*v1.Pod,
 	indexPortMap util.IndexPortMap) InstanceSet {
 	instanceSet := make(InstanceSet)
 	workloadKind := service.GetAnnotations()[util.WorkloadKind]
@@ -41,8 +61,14 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 	hasIndex := workloadKind == "statefulset" || workloadKind == "statefulsetplus" ||
 		workloadKind == "StatefulSetPlus" || workloadKind == "StatefulSet"
 
+	podMap := make(map[string]*v1.Pod, len(pods))
+	for i := range pods {
+		pod := pods[i]
+		podMap[pod.Status.PodIP] = pod
+	}
+
 	res, _ := json.Marshal(endpoint)
-	klog.Infof("get endpoints %s", string(res))
+	log.Infof("get endpoints %s", string(res))
 
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
@@ -53,6 +79,9 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 					tmpReadyIndex = tmpIndexArray[len(tmpIndexArray)-1]
 				}
 			}
+
+			pod, ok := podMap[readyAds.IP]
+
 			for _, port := range subset.Ports {
 				ipPort := fmt.Sprintf("%s-%d", readyAds.IP, port.Port)
 				indexPort := fmt.Sprintf("%s-%d", tmpReadyIndex, port.Port)
@@ -62,14 +91,22 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 						tmpWeight = w
 					}
 				}
-				instanceSet[ipPort] = &Address{
-					IP:      readyAds.IP,
-					Port:    int(port.Port),
-					PodName: readyAds.TargetRef.Name,
-					Index:   tmpReadyIndex,
-					Weight:  tmpWeight,
-					Healthy: true,
+
+				address := &Address{
+					IP:       readyAds.IP,
+					Port:     int(port.Port),
+					PodName:  readyAds.TargetRef.Name,
+					Index:    tmpReadyIndex,
+					Weight:   tmpWeight,
+					Healthy:  true,
+					Protocol: port.Name,
 				}
+
+				if ok {
+					address.Metadata = pod.Labels
+				}
+
+				instanceSet[ipPort] = address
 			}
 		}
 
@@ -82,6 +119,9 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 					tmpNotReadyIndex = tmpIndexArray[len(tmpIndexArray)-1]
 				}
 			}
+
+			pod, ok := podMap[notReadyAds.IP]
+
 			for _, port := range subset.Ports {
 				ipPort := fmt.Sprintf("%s-%d", notReadyAds.IP, port.Port)
 				indexPort := fmt.Sprintf("%s-%d", tmpNotReadyIndex, port.Port)
@@ -91,14 +131,21 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 						tmpWeight = w
 					}
 				}
-				instanceSet[ipPort] = &Address{
-					IP:      notReadyAds.IP,
-					Port:    int(port.Port),
-					PodName: notReadyAds.TargetRef.Name,
-					Index:   tmpNotReadyIndex,
-					Weight:  tmpWeight,
-					Healthy: false,
+				address := &Address{
+					IP:       notReadyAds.IP,
+					Port:     int(port.Port),
+					PodName:  notReadyAds.TargetRef.Name,
+					Index:    tmpNotReadyIndex,
+					Weight:   tmpWeight,
+					Healthy:  false,
+					Protocol: port.Name,
 				}
+
+				if ok {
+					address.Metadata = pod.Labels
+				}
+
+				instanceSet[ipPort] = address
 			}
 		}
 	}
@@ -131,7 +178,7 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 		flag := (clusterName == cluster && source == polarisapi.Source) ||
 			(clusterName == cluster && oldSource == polarisapi.Source)
 
-		klog.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
+		log.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {

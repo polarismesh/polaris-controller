@@ -1,5 +1,5 @@
 /**
- * Tencent is pleased to support the open source community by making polaris-go available.
+ * Tencent is pleased to support the open source community by making Polaris available.
  *
  * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
  *
@@ -15,10 +15,23 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package polarisapi
+package log
 
-const (
-	ExistedResource   = 400201
-	Source            = "polaris-controller"
-	AccessTokenHeader = "x-polaris-token"
+import (
+	"errors"
 )
+
+func SetLogOutputLevel(scopeName string, levelName string) error {
+	scope := FindScope(scopeName)
+	if scope == nil {
+		return errors.New("invalid scope name")
+	}
+
+	l, exist := stringToLevel[levelName]
+	if !exist {
+		return errors.New("invalid log level")
+	}
+
+	scope.SetOutputLevel(l)
+	return nil
+}

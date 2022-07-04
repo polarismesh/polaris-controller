@@ -1,12 +1,16 @@
 # Polaris Controller
 
-[中文文档](./README-zh.md)
+English | [中文](./README-zh.md)
 
-README：
-
-- [Introduce](#Introduce)
-- [Installation](#Installation)
-- [Guidance](#Guidance)
+  - [Introduce](#introduce)
+  - [Kubernetes_Version](#kubernetes's-version)
+  - [Installation](#installation)
+  - [Annotations](#annotations)
+  - [Guidance](#guidance)
+    - [Full synchronization service](#full-synchronization-service)
+    - [On-demand sync service](#on-demand-sync-service)
+    - [Create service alias](#create-service-alias)
+    - [Sidecar auto inject](#sidecar-auto-inject)
 
 ## Introduce
 
@@ -15,12 +19,16 @@ polaris-controller For the docking of Polaris and K8s ecology, providing two opt
 - K8s Service Sync to Polaris: Sync K8s Service to Polaris, use Polaris for service discovery and governance
 - polaris-sidecar Auto-inject: inject polaris-sidecar in app pod
 
-polaris-sidecar Provides two optional functions：
+The operating mode of *sidecar* in the Polaris-Controller provides two optional functions:
 
-- Local DNS: Use DNS resolution to access services on Polaris
-- Service mesh: realize service discovery and governance by hijacking traffic, with low development intrusion
+- LocalDNS (dns): Inject **polaris-sidecar**, realize service discovery and governance by intercepting DNS requests
+- ServiceMesh (mesh): Inject **polaris-sidecar** and **envoy**, realize service discovery and governance through hijacking traffic, and develop low invasion
 
 This document describes how to install and use polaris-controller in a K8s cluster.
+
+## Kubernetes's Version
+
+- The current version that supports only ** kubernetes ** is (, 1.21]
 
 ## Installation
 
@@ -52,12 +60,14 @@ data:
     # service sync
     serviceSync:
       mode: "all"
-      serverAddress: "polaris-server address"
+      # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
+      serverAddress: "polaris-server ip or domain"
       # When Polaris enables service authentication, the token corresponding to the user/user group needs to be configured here.
       accessToken: ""
     defaultConfig:
       proxyMetadata:
-        serverAddress: "polaris-server address"
+        # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
+        serverAddress: "polaris-server ip or domain"
 ```
 
 Two K8s Service synchronization modes are supported:
@@ -88,6 +98,16 @@ kubectl get pod -n polaris-system
 NAME                                  READY   STATUS    RESTARTS   AGE
 polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```
+
+## Annotations
+
+| Annotations name              | Annotations description                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| polarismesh.cn/sync           | Whether to synchronize this service to Polarismesh.TRUE synchronization, False is not synchronized, default is not synchronized |
+| polarismesh.cn/aliasService   | Synchronize K8S Service to PolarisMesh, and the name of the service alias created at the same time                              |
+| polarismesh.cn/aliasNamespace | The named space where the owner is located, with PolarisMesh.cn/aliasservice use                                                |
+
+
 
 ## Guidance
 

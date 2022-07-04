@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
 	"io"
 	"net"
 	"os"
@@ -31,6 +30,9 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/polarismesh/polaris-controller/common/log"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
+
 	"github.com/ghodss/yaml"
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
@@ -39,7 +41,6 @@ import (
 
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
-	"k8s.io/klog"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/batch/v2alpha1"
@@ -96,7 +97,7 @@ func validateAnnotations(annotations map[string]string) (err error) {
 				err = multierror.Append(err, fmt.Errorf("invalid value '%s' for annotation '%s': %v", value, name, e))
 			}
 		} else if strings.Contains(name, "istio") {
-			klog.Warningf("Potentially misspelled annotation '%s' with value '%s' encountered", name, value)
+			log.Warnf("Potentially misspelled annotation '%s' with value '%s' encountered", name, value)
 		}
 	}
 	return
@@ -110,14 +111,14 @@ const (
 	// InjectionPolicyDisabled specifies that the sidecar injector
 	// will not inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can enable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// true.
 	InjectionPolicyDisabled InjectionPolicy = "disabled"
 
 	// InjectionPolicyEnabled specifies that the sidecar injector will
 	// inject the sidecar into resources by default for the
 	// namespace(s) being watched. Resources can disable injection
-	// using the "sidecar.istio.io/inject" annotation with value of
+	// using the "sidecar.polarismesh.cn/inject" annotation with value of
 	// false.
 	InjectionPolicyEnabled InjectionPolicy = "enabled"
 )
@@ -286,7 +287,7 @@ func (wh *Webhook) getSidecarMode(namespace string) utils.SidecarMode {
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用默认dns的注入方式
-		klog.Errorf("get pod namespace %q failed: %v", namespace, err)
+		log.Errorf("get pod namespace %q failed: %v", namespace, err)
 		return utils.SidecarForMesh
 	} else {
 		if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
@@ -330,6 +331,8 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 	// http://yaml.org/type/bool.html
 	case "y", "yes", "true", "on":
 		inject = true
+	case "n", "no", "false", "off":
+		inject = false
 	case "":
 		useDefault = true
 	}
@@ -339,9 +342,9 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		for _, neverSelector := range config.NeverInjectSelector {
 			selector, err := metav1.LabelSelectorAsSelector(&neverSelector)
 			if err != nil {
-				klog.Warningf("Invalid selector for NeverInjectSelector: %v (%v)", neverSelector, err)
+				log.Warnf("Invalid selector for NeverInjectSelector: %v (%v)", neverSelector, err)
 			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				klog.Infof("Explicitly disabling injection for pod %s/%s due to pod labels matching NeverInjectSelector config map entry.",
+				log.Infof("Explicitly disabling injection for pod %s/%s due to pod labels matching NeverInjectSelector config map entry.",
 					metadata.Namespace, potentialPodName(metadata))
 				inject = false
 				useDefault = false
@@ -355,9 +358,9 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		for _, alwaysSelector := range config.AlwaysInjectSelector {
 			selector, err := metav1.LabelSelectorAsSelector(&alwaysSelector)
 			if err != nil {
-				klog.Warningf("Invalid selector for AlwaysInjectSelector: %v (%v)", alwaysSelector, err)
+				log.Warnf("Invalid selector for AlwaysInjectSelector: %v (%v)", alwaysSelector, err)
 			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				klog.Infof("Explicitly enabling injection for pod %s/%s due to pod labels matching AlwaysInjectSelector config map entry.",
+				log.Infof("Explicitly enabling injection for pod %s/%s due to pod labels matching AlwaysInjectSelector config map entry.",
 					metadata.Namespace, potentialPodName(metadata))
 				inject = true
 				useDefault = false
@@ -369,7 +372,7 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 	var required bool
 	switch config.Policy {
 	default: // InjectionPolicyOff
-		klog.Errorf("Illegal value for autoInject:%s, must be one of [%s,%s]. Auto injection disabled!",
+		log.Errorf("Illegal value for autoInject:%s, must be one of [%s,%s]. Auto injection disabled!",
 			config.Policy, InjectionPolicyDisabled, InjectionPolicyEnabled)
 		required = false
 	case InjectionPolicyDisabled:
@@ -396,7 +399,7 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		annotationStr += fmt.Sprintf("%s:%s ", name, value)
 	}
 
-	klog.Infof("Sidecar injection policy for %v/%v: namespacePolicy:%v useDefault:%v inject:%v required:%v %s",
+	log.Infof("Sidecar injection policy for %v/%v: namespacePolicy:%v useDefault:%v inject:%v required:%v %s",
 		metadata.Namespace,
 		potentialPodName(metadata),
 		config.Policy,
@@ -438,18 +441,18 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to Istio Pilot.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
 		podName := potentialPodName(metadata)
-		klog.Warningf("%q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to Istio Pilot",
+		log.Warnf("%q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to Istio Pilot",
 			metadata.Namespace+"/"+podName, corev1.DNSClusterFirst)
 	}
 
 	if err := validateAnnotations(metadata.GetAnnotations()); err != nil {
-		klog.Errorf("Injection failed due to invalid annotations: %v", err)
+		log.Errorf("Injection failed due to invalid annotations: %v", err)
 		return nil, "", err
 	}
 
 	values := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(valuesConfig), &values); err != nil {
-		klog.Infof("Failed to parse values config: %v [%v]\n", err, valuesConfig)
+		log.Infof("Failed to parse values config: %v [%v]\n", err, valuesConfig)
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
@@ -514,7 +517,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	if err := yaml.Unmarshal(bbuf.Bytes(), &sic); err != nil {
 		// This usually means an invalid injector template; we can't check
 		// the template itself because it is merely a string.
-		klog.Warningf("Failed to unmarshal template %v %s", err, bbuf.String())
+		log.Warnf("Failed to unmarshal template %v %s", err, bbuf.String())
 		return nil, "", multierror.Prefix(err, "failed parsing generated injected YAML (check Istio sidecar injector configuration):")
 	}
 
@@ -546,11 +549,11 @@ func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarT
 	temp := template.New("inject")
 	t, err := temp.Funcs(funcMap).Parse(tmplStr)
 	if err != nil {
-		klog.Infof("Failed to parse template: %v %v\n", err, tmplStr)
+		log.Infof("Failed to parse template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 	if err := t.Execute(&tmpl, &data); err != nil {
-		klog.Infof("Invalid template: %v %v\n", err, tmplStr)
+		log.Infof("Invalid template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 
@@ -812,7 +815,7 @@ func structToJSON(v interface{}) string {
 
 	ba, err := json.Marshal(v)
 	if err != nil {
-		klog.Warningf("Unable to marshal %v", v)
+		log.Warnf("Unable to marshal %v", v)
 		return "{}"
 	}
 
@@ -827,7 +830,7 @@ func protoToJSON(v proto.Message) string {
 	m := jsonpb.Marshaler{}
 	ba, err := m.MarshalToString(v)
 	if err != nil {
-		klog.Warningf("Unable to marshal %v: %v", v, err)
+		log.Warnf("Unable to marshal %v: %v", v, err)
 		return "{}"
 	}
 
@@ -841,7 +844,7 @@ func toJSON(m map[string]string) string {
 
 	ba, err := json.Marshal(m)
 	if err != nil {
-		klog.Warningf("Unable to marshal %v", m)
+		log.Warnf("Unable to marshal %v", m)
 		return "{}"
 	}
 
@@ -852,11 +855,11 @@ func fromJSON(j string) interface{} {
 	var m interface{}
 	err := json.Unmarshal([]byte(j), &m)
 	if err != nil {
-		klog.Warningf("Unable to unmarshal %s", j)
+		log.Warnf("Unable to unmarshal %s", j)
 		return "{}"
 	}
 
-	klog.Warningf("%v", m)
+	log.Warnf("%v", m)
 	return m
 }
 
@@ -873,7 +876,7 @@ func indent(spaces int, source string) string {
 func toYaml(value interface{}) string {
 	y, err := yaml.Marshal(value)
 	if err != nil {
-		klog.Warningf("Unable to marshal %v", value)
+		log.Warnf("Unable to marshal %v", value)
 		return ""
 	}
 

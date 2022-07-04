@@ -1,3 +1,20 @@
+/**
+ * Tencent is pleased to support the open source community by making polaris-go available.
+ *
+ * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+ *
+ * Licensed under the BSD 3-Clause License (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://opensource.org/licenses/BSD-3-Clause
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+ * CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
 package app
 
 import (
@@ -13,6 +30,7 @@ import (
 
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	"github.com/polarismesh/polaris-controller/common"
+	"github.com/polarismesh/polaris-controller/common/log"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -35,7 +53,6 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
-	"k8s.io/klog"
 
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
@@ -191,7 +208,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	common.PolarisServerAddress = polarisServerAddress
 	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
 
-	klog.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
+	log.Infof("load polaris server address: %s, polaris sync mode %s, polaris controller cluster name %s. \n",
 		polarisServerAddress, s.PolarisController.SyncMode, s.PolarisController.ClusterName)
 }
 
@@ -224,7 +241,7 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
 		Port:                flags.injectPort,
-		HealthCheckInterval: 3,
+		HealthCheckInterval: 3 * time.Second,
 		HealthCheckFile:     "/tmp/health",
 		Client: SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
@@ -255,7 +272,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	closeGrpcLog()
 
 	// To help debugging, immediately log version
-	klog.Infof("Version: %+v", version.Get())
+	log.Infof("Version: %+v", version.Get())
 
 	//Setup any healthz checks we will want to use.
 	var checks []healthz.HealthChecker
@@ -278,11 +295,11 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 		controllerContext, err := CreateControllerContext(c, rootClientBuilder, rootClientBuilder, ctx.Done())
 		if err != nil {
-			klog.Fatalf("error building controller context: %v", err)
+			log.Fatalf("error building controller context: %v", err)
 		}
 
 		if err := StartControllers(controllerContext, NewControllerInitializers(), unsecuredMux); err != nil {
-			klog.Fatalf("error starting controllers: %v", err)
+			log.Fatalf("error starting controllers: %v", err)
 		}
 
 		controllerContext.InformerFactory.Start(controllerContext.Stop)
@@ -343,12 +360,12 @@ func hostname() string {
 
 // StoppedLeading invoked when this node stops being the leader
 func StoppedLeading() {
-	klog.Infof("[INFO] %s: stopped leading", hostname())
+	log.Infof("[INFO] %s: stopped leading", hostname())
 }
 
 // NewLeader invoked when a new leader is elected
 func NewLeader(id string) {
-	klog.Infof("[INFO] %s: new leader: %s", hostname(), id)
+	log.Infof("[INFO] %s: new leader: %s", hostname(), id)
 }
 
 // InitFunc is used to launch a particular controller.  It may run additional "should I activate checks".
@@ -398,7 +415,7 @@ func CreateControllerContext(s *options.CompletedConfig,
 //
 //	debugHandler, err := controller(ctx)
 //	if err != nil {
-//		klog.Errorf("Error starting %q", ControllerName)
+//		log.Errorf("Error starting %q", ControllerName)
 //		return err
 //	}
 //
@@ -407,7 +424,7 @@ func CreateControllerContext(s *options.CompletedConfig,
 //		unsecuredMux.UnlistedHandle(basePath, http.StripPrefix(basePath, debugHandler))
 //		unsecuredMux.UnlistedHandlePrefix(basePath+"/", http.StripPrefix(basePath, debugHandler))
 //	}
-//	klog.Infof("Started %q", ControllerName)
+//	log.Infof("Started %q", ControllerName)
 //	return nil
 //}
 
@@ -417,10 +434,10 @@ func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, un
 	for controllerName, initFn := range controllers {
 		time.Sleep(wait.Jitter(ctx.ComponentConfig.Generic.ControllerStartInterval.Duration, ControllerStartJitter))
 
-		klog.V(1).Infof("Starting %q", controllerName)
+		log.Infof("Starting %q", controllerName)
 		debugHandler, err := initFn(ctx)
 		if err != nil {
-			klog.Errorf("Error starting %q", controllerName)
+			log.Errorf("Error starting %q", controllerName)
 			return err
 		}
 
@@ -429,7 +446,7 @@ func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, un
 			unsecuredMux.UnlistedHandle(basePath, http.StripPrefix(basePath, debugHandler))
 			unsecuredMux.UnlistedHandlePrefix(basePath+"/", http.StripPrefix(basePath, debugHandler))
 		}
-		klog.Infof("Started %q", controllerName)
+		log.Infof("Started %q", controllerName)
 	}
 
 	return nil
@@ -490,24 +507,24 @@ type ServiceSync struct {
 type SidecarInject struct {
 	Mode string `yaml:"mode"`
 }
-
 type controllerConfig struct {
-	ClusterName   string        `yaml:"clusterName"`
-	ServiceSync   ServiceSync   `yaml:"serviceSync"`
-	SidecarInject SidecarInject `yaml:"sidecarInject"`
+	Logger        map[string]*log.Options `yaml:"logger"`
+	ClusterName   string                  `yaml:"clusterName"`
+	ServiceSync   ServiceSync             `yaml:"serviceSync"`
+	SidecarInject SidecarInject           `yaml:"sidecarInject"`
 }
 
 func readConfFromFile() (*controllerConfig, error) {
 	buf, err := ioutil.ReadFile(MeshFile)
 	if err != nil {
-		klog.Errorf("read file error, %v", err)
+		log.Errorf("read file error, %v", err)
 		return nil, err
 	}
 
 	c := &controllerConfig{}
 	err = yaml.Unmarshal(buf, c)
 	if err != nil {
-		klog.Errorf("unmarshal config error, %v", err)
+		log.Errorf("unmarshal config error, %v", err)
 		return nil, err
 	}
 
