@@ -35,7 +35,9 @@ jobs:
         run: |
           echo "version is $VERSION"
           bash build.sh $VERSION
-          PACKAGE_NAME=$(ls | grep polaris-controller-release*.zip | sed -n '1p')
+          PACKAGE_NAME=$(ls polaris-controller-release*.zip | sed -n '1p')
+          echo ::set-output name=name::${PACKAGE_NAME}
+          PACKAGE_NAME=$(ls polaris-controller-release*.zip | sed -n '2p')
           echo ::set-output name=name::${PACKAGE_NAME}
 
       - name: Upload asset
