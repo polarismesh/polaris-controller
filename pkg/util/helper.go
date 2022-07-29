@@ -147,13 +147,13 @@ func IgnoreService(svc *v1.Service) bool {
 
 	// Port是否合法 不能不设置port
 	if len(svc.Spec.Ports) < 1 {
-		log.Infof("forbiden sync to polaris: Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
+		log.Infof("forbidden sync to polaris: Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
 		return true
 	}
 
 	// 没有设置 selector，polaris controller 不处理
 	if svc.Spec.Selector == nil {
-		log.Infof("forbiden sync to polaris: Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
+		log.Infof("forbidden sync to polaris: Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
 		return true
 	}
 
