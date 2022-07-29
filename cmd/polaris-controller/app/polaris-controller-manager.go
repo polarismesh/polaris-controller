@@ -173,6 +173,12 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 		os.Exit(1)
 	}
 
+	// 初始化日志
+	if err := log.Configure(config.Logger); err != nil {
+		fmt.Fprintf(os.Stderr, "init logger from config error %v \n", err)
+		os.Exit(1)
+	}
+
 	// 1. 配置 polaris server 地址
 	var polarisServerAddress string
 	// 优先使用启动参数指定的 polaris server 地址

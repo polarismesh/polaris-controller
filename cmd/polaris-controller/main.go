@@ -19,11 +19,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app"
-	"k8s.io/component-base/logs"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app"
+	"k8s.io/component-base/logs"
 )
 
 func main() {

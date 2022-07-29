@@ -2,15 +2,15 @@
 
 English | [中文](./README-zh.md)
 
-  - [Introduce](#introduce)
-  - [Kubernetes_Version](#kubernetes's-version)
-  - [Installation](#installation)
-  - [Annotations](#annotations)
-  - [Guidance](#guidance)
-    - [Full synchronization service](#full-synchronization-service)
-    - [On-demand sync service](#on-demand-sync-service)
-    - [Create service alias](#create-service-alias)
-    - [Sidecar auto inject](#sidecar-auto-inject)
+- [Introduce](#introduce)
+- [Kubernetes_Version](#kubernetes's-version)
+- [Installation](#installation)
+- [Annotations](#annotations)
+- [Guidance](#guidance)
+  - [Full synchronization service](#full-synchronization-service)
+  - [On-demand sync service](#on-demand-sync-service)
+  - [Create service alias](#create-service-alias)
+  - [Sidecar auto inject](#sidecar-auto-inject)
 
 ## Introduce
 
@@ -28,7 +28,8 @@ This document describes how to install and use polaris-controller in a K8s clust
 
 ## Kubernetes's Version
 
-- The current version that supports only ** kubernetes ** is (, 1.21]
+- To use with **kubernetes** [1.22 ,) use the deploy profile at ./deploy/kubernetes_v1.22
+- To user with **kubernetes** (, 1.21] use the deploy profile at ./deploy/kubernetes_v1.21
 
 ## Installation
 
@@ -107,8 +108,6 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 | polarismesh.cn/aliasService   | Synchronize K8S Service to PolarisMesh, and the name of the service alias created at the same time                              |
 | polarismesh.cn/aliasNamespace | The named space where the owner is located, with PolarisMesh.cn/aliasservice use                                                |
 
-
-
 ## Guidance
 
 ### Full synchronization service
@@ -137,7 +136,7 @@ data:
       mode: "demand"
 ```
 
-If you need to synchronize all services in a Namespace to Polaris, please add Polaris annotation on the Namespace, the configuration is as follows： 
+If you need to synchronize all services in a Namespace to Polaris, please add Polaris annotation on the Namespace, the configuration is as follows：
 
 ```yaml
 apiVersion: v1
@@ -148,7 +147,7 @@ metadata:
     polarismesh.cn/sync: "true"
 ```
 
-If you need to synchronize a Service to Polaris, please add the Polaris annotation on the Service, the configuration is as follows： 
+If you need to synchronize a Service to Polaris, please add the Polaris annotation on the Service, the configuration is as follows：
 
 ```yaml
 apiVersion: v1
@@ -160,7 +159,7 @@ metadata:
     polarismesh.cn/sync: "true"
 ```
 
-If you need to synchronize a Service in a Namespace to Polaris and exclude a Service, the configuration is as follows： 
+If you need to synchronize a Service in a Namespace to Polaris and exclude a Service, the configuration is as follows：
 
 ```yaml
 apiVersion: v1

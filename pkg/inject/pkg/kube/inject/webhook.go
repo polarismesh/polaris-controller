@@ -43,6 +43,7 @@ import (
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 
+	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,6 +61,7 @@ var (
 func init() {
 	_ = corev1.AddToScheme(runtimeScheme)
 	_ = v1beta1.AddToScheme(runtimeScheme)
+	_ = v1.AddToScheme(runtimeScheme)
 }
 
 const (
@@ -737,18 +739,22 @@ func injectionStatus(pod *corev1.Pod) *SidecarInjectionStatus {
 	}
 }
 
-func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
+func toV1AdmissionResponse(err error) *v1.AdmissionResponse {
+	return &v1.AdmissionResponse{Result: &metav1.Status{Message: err.Error()}}
+}
+
+func toV1beta1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	return &v1beta1.AdmissionResponse{Result: &metav1.Status{Message: err.Error()}}
 }
 
-// inject istio 核心准入注入逻辑
-func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+	log.Debugf("---------进入inject 核心逻辑 ------")
 	req := ar.Request
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		handleError(fmt.Sprintf("Could not unmarshal raw object: %v %s", err,
 			string(req.Object.Raw)))
-		return toAdmissionResponse(err)
+		return toV1beta1AdmissionResponse(err)
 	}
 
 	sidecarMode := wh.getSidecarMode(req.Namespace)
@@ -836,7 +842,7 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
-		return toAdmissionResponse(err)
+		return toV1beta1AdmissionResponse(err)
 	}
 
 	annotations := map[string]string{annotation.SidecarStatus.Name: iStatus}
@@ -849,7 +855,7 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 	patchBytes, err := wh.createPatch(sidecarMode, &pod, injectionStatus(&pod), annotations, spec, deployMeta.Name)
 	if err != nil {
 		handleError(fmt.Sprintf("AdmissionResponse: err=%v spec=%v\n", err, spec))
-		return toAdmissionResponse(err)
+		return toV1beta1AdmissionResponse(err)
 	}
 
 	log.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
@@ -859,6 +865,131 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 		Patch:   patchBytes,
 		PatchType: func() *v1beta1.PatchType {
 			pt := v1beta1.PatchTypeJSONPatch
+			return &pt
+		}(),
+	}
+	return &reviewResponse
+}
+
+// inject istio 核心准入注入逻辑
+func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
+	log.Debugf("---------进入inject 核心逻辑 ------")
+	req := ar.Request
+	var pod corev1.Pod
+	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
+		handleError(fmt.Sprintf("Could not unmarshal raw object: %v %s", err,
+			string(req.Object.Raw)))
+		return toV1AdmissionResponse(err)
+	}
+
+	sidecarMode := wh.getSidecarMode(req.Namespace)
+
+	// Deal with potential empty fields, e.g., when the pod is created by a deployment
+	podName := potentialPodName(&pod.ObjectMeta)
+	if pod.ObjectMeta.Namespace == "" {
+		pod.ObjectMeta.Namespace = req.Namespace
+	}
+
+	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
+		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
+	log.Infof("Object: %v", string(req.Object.Raw))
+	log.Infof("OldObject: %v", string(req.OldObject.Raw))
+
+	config := wh.sidecarMeshConfig
+	tempVersion := wh.sidecarMeshTemplateVersion
+	if sidecarMode == utils.SidecarForDns {
+		config = wh.sidecarDnsConfig
+		tempVersion = wh.sidecarDnsTemplateVersion
+	}
+
+	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
+		log.Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+		return &v1.AdmissionResponse{
+			Allowed: true,
+		}
+	}
+
+	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
+	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
+	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+	if wh.meshConfig.SdsUdsPath != "" {
+		var grp = int64(1337)
+		if pod.Spec.SecurityContext == nil {
+			pod.Spec.SecurityContext = &corev1.PodSecurityContext{
+				FSGroup: &grp,
+			}
+		} else {
+			pod.Spec.SecurityContext.FSGroup = &grp
+		}
+	}
+
+	// try to capture more useful namespace/name info for deployments, etc.
+	// TODO(dougreid): expand to enable lookup of OWNERs recursively a la kubernetesenv
+	deployMeta := pod.ObjectMeta.DeepCopy()
+	deployMeta.Namespace = req.Namespace
+
+	typeMetadata := &metav1.TypeMeta{
+		Kind:       "Pod",
+		APIVersion: "v1",
+	}
+
+	if len(pod.GenerateName) > 0 {
+		// if the pod name was generated (or is scheduled for generation), we can begin an investigation into the controlling reference for the pod.
+		var controllerRef metav1.OwnerReference
+		controllerFound := false
+		for _, ref := range pod.GetOwnerReferences() {
+			if *ref.Controller {
+				controllerRef = ref
+				controllerFound = true
+				break
+			}
+		}
+		if controllerFound {
+			typeMetadata.APIVersion = controllerRef.APIVersion
+			typeMetadata.Kind = controllerRef.Kind
+
+			// heuristic for deployment detection
+			if typeMetadata.Kind == "ReplicaSet" && strings.HasSuffix(controllerRef.Name, pod.Labels["pod-template-hash"]) {
+				name := strings.TrimSuffix(controllerRef.Name, "-"+pod.Labels["pod-template-hash"])
+				deployMeta.Name = name
+				typeMetadata.Kind = "Deployment"
+			} else {
+				deployMeta.Name = controllerRef.Name
+			}
+		}
+	}
+
+	if deployMeta.Name == "" {
+		// if we haven't been able to extract a deployment name, then just give it the pod name
+		deployMeta.Name = pod.Name
+	}
+
+	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
+	if err != nil {
+		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
+		return toV1AdmissionResponse(err)
+	}
+
+	annotations := map[string]string{annotation.SidecarStatus.Name: iStatus}
+
+	// Add all additional injected annotations
+	for k, v := range config.InjectedAnnotations {
+		annotations[k] = v
+	}
+
+	patchBytes, err := wh.createPatch(sidecarMode, &pod, injectionStatus(&pod), annotations, spec, deployMeta.Name)
+	if err != nil {
+		handleError(fmt.Sprintf("AdmissionResponse: err=%v spec=%v\n", err, spec))
+		return toV1AdmissionResponse(err)
+	}
+
+	log.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+
+	reviewResponse := v1.AdmissionResponse{
+		Allowed: true,
+		Patch:   patchBytes,
+		PatchType: func() *v1.PatchType {
+			pt := v1.PatchTypeJSONPatch
 			return &pt
 		}(),
 	}
@@ -886,24 +1017,46 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var reviewResponse *v1beta1.AdmissionResponse
-	ar := v1beta1.AdmissionReview{}
-	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-		handleError(fmt.Sprintf("Could not decode body: %v", err))
-		reviewResponse = toAdmissionResponse(err)
-	} else {
-		reviewResponse = wh.inject(&ar)
+	// gen response based on type of request
+	obj, gvk, err := deserializer.Decode(body, nil, nil)
+	if err != nil {
+		msg := fmt.Sprintf("Could not decode body: %v", err)
+		handleError(msg)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
 	}
 
-	response := v1beta1.AdmissionReview{}
-	if reviewResponse != nil {
-		response.Response = reviewResponse
-		if ar.Request != nil {
-			response.Response.UID = ar.Request.UID
+	var responseObj runtime.Object
+	switch *gvk {
+	case v1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
+		requestAdmissionReview, ok := obj.(*v1beta1.AdmissionReview)
+		if !ok {
+			log.Errorf("Expected v1beta1.AdmissionReview but got: %T", obj)
+			return
 		}
+		responseAdmissionReview := &v1beta1.AdmissionReview{}
+		responseAdmissionReview.SetGroupVersionKind(*gvk)
+		responseAdmissionReview.Response = wh.injectV1beta1(requestAdmissionReview)
+		responseAdmissionReview.Response.UID = requestAdmissionReview.Request.UID
+		responseObj = responseAdmissionReview
+	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
+		requestAdmissionReview, ok := obj.(*v1.AdmissionReview)
+		if !ok {
+			log.Errorf("Expected v1.AdmissionReview but got: %T", obj)
+			return
+		}
+		responseAdmissionReview := &v1.AdmissionReview{}
+		responseAdmissionReview.SetGroupVersionKind(*gvk)
+		responseAdmissionReview.Response = wh.injectV1(requestAdmissionReview)
+		responseAdmissionReview.Response.UID = requestAdmissionReview.Request.UID
+		responseObj = responseAdmissionReview
+	default:
+		msg := fmt.Sprintf("Unsupported group version kind: %v", gvk)
+		log.Error(msg)
+		http.Error(w, msg, http.StatusBadRequest)
 	}
 
-	resp, err := json.Marshal(response)
+	resp, err := json.Marshal(responseObj)
 	if err != nil {
 		log.Errorf("Could not encode response: %v", err)
 		http.Error(w, fmt.Sprintf("could not encode response: %v", err), http.StatusInternalServerError)

@@ -35,8 +35,10 @@ jobs:
         run: |
           echo "version is $VERSION"
           bash build.sh $VERSION
-          PACKAGE_NAME=$(ls | grep polaris-controller-release*.zip | sed -n '1p')
+          PACKAGE_NAME=$(ls polaris-controller-release*.zip | sed -n '1p')
           echo ::set-output name=name::${PACKAGE_NAME}
+          PACKAGE_NAME=$(ls polaris-controller-release*.zip | sed -n '2p')
+          echo ::set-output name=name1::${PACKAGE_NAME}
 
       - name: Upload asset
         uses: actions/upload-release-asset@v1
@@ -46,4 +48,14 @@ jobs:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./${{ steps.build.outputs.name }}
           asset_name: ${{ steps.build.outputs.name }}
+          asset_content_type: application/gzip
+
+      - name: Upload asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./${{ steps.build.outputs.name1 }}
+          asset_name: ${{ steps.build.outputs.name1 }}
           asset_content_type: application/gzip

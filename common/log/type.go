@@ -20,7 +20,7 @@ package log
 // logger type
 const (
 	// NamingLoggerName naming logger name, can use FindScope function to get the logger
-	SyncLoggerName = "naming"
+	SyncLoggerName = "sync"
 	// ConfigLoggerName config logger name, can use FindScope function to get the logger
 	InjectLoggerName = "inject"
 )
@@ -48,4 +48,3 @@ func SyncScope() *Scope {
 func InjectScope() *Scope {
 	return injectScope
 }
-
