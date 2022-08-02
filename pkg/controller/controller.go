@@ -703,7 +703,7 @@ func (p *PolarisController) syncService(key string) error {
 		operationService := service
 
 		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 service 打上 sync 标签
-		if op == ServiceKeyFlagAdd {
+		if op == ServiceKeyFlagAdd && !util.IsServiceSyncDisable(operationService) {
 			operationService = service.DeepCopy()
 			v12.SetMetaDataAnnotation(&operationService.ObjectMeta, util.PolarisSync, util.IsEnableSync)
 		}
@@ -774,6 +774,11 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		if !util.IsServiceSyncEnable(service) {
 			return nil
 		}
+	}
+
+	// service 包含sync注解，但是sync注解为false, 不需要创建对应的service
+	if util.IsServiceSyncDisable(service) {
+		return nil
 	}
 
 	createNsResponse, err := polarisapi.CreateNamespaces(service.Namespace)
@@ -896,7 +901,7 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		   * 仅需要同步对应的endpoint即可
 		   * 更新serviceCache缓存
 	*/
-	if (p.config.PolarisController.SyncMode != util.SyncModeDemand ||
+	if (p.config.PolarisController.SyncMode != util.SyncModeDemand && !util.IsServiceSyncDisable(cur) ||
 		p.config.PolarisController.SyncMode == util.SyncModeDemand && util.IsServiceSyncEnable(cur)) &&
 		util.IfNeedCreateServiceAlias(old, cur) {
 		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
