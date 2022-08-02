@@ -133,6 +133,11 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 		}
 	}
 
+	// service 显示标注sync为false不进行同步
+	if IsServiceSyncDisable(svc) {
+		return false
+	}
+
 	return true
 }
 
