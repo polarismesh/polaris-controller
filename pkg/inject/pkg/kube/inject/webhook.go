@@ -924,7 +924,6 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 			return &pt
 		}(),
 	}
-	log.Infof("------------patch----------", string(patchBytes))
 	return &reviewResponse
 }
 
@@ -1050,7 +1049,6 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 			return &pt
 		}(),
 	}
-	log.Infof("------------patch----------", string(patchBytes))
 	return &reviewResponse
 }
 
