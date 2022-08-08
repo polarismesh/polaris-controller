@@ -409,12 +409,33 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 			// so that envoy could fetch/pass k8s sa jwt and pass to sds server, which will be used to request workload identity for the pod.
 			add.VolumeMounts = append(add.VolumeMounts, saJwtSecretMount)
 		}
+
+		// mesh condition || dns condition
+		if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
+			log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
+				pod.Namespace, pod.Name)
+			if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
+				log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
+					pod.Namespace, pod.Name, err)
+			}
+		}
+
 		if add.Name == "polaris-sidecar" {
 			log.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
 			if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
 				log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
+
+			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
+			add.VolumeMounts = []corev1.VolumeMount{
+				{
+					Name:      utils.PolarisGoConfigFile,
+					SubPath:   "polaris.yaml",
+					MountPath: "/data/polaris.yaml",
+				},
+			}
 		}
+
 		value = add
 		path := basePath
 		if first {
@@ -439,9 +460,6 @@ type PolarisGoConfig struct {
 }
 
 func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
-	if _, err := wh.handlePolarisSidecarConfig(pod, add); err != nil {
-		return false, err
-	}
 
 	dnsMode := false
 	meshMode := true
@@ -534,6 +552,44 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 		},
 	}
 	return true, nil
+}
+
+// addPolarisConfigToInitContainerEnv 将polaris-sidecar 的配置注入到init container中
+func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) error {
+	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
+		Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
+	if err != nil {
+		log.Errorf("parse polaris-sidecar failed: %v", err)
+		return err
+	}
+	buf := new(bytes.Buffer)
+	if err := tmp.Execute(buf, PolarisGoConfig{
+		Name:          utils.PolarisGoConfigFile,
+		PolarisServer: common.PolarisServerGrpcAddress,
+	}); err != nil {
+		log.Errorf("parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	// 获取 polaris-sidecar 配置
+	configMap := corev1.ConfigMap{}
+	str := buf.String()
+	if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
+		log.Errorf("parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  utils.PolarisGoConfigFile,
+		Value: configMap.Data["polaris.yaml"],
+	})
+	return nil
 }
 
 func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (patch []rfc6902PatchOperation) {
@@ -868,6 +924,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 			return &pt
 		}(),
 	}
+	log.Infof("------------patch----------", string(patchBytes))
 	return &reviewResponse
 }
 
@@ -993,6 +1050,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 			return &pt
 		}(),
 	}
+	log.Infof("------------patch----------", string(patchBytes))
 	return &reviewResponse
 }
 
