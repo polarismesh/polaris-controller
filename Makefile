@@ -1,10 +1,9 @@
 .PHONY: build
 
-REGISTRY = mirrors.tencent.com/
-REPO = jackhli/polaris-controller
-SIDECAR_INIT_REPO = jackhli/polaris-sidecar-init
-ENVOY_INIT_REPO = jackhli/polaris-envoy-bootstrap-generator
-IMAGE_TAG = latest
+REGISTRY = ""
+REPO = polarismesh/polaris-controller
+SIDECAR_INIT_REPO = polarismesh/polaris-sidecar-init
+IMAGE_TAG = v1.2.2
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o ./bin/polaris-controller ./cmd/polaris-controller/main.go
@@ -15,14 +14,9 @@ build-image:
 build-sidecar-init:
 	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
-build-envoy-init:
-	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ENVOY_INIT_REPO):$(IMAGE_TAG)
-
-build-image: build build-image build-sidecar-init build-envoy-init
-
 push-image-withlogin: build build-image build-sidecar-init login push-image
 
-push-image: build build-image build-sidecar-init build-envoy-init
+push-image: build build-image build-sidecar-init
 	docker push $(REGISTRY)$(REPO):$(IMAGE_TAG)
 	docker tag $(REGISTRY)$(REPO):$(IMAGE_TAG) $(REGISTRY)$(REPO):latest
 	docker push $(REGISTRY)$(REPO):latest
