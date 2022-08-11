@@ -6,4 +6,5 @@ RUN apk update upgrade && \
 COPY bootstrap_template.yaml /bootstrap_template.yaml
 COPY start.sh /start.sh
 
+RUN ["chmod", "+x", "/start.sh"]
 ENTRYPOINT ["/bin/bash", "-c", "/start.sh"]

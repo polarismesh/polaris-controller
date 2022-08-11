@@ -90,11 +90,12 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
+        volumeMounts:
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       volumes:
         - name: polaris-client-config
-          configMap:
-            defaultMode: 420
-            name: polaris-client-config
+          emptyDir: {}
         - name: polaris-sidecar-iptables
           configMap:
             defaultMode: 420
@@ -185,6 +186,8 @@ data:
         volumeMounts:
           - mountPath: /var/lib/data
             name: envoy-bootstrap
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       - name: istio-init
         image: istio/proxyv2:1.11.4
         imagePullPolicy: IfNotPresent
@@ -229,9 +232,7 @@ data:
           runAsUser: 0
       volumes:
         - name: polaris-client-config
-          configMap:
-            defaultMode: 420
-            name: polaris-client-config
+          emptyDir: {}
         - name: envoy-bootstrap
           emptyDir: {}
 ---
