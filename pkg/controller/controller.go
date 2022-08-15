@@ -119,7 +119,8 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	endpointsInformer coreinformers.EndpointsInformer,
 	namespaceInformer coreinformers.NamespaceInformer,
 	client clientset.Interface,
-	config options.KubeControllerManagerConfiguration) *PolarisController {
+	config options.KubeControllerManagerConfiguration,
+) *PolarisController {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(log.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
@@ -180,7 +181,7 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
 
 	p.consumer, _ = api.NewConsumerAPIByConfig(cfg)
-	//获取默认配置
+	// 获取默认配置
 	p.provider, _ = api.NewProviderAPI()
 
 	p.config = config
@@ -207,7 +208,7 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(p.worker, p.workerLoopPeriod, stopCh)
 	}
 
-	//定时任务
+	// 定时任务
 	go p.MetricTracker(stopCh)
 
 	<-stopCh
@@ -270,7 +271,6 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 // onServiceAdd 在识别到是这个北极星类型service的时候进行处理
 func (p *PolarisController) onServiceAdd(obj interface{}) {
-
 	service := obj.(*v1.Service)
 
 	if !util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
@@ -289,7 +289,6 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 // onServiceDelete 在识别到是这个北极星类型service删除的时候，才进行处理
 // 判断这个是否是北极星service，如果是北极星service，就加入队列。
 func (p *PolarisController) onServiceDelete(obj interface{}) {
-
 	service := obj.(*v1.Service)
 
 	key, err := util.GenServiceQueueKey(service)
@@ -352,7 +351,6 @@ func (p *PolarisController) onEndpointAdd(obj interface{}) {
 }
 
 func (p *PolarisController) onNamespaceAdd(obj interface{}) {
-
 	namespace := obj.(*v1.Namespace)
 
 	if !util.IgnoreNamespace(namespace) {
@@ -377,7 +375,6 @@ func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 }
 
 func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
-
 	oldNs := old.(*v1.Namespace)
 	curNs := cur.(*v1.Namespace)
 
@@ -456,7 +453,6 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 }
 
 func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
-
 	// 先确认service是否是Polaris的，后再做比较，会提高效率。
 	oldEndpoint, ok1 := old.(*v1.Endpoints)
 	curEndpoint, ok2 := cur.(*v1.Endpoints)
@@ -505,7 +501,6 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 // 3. service sync 为空， namespace sync = true ，要处理
 // 4. service sync 为空， namespace sync 为空或者 false ，不处理
 func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, string, error) {
-
 	// 先检查 endpoints 的 service 上是否有注解
 	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
 	if err != nil {
@@ -582,19 +577,16 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 }
 
 func (p *PolarisController) enqueueNamespace(key string, namespace *v1.Namespace) {
-
 	p.queue.Add(key)
 }
 
 func (p *PolarisController) enqueueEndpoint(key string, endpoint *v1.Endpoints, eventType string) {
-
 	log.Infof("Endpoint %s is polaris, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
 	p.queue.Add(key)
 }
 
 func (p *PolarisController) enqueueService(key string, service *v1.Service, eventType string) {
-
 	log.Infof("Service %s is polaris type, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "Service").Inc()
 	p.queue.Add(key)
@@ -602,7 +594,6 @@ func (p *PolarisController) enqueueService(key string, service *v1.Service, even
 
 func (p *PolarisController) worker() {
 	for p.processNextWorkItem() {
-
 	}
 }
 
@@ -644,7 +635,6 @@ func (p *PolarisController) handleErr(err error, key interface{}) {
 }
 
 func (p *PolarisController) syncNamespace(key string) error {
-
 	log.Infof("Begin to sync namespaces %s", key)
 
 	createNsResponse, err := polarisapi.CreateNamespaces(key)
@@ -742,7 +732,6 @@ func (p *PolarisController) syncService(key string) error {
 }
 
 func (p *PolarisController) processDeleteService(service *v1.Service) (err error) {
-
 	log.Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
 
 	instances, err := p.getAllInstance(service)
@@ -760,7 +749,6 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 
 	// 平台接口
 	return p.deleteInstances(service, polarisIPs)
-
 }
 
 // processSyncNamespaceAndService 通过 k8s ns 和 service 到 polaris

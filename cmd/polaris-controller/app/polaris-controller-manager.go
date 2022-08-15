@@ -237,7 +237,6 @@ func closeGrpcLog() {
 }
 
 func initPolarisSidecarInjector(c *options.CompletedConfig) error {
-
 	parameters := inject.WebhookParameters{
 		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
 		MeshConfigFile:      MeshConfigFile,
@@ -269,7 +268,6 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 // Run runs the KubeControllerManagerOptions.  This should never exit.
 func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
-
 	// init sidecar injector
 	if err := initPolarisSidecarInjector(c); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -280,7 +278,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
 	log.Infof("Version: %+v", version.Get())
 
-	//Setup any healthz checks we will want to use.
+	// Setup any healthz checks we will want to use.
 	var checks []healthz.HealthChecker
 	var electionChecker *leaderelection.HealthzAdaptor
 	if c.ComponentConfig.Generic.LeaderElection.LeaderElect {
@@ -289,7 +287,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	}
 
 	unsecuredMux := options.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, checks...)
-	//handler := options.BuildHandlerChain(unsecuredMux)
+	// handler := options.BuildHandlerChain(unsecuredMux)
 
 	if err := options.RunServe(unsecuredMux, c.ComponentConfig.Generic.Port, 0, stopCh); err != nil {
 		return err
@@ -383,7 +381,8 @@ type InitFunc func(ctx ControllerContext) (debuggingHandler http.Handler, err er
 // controllers such as the cloud provider and clientBuilder. rootClientBuilder is only used for
 // the shared-informers client and token controller.
 func CreateControllerContext(s *options.CompletedConfig,
-	rootClientBuilder, clientBuilder ControllerClientBuilder, stop <-chan struct{}) (ControllerContext, error) {
+	rootClientBuilder, clientBuilder ControllerClientBuilder, stop <-chan struct{},
+) (ControllerContext, error) {
 	versionedClient := rootClientBuilder.ClientOrDie("shared-informers")
 	sharedInformers := informers.NewSharedInformerFactory(versionedClient, ResyncPeriod(s)())
 
@@ -436,7 +435,6 @@ func CreateControllerContext(s *options.CompletedConfig,
 
 // StartControllers starts a set of controllers with a specified ControllerContext
 func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, unsecuredMux *mux.PathRecorderMux) error {
-
 	for controllerName, initFn := range controllers {
 		time.Sleep(wait.Jitter(ctx.ComponentConfig.Generic.ControllerStartInterval.Duration, ControllerStartJitter))
 
@@ -463,7 +461,7 @@ func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, un
 func NewControllerInitializers() map[string]InitFunc {
 	controllers := map[string]InitFunc{}
 	controllers["polariscontroller"] = startPolarisController
-	//controllers["accoutingcontroller"] = startPolarisAccountController
+	// controllers["accoutingcontroller"] = startPolarisAccountController
 
 	return controllers
 }
@@ -495,6 +493,7 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 type ProxyMetadata struct {
 	ServerAddress string `yaml:"serverAddress"`
 	ClusterName   string `yaml:"clusterName"`
+	CAAddress     string `yaml:"caAddress"`
 }
 
 // DefaultConfig controller 用到的配置
