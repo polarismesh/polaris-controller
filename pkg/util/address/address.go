@@ -27,6 +27,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
 // Address 记录IP端口信息
@@ -53,19 +54,13 @@ type InstanceSet map[string]*Address
 //  "port": "80"
 //   }
 //  }]
-func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pods []*v1.Pod,
-	indexPortMap util.IndexPortMap) InstanceSet {
+func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
+	podLister corelisters.PodLister, indexPortMap util.IndexPortMap) InstanceSet {
 	instanceSet := make(InstanceSet)
 	workloadKind := service.GetAnnotations()[util.WorkloadKind]
 	defaultWeight := util.GetWeightFromService(service)
 	hasIndex := workloadKind == "statefulset" || workloadKind == "statefulsetplus" ||
 		workloadKind == "StatefulSetPlus" || workloadKind == "StatefulSet"
-
-	podMap := make(map[string]*v1.Pod, len(pods))
-	for i := range pods {
-		pod := pods[i]
-		podMap[pod.Status.PodIP] = pod
-	}
 
 	res, _ := json.Marshal(endpoint)
 	log.Infof("get endpoints %s", string(res))
@@ -80,7 +75,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pod
 				}
 			}
 
-			pod, ok := podMap[readyAds.IP]
+			pod, err := podLister.Pods(readyAds.TargetRef.Namespace).Get(readyAds.TargetRef.Name)
 
 			for _, port := range subset.Ports {
 				ipPort := fmt.Sprintf("%s-%d", readyAds.IP, port.Port)
@@ -102,11 +97,13 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pod
 					Protocol: port.Name,
 				}
 
-				if ok {
-					address.Metadata = pod.Labels
+				instanceSet[ipPort] = address
+
+				if err != nil {
+					continue
 				}
 
-				instanceSet[ipPort] = address
+				address.Metadata = pod.Labels
 			}
 		}
 
@@ -120,7 +117,8 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pod
 				}
 			}
 
-			pod, ok := podMap[notReadyAds.IP]
+			pod, err := podLister.Pods(notReadyAds.TargetRef.Namespace).
+				Get(notReadyAds.TargetRef.Name)
 
 			for _, port := range subset.Ports {
 				ipPort := fmt.Sprintf("%s-%d", notReadyAds.IP, port.Port)
@@ -141,11 +139,13 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints, pod
 					Protocol: port.Name,
 				}
 
-				if ok {
-					address.Metadata = pod.Labels
+				instanceSet[ipPort] = address
+
+				if err != nil {
+					continue
 				}
 
-				instanceSet[ipPort] = address
+				address.Metadata = pod.Labels
 			}
 		}
 	}
