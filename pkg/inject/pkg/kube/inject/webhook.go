@@ -426,13 +426,11 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 			}
 
 			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
-			add.VolumeMounts = []corev1.VolumeMount{
-				{
-					Name:      utils.PolarisGoConfigFile,
-					SubPath:   "polaris.yaml",
-					MountPath: "/data/polaris.yaml",
-				},
-			}
+			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
+				Name:      utils.PolarisGoConfigFile,
+				SubPath:   "polaris.yaml",
+				MountPath: "/data/polaris.yaml",
+			})
 		}
 
 		value = add
@@ -461,9 +459,6 @@ type PolarisGoConfig struct {
 func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
 	err := wh.ensureRootCertExist(pod.Namespace)
 	if err != nil {
-		return false, err
-	}
-	if _, err := wh.handlePolarisSidecarConfig(pod, add); err != nil {
 		return false, err
 	}
 
