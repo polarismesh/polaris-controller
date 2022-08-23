@@ -33,6 +33,8 @@ const (
 	PolarisCustomVersion = "polarismesh.cn/customVersion"
 
 	PolarisSidecarMode = "polaris-sidecar-mode"
+
+	PolarisTLSMode = "polarismesh.cn/tls-mode"
 )
 
 const (
@@ -51,6 +53,12 @@ const (
 	SyncModeDemand = "demand"
 	IsEnableSync   = "true"
 	IsDisableSync  = "false"
+)
+
+const (
+	MTLSModeNone       = "none"
+	MTLSModeStrict     = "strict"
+	MTLSModePermissive = "permissive"
 )
 
 // PolarisSystemMetaSet 由 polaris controller 决定的 meta，用户如果在 custom meta 中设置了，不会生效
@@ -84,6 +92,10 @@ const (
 const (
 	PolarisGoConfigFileTpl string = "polaris-client-config-tpl"
 	PolarisGoConfigFile    string = "polaris-client-config"
+)
+
+const (
+	PolarisSidecarRootCert string = "polaris-sidecar-secret"
 )
 
 type SidecarMode int

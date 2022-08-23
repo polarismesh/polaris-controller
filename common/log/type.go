@@ -31,7 +31,7 @@ var (
 )
 
 func allLoggerTypes() []string {
-	return []string{SyncLoggerName, InjectLoggerName}
+	return []string{SyncLoggerName, InjectLoggerName, DefaultLoggerName}
 }
 
 // DefaultScope default logging scope handler

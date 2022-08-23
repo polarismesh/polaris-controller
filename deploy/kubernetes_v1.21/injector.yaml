@@ -116,7 +116,7 @@ data:
     template: |
       containers:
       - name: envoy
-        image: envoyproxy/envoy:v1.18.3
+        image: envoyproxy/envoy-contrib:v1.21.4
         imagePullPolicy: Always
         resources:
         {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) }}
@@ -149,12 +149,14 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
+        - name: sds
+          mountPath: /var/run/polaris/mtls
       - image: polarismesh/polaris-sidecar:latest
         name: polaris-sidecar
+        imagePullPolicy: Always
         securityContext:
           runAsUser: 1337
           runAsGroup: 1337
-        imagePullPolicy: Always
         command: ["./polaris-sidecar"]
         resources:
           limits:
@@ -164,17 +166,23 @@ data:
             cpu: 100m
             memory: 50Mi
         volumeMounts:
-          - mountPath: /root/polaris
-            defaultMode: 777
-            name: polaris-dir
-          - mountPath: /root/log
-            defaultMode: 777
-            name: polaris-log
+          - name: sds
+            mountPath: /var/run/polaris/mtls
+          {{ if ne ( index .ObjectMeta.Labels `polarismesh.cn/tls-mode`) "none" }}
+          - name: root-ca
+            mountPath: /etc/polaris-sidecar/certs
+          {{ end }}
       initContainers:
       - name: polaris-bootstrap-writer
         image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:v1.0.0
         imagePullPolicy: Always
         env:
+        {{if ne ( index .ObjectMeta.Labels `polarismesh.cn/tls-mode`) "none"}}
+        - name: METADATA
+          value: {{ toJSON .ObjectMeta.Labels | printf "%q" }}
+        - name: TLS_MODE
+          value: "{{index .ObjectMeta.Labels `polarismesh.cn/tls-mode`}}"
+        {{end}}
         - name: NAMESPACE
           valueFrom:
             fieldRef:
@@ -195,14 +203,23 @@ data:
           - istio-iptables
           - -p
           - "15001"
+          {{ if ne ( index .ObjectMeta.Labels `polarismesh.cn/tls-mode`) "none"}}
+          - "-z"
+          - "15006"
+          {{end }}
           - -u
           - "1337"
           - -m
           - REDIRECT
           - -i
           - "10.4.4.4/32"
+          {{ if ne ( index .ObjectMeta.Labels `polarismesh.cn/tls-mode`) "none"}}
+          - -b
+          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) }}"
+          {{else}}
           - -b
           - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) }}"
+          {{end}}
           - -x
           - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) }}"
           - -d
@@ -231,6 +248,16 @@ data:
           runAsNonRoot: false
           runAsUser: 0
       volumes:
+        - name: sds
+          emptyDir: {}
+        {{ if ne ( index .ObjectMeta.Labels `polarismesh.cn/tls-mode`) "none"}}
+        - name: root-ca
+          secret: 
+            secretName: polaris-sidecar-secret
+            items:
+            - key: root-cert
+              path: rootca.pem
+        {{ end }}
         - name: polaris-client-config
           emptyDir: {}
         - name: envoy-bootstrap

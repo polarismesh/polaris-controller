@@ -436,8 +436,8 @@ func flippedContains(needle, haystack string) bool {
 // InjectionData renders sidecarTemplate with valuesConfig.
 func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *metav1.TypeMeta, deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
 	metadata *metav1.ObjectMeta, proxyConfig *meshconfig.ProxyConfig, meshConfig *meshconfig.MeshConfig) (
-	*SidecarInjectionSpec, string, error) {
-
+	*SidecarInjectionSpec, string, error,
+) {
 	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to Istio Pilot.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
 		podName := potentialPodName(metadata)
@@ -455,6 +455,15 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		log.Infof("Failed to parse values config: %v [%v]\n", err, valuesConfig)
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
+
+	tlsMode := "none"
+	if mode, ok := metadata.Labels["polarismesh.cn/tls-mode"]; ok {
+		mode = strings.ToLower(mode)
+		if mode == "strict" || mode == "permissive" {
+			tlsMode = mode
+		}
+	}
+	metadata.Labels["polarismesh.cn/tls-mode"] = tlsMode
 
 	data := SidecarTemplateData{
 		TypeMeta:       typeMetadata,
@@ -712,7 +721,7 @@ func IntoObject(sidecarTemplate string, valuesConfig string, meshconfig *meshcon
 		return out, nil
 	}
 
-	//skip injection for injected pods
+	// skip injection for injected pods
 	if len(podSpec.Containers) > 1 {
 		for _, c := range podSpec.Containers {
 			if c.Name == ProxyContainerName {
@@ -747,15 +756,13 @@ func IntoObject(sidecarTemplate string, valuesConfig string, meshconfig *meshcon
 	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
 	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
 	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
-	if meshconfig.SdsUdsPath != "" {
-		var grp = int64(1337)
-		if podSpec.SecurityContext == nil {
-			podSpec.SecurityContext = &corev1.PodSecurityContext{
-				FSGroup: &grp,
-			}
-		} else {
-			podSpec.SecurityContext.FSGroup = &grp
+	grp := int64(1337)
+	if podSpec.SecurityContext == nil {
+		podSpec.SecurityContext = &corev1.PodSecurityContext{
+			FSGroup: &grp,
 		}
+	} else {
+		podSpec.SecurityContext.FSGroup = &grp
 	}
 
 	if metadata.Annotations == nil {
@@ -956,7 +963,6 @@ func potentialPodName(metadata *metav1.ObjectMeta) string {
 // values need to be inserted as Pod annotations so the CNI will apply
 // the proper redirection rules.
 func rewriteCniPodSpec(annotations map[string]string, spec *SidecarInjectionSpec) {
-
 	if spec == nil {
 		return
 	}

@@ -99,7 +99,6 @@ type Webhook struct {
 // of the config and endpoint cache.
 //nolint directives: interfacer
 func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Config, *Config, *meshconfig.MeshConfig, string, error) {
-
 	// 处理 polaris-sidecar mesh 模式的注入
 	meshData, err := ioutil.ReadFile(injectMeshFile)
 	if err != nil {
@@ -312,7 +311,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			log.Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
-			if err := ioutil.WriteFile(wh.healthCheckFile, content, 0644); err != nil {
+			if err := ioutil.WriteFile(wh.healthCheckFile, content, 0o644); err != nil {
 				log.Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
 			}
 		case <-stop:
@@ -427,13 +426,11 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 			}
 
 			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
-			add.VolumeMounts = []corev1.VolumeMount{
-				{
-					Name:      utils.PolarisGoConfigFile,
-					SubPath:   "polaris.yaml",
-					MountPath: "/data/polaris.yaml",
-				},
-			}
+			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
+				Name:      utils.PolarisGoConfigFile,
+				SubPath:   "polaris.yaml",
+				MountPath: "/data/polaris.yaml",
+			})
 		}
 
 		value = add
@@ -460,6 +457,10 @@ type PolarisGoConfig struct {
 }
 
 func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
+	err := wh.ensureRootCertExist(pod.Namespace)
+	if err != nil {
+		return false, err
+	}
 
 	dnsMode := false
 	meshMode := true
@@ -483,6 +484,10 @@ func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *c
 		"-o",
 		buildLabelsStr(pod.Labels),
 	}
+	if pod.Labels[utils.PolarisTLSMode] != utils.MTLSModeNone {
+		// enable mtls
+		add.Args = append(add.Args, "--mtls-enabled", "true")
+	}
 
 	return true, nil
 }
@@ -497,7 +502,36 @@ func buildLabelsStr(labels map[string]string) string {
 	return strings.Join(tags, ",")
 }
 
-//handlePolarisSidecarConfig 处理 polaris-sidecar 的配置注入逻辑
+// currently we assume that polaris-security deploy into polaris-system namespace.
+const rootNamespace = "polaris-system"
+
+// ensureRootCertExist ensure that we have rootca pem secret in current namespace
+func (wh *Webhook) ensureRootCertExist(ns string) error {
+	_, err := wh.k8sClient.CoreV1().Secrets(ns).Get(utils.PolarisSidecarRootCert, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+	if !errors.IsNotFound(err) {
+		return err
+	}
+	secret, err := wh.k8sClient.CoreV1().Secrets(rootNamespace).Get(utils.PolarisSidecarRootCert, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	// copy all data from root namespace rootca secret.
+	s := &corev1.Secret{}
+	s.Data = secret.Data
+	s.StringData = secret.StringData
+	s.Name = utils.PolarisSidecarRootCert
+	_, err = wh.k8sClient.CoreV1().Secrets(ns).Create(s)
+	if errors.IsAlreadyExists(err) || errors.IsConflict(err) {
+		return nil
+	}
+	return err
+}
+
+// handlePolarisSidecarConfig 处理 polaris-sidecar 的配置注入逻辑
 func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Container) (bool, error) {
 	_, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Get(utils.PolarisGoConfigFile, metav1.GetOptions{})
 	if err != nil {
@@ -526,7 +560,7 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 				return false, err
 			}
 
-			//挂载 polaris.yaml 文件
+			// 挂载 polaris.yaml 文件
 			configMap := corev1.ConfigMap{}
 			str := buf.String()
 			if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
@@ -543,14 +577,12 @@ func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Conta
 		}
 	}
 
-	//将刚刚创建好的 configmap 挂载到 pod 的 container 中去
-	add.VolumeMounts = []corev1.VolumeMount{
-		{
-			Name:      utils.PolarisGoConfigFile,
-			SubPath:   "polaris.yaml",
-			MountPath: "/data/polaris.yaml",
-		},
-	}
+	// 将刚刚创建好的 configmap 挂载到 pod 的 container 中去
+	add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
+		Name:      utils.PolarisGoConfigFile,
+		SubPath:   "polaris.yaml",
+		MountPath: "/data/polaris.yaml",
+	})
 	return true, nil
 }
 
@@ -727,8 +759,8 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 }
 
 func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, prevStatus *SidecarInjectionStatus, annotations map[string]string, sic *SidecarInjectionSpec,
-	workloadName string) ([]byte, error) {
-
+	workloadName string,
+) ([]byte, error) {
 	var patch []rfc6902PatchOperation
 
 	// Remove any containers previously injected by kube-inject using
@@ -844,7 +876,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
 	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
 	if wh.meshConfig.SdsUdsPath != "" {
-		var grp = int64(1337)
+		grp := int64(1337)
 		if pod.Spec.SecurityContext == nil {
 			pod.Spec.SecurityContext = &corev1.PodSecurityContext{
 				FSGroup: &grp,
@@ -894,8 +926,8 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		// if we haven't been able to extract a deployment name, then just give it the pod name
 		deployMeta.Name = pod.Name
 	}
-
-	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
+	proxyCfg := wh.meshConfig.DefaultConfig
+	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg, wh.meshConfig) // nolint: lll
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1beta1AdmissionResponse(err)
@@ -969,7 +1001,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
 	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
 	if wh.meshConfig.SdsUdsPath != "" {
-		var grp = int64(1337)
+		grp := int64(1337)
 		if pod.Spec.SecurityContext == nil {
 			pod.Spec.SecurityContext = &corev1.PodSecurityContext{
 				FSGroup: &grp,
