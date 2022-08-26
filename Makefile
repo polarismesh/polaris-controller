@@ -26,4 +26,4 @@ push-image: build build-image build-sidecar-init build-envoy-sidecar-init
         docker push $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
 login:
-        @docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)
+	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)
