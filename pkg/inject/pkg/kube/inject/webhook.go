@@ -410,27 +410,30 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 		}
 
 		// mesh condition || dns condition
-		if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
-			log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
-				pod.Namespace, pod.Name)
-			if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
-				log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
-					pod.Namespace, pod.Name, err)
-			}
-		}
+		//if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
+		//	log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
+		//		pod.Namespace, pod.Name)
+		//	if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
+		//		log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
+		//			pod.Namespace, pod.Name, err)
+		//	}
+		//}
 
 		if add.Name == "polaris-sidecar" {
 			log.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
-			if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
+			//if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
+			//	log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
+			//}
+			if _, err := wh.handlePolarisSidecarEnvInject(sidecarMode, pod, &add); err != nil {
 				log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
 
 			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
-			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
-				Name:      utils.PolarisGoConfigFile,
-				SubPath:   "polaris.yaml",
-				MountPath: "/data/polaris.yaml",
-			})
+			//add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
+			//	Name:      utils.PolarisGoConfigFile,
+			//	SubPath:   "polaris.yaml",
+			//	MountPath: "/data/polaris.yaml",
+			//})
 		}
 
 		value = add
@@ -454,6 +457,35 @@ type PolarisGoConfig struct {
 	Name          string
 	Namespace     string
 	PolarisServer string
+}
+
+func (wh *Webhook) handlePolarisSidecarEnvInject(
+	sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
+	err := wh.ensureRootCertExist(pod.Namespace)
+	if err != nil {
+		return false, err
+	}
+	envMap := make(map[string]string)
+	envMap[EnvSidecarPort] = strconv.Itoa(ValueListenPort)
+	envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(true)
+	if sidecarMode == utils.SidecarForDns {
+		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
+		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
+	} else {
+		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
+		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
+	}
+	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
+	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
+	if pod.Annotations[utils.PolarisTLSMode] != utils.MTLSModeNone {
+		envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
+	}
+	log.Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
+		pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode), envMap)
+	for k, v := range envMap {
+		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
+	}
+	return true, nil
 }
 
 func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
