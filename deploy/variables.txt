@@ -1,0 +1,3 @@
+POLARIS_HOST=polaris.polaris-system
+CONTROLLER_VERSION=##VERSION##
+SIDECAR_VERSION=v1.3.0-alpha.3

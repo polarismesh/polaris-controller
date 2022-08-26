@@ -12,6 +12,9 @@ else
 fi
 workdir=$(dirname $(realpath $0))
 
+sed -i "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
+cat "$workdir"/deploy/variables.txt
+
 folder_name="polaris-controller-release_${version}.k8s1.21"
 pkg_name="${folder_name}.zip"
 

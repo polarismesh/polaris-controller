@@ -34,7 +34,7 @@ data:
 
     template: |
       containers:
-      - image: polarismesh/polaris-sidecar:latest
+      - image: polarismesh/polaris-sidecar:#SIDECAR_VERSION#
         name: polaris-sidecar
         securityContext:
           allowPrivilegeEscalation: true
@@ -67,7 +67,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-sidecar-init
-        image: polarismesh/polaris-sidecar-init:latest
+        image: polarismesh/polaris-sidecar-init:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         command: ["./start.sh"]
         resources:
@@ -90,12 +90,7 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
-        volumeMounts:
-          - mountPath: /data/polaris-client-config
-            name: polaris-client-config
       volumes:
-        - name: polaris-client-config
-          emptyDir: {}
         - name: polaris-sidecar-iptables
           configMap:
             defaultMode: 420
@@ -149,7 +144,7 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
-      - image: polarismesh/polaris-sidecar:latest
+      - image: polarismesh/polaris-sidecar:#SIDECAR_VERSION#
         name: polaris-sidecar
         securityContext:
           runAsUser: 1337
@@ -172,7 +167,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-bootstrap-writer
-        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:v1.0.0
+        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
         - name: NAMESPACE

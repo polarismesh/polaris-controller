@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: polaris-controller
-          image: polarismesh/polaris-controller:v1.2.3
+          image: polarismesh/polaris-controller:#CONTROLLER_VERSION#
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
                  "--v=4",

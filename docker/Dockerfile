@@ -11,4 +11,3 @@ RUN mkdir -p /polaris-controller/log && \
 
 WORKDIR /polaris-controller
 COPY ./bin/polaris-controller /polaris-controller/polaris-controller
-COPY ./docker/polaris.yaml /polaris-controller/polaris.yaml

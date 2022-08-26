@@ -20,8 +20,6 @@ function prepare_envoy() {
       > "${BOOTSTRAP_INSTANCE}"
 }
 
-printenv polaris-client-config > /data/polaris-client-config/polaris.yaml
-
 prepare_envoy
 
 if  [[ -v DEBUG_MODE ]]
