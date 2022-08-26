@@ -13,10 +13,10 @@ function replaceVar() {
   done
 }
 
-varFile="../variables.txt"
+varFile="variables.txt"
 if [ ! -f "$varFile" ]; then
-  echo "../variables.txt not exists"
-  exit(1)
+  echo "variables.txt not exists"
+  exit 1
 fi
 
 export -f replaceVar
