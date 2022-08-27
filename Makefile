@@ -3,6 +3,7 @@
 REGISTRY = ""
 REPO = polarismesh/polaris-controller
 SIDECAR_INIT_REPO = polarismesh/polaris-sidecar-init
+ENVOY_SIDECAR_INIT_REPO = polarismesh/polaris-envoy-bootstrap-generator
 IMAGE_TAG = v1.2.2
 
 build:
@@ -14,16 +15,15 @@ build-image:
 build-sidecar-init:
 	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
+build-envoy-sidecar-init:
+	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
+
 push-image-withlogin: build build-image build-sidecar-init login push-image
 
-push-image: build build-image build-sidecar-init
+push-image: build build-image build-sidecar-init build-envoy-sidecar-init
 	docker push $(REGISTRY)$(REPO):$(IMAGE_TAG)
-	docker tag $(REGISTRY)$(REPO):$(IMAGE_TAG) $(REGISTRY)$(REPO):latest
-	docker push $(REGISTRY)$(REPO):latest
-
 	docker push $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
-	docker tag $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG) $(REGISTRY)$(SIDECAR_INIT_REPO):latest
-	docker push $(REGISTRY)$(SIDECAR_INIT_REPO):latest
+	docker push $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
 login:
 	@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)

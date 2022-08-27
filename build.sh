@@ -12,6 +12,9 @@ else
 fi
 workdir=$(dirname $(realpath $0))
 
+sed -i "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
+cat "$workdir"/deploy/variables.txt
+
 folder_name="polaris-controller-release_${version}.k8s1.21"
 pkg_name="${folder_name}.zip"
 
@@ -23,7 +26,8 @@ rm -f "${pkg_name}"
 
 # 打包
 mkdir -p ${folder_name}
-cp -r deploy/kubernetes_v1.21 ${folder_name}
+cp -r deploy/kubernetes_v1.21/* ${folder_name}
+cp deploy/variables.txt ${folder_name}
 zip -r "${pkg_name}" ${folder_name}
 #md5sum ${pkg_name} > "${pkg_name}.md5sum"
 
@@ -44,7 +48,8 @@ rm -f "${pkg_name}"
 
 # 打包
 mkdir -p ${folder_name}
-cp -r deploy/kubernetes_v1.22 ${folder_name}
+cp -r deploy/kubernetes_v1.22/* ${folder_name}
+cp deploy/variables.txt ${folder_name}
 zip -r "${pkg_name}" ${folder_name}
 #md5sum ${pkg_name} > "${pkg_name}.md5sum"
 
