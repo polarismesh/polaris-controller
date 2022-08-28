@@ -15,7 +15,6 @@
 package inject
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
@@ -27,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/polarismesh/polaris-controller/common/log"
@@ -36,8 +34,6 @@ import (
 
 	gyaml "github.com/ghodss/yaml"
 	"github.com/howeyc/fsnotify"
-	"k8s.io/apimachinery/pkg/util/yaml"
-
 	"github.com/polarismesh/polaris-controller/common"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
@@ -485,42 +481,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	for k, v := range envMap {
 		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
 	}
-	return true, nil
-}
-
-func (wh *Webhook) handlePolarisSideInject(sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
-	err := wh.ensureRootCertExist(pod.Namespace)
-	if err != nil {
-		return false, err
-	}
-
-	dnsMode := false
-	meshMode := true
-	if sidecarMode == utils.SidecarForDns {
-		dnsMode = true
-		meshMode = false
-	}
-
-	log.Infof("pod=[%s, %s] inject polaris-sidecar mode %s", pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode))
-
-	add.Args = []string{
-		"start",
-		"-p",
-		"15053",
-		"-r",
-		"true",
-		"-d",
-		strconv.FormatBool(dnsMode),
-		"-m",
-		strconv.FormatBool(meshMode),
-		"-o",
-		buildLabelsStr(pod.Labels),
-	}
-	if pod.Labels[utils.PolarisTLSMode] != utils.MTLSModeNone {
-		// enable mtls
-		add.Args = append(add.Args, "--mtls-enabled", "true")
-	}
-
+	add.Args = []string{"start"}
 	return true, nil
 }
 
@@ -561,99 +522,6 @@ func (wh *Webhook) ensureRootCertExist(ns string) error {
 		return nil
 	}
 	return err
-}
-
-// handlePolarisSidecarConfig 处理 polaris-sidecar 的配置注入逻辑
-func (wh *Webhook) handlePolarisSidecarConfig(pod *corev1.Pod, add *corev1.Container) (bool, error) {
-	_, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Get(utils.PolarisGoConfigFile, metav1.GetOptions{})
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			log.Errorf("get polaris-sidecar's configmap=%s namespace %q failed: %v", utils.PolarisGoConfigFile, pod.Namespace, err)
-			return false, err
-		}
-		if errors.IsNotFound(err) {
-			cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
-			if err != nil {
-				log.Errorf("parse polaris-sidecar failed: %v", err)
-				return false, err
-			}
-			tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
-			if err != nil {
-				log.Errorf("parse polaris-sidecar failed: %v", err)
-				return false, err
-			}
-			buf := new(bytes.Buffer)
-			if err := tmp.Execute(buf, PolarisGoConfig{
-				Name:          utils.PolarisGoConfigFile,
-				Namespace:     pod.Namespace,
-				PolarisServer: common.PolarisServerGrpcAddress,
-			}); err != nil {
-				log.Errorf("parse polaris-sidecar failed: %v", err)
-				return false, err
-			}
-
-			// 挂载 polaris.yaml 文件
-			configMap := corev1.ConfigMap{}
-			str := buf.String()
-			if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
-				log.Errorf("parse polaris-sidecar failed: %v", err)
-				return false, err
-			}
-
-			if _, err := wh.k8sClient.CoreV1().ConfigMaps(pod.Namespace).Create(&configMap); err != nil {
-				if !errors.IsAlreadyExists(err) {
-					log.Errorf("create polaris-sidecar configmap for %s failed: %v", pod.Name, err)
-					return false, err
-				}
-			}
-		}
-	}
-
-	// 将刚刚创建好的 configmap 挂载到 pod 的 container 中去
-	add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
-		Name:      utils.PolarisGoConfigFile,
-		SubPath:   "polaris.yaml",
-		MountPath: "/data/polaris.yaml",
-	})
-	return true, nil
-}
-
-// addPolarisConfigToInitContainerEnv 将polaris-sidecar 的配置注入到init container中
-func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) error {
-	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
-		Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
-	if err != nil {
-		log.Errorf("parse polaris-sidecar failed: %v", err)
-		return err
-	}
-
-	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
-	if err != nil {
-		log.Errorf("parse polaris-sidecar failed: %v", err)
-		return err
-	}
-	buf := new(bytes.Buffer)
-	if err := tmp.Execute(buf, PolarisGoConfig{
-		Name:          utils.PolarisGoConfigFile,
-		PolarisServer: common.PolarisServerGrpcAddress,
-	}); err != nil {
-		log.Errorf("parse polaris-sidecar failed: %v", err)
-		return err
-	}
-
-	// 获取 polaris-sidecar 配置
-	configMap := corev1.ConfigMap{}
-	str := buf.String()
-	if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
-		log.Errorf("parse polaris-sidecar failed: %v", err)
-		return err
-	}
-
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  utils.PolarisGoConfigFile,
-		Value: configMap.Data["polaris.yaml"],
-	})
-	return nil
 }
 
 func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (patch []rfc6902PatchOperation) {
