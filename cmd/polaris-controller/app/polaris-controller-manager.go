@@ -478,14 +478,18 @@ func ResyncPeriod(c *options.CompletedConfig) func() time.Duration {
 
 // startPolarisController
 func startPolarisController(ctx ControllerContext) (http.Handler, error) {
-	go polarisController.NewPolarisController(
+	handler, err := polarisController.NewPolarisController(
 		ctx.InformerFactory.Core().V1().Pods(),
 		ctx.InformerFactory.Core().V1().Services(),
 		ctx.InformerFactory.Core().V1().Endpoints(),
 		ctx.InformerFactory.Core().V1().Namespaces(),
 		ctx.ClientBuilder.ClientOrDie(ControllerName),
 		ctx.ComponentConfig,
-	).Run(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop)
+	)
+	if err != nil {
+		return nil, err
+	}
+	go handler.Run(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop)
 	return nil, nil
 }
 
