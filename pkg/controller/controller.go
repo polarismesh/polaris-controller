@@ -119,7 +119,7 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	namespaceInformer coreinformers.NamespaceInformer,
 	client clientset.Interface,
 	config options.KubeControllerManagerConfiguration,
-) *PolarisController {
+) (*PolarisController, error) {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(log.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
@@ -179,12 +179,19 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	cfg.GetGlobal().GetServerConnector().SetMessageTimeout(time.Second * 10)
 	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
 
-	p.consumer, _ = api.NewConsumerAPIByConfig(cfg)
+	var err error
+	if p.consumer, err = api.NewConsumerAPIByConfig(cfg); err != nil {
+		log.Errorf("fail to create consumer with %s, err: %v", polarisapi.PolarisGrpc, err)
+		return nil, err
+	}
 	// 获取默认配置
-	p.provider, _ = api.NewProviderAPI()
+	if p.provider, err = api.NewProviderAPI(); err != nil {
+		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
+		return nil, err
+	}
 
 	p.config = config
-	return p
+	return p, nil
 }
 
 // Run will not return until stopCh is closed. workers determines how many
