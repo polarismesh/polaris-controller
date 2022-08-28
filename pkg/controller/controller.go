@@ -185,7 +185,7 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 		return nil, err
 	}
 	// 获取默认配置
-	if p.provider, err = api.NewProviderAPI(); err != nil {
+	if p.provider, err = api.NewProviderAPIByConfig(cfg); err != nil {
 		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
 		return nil, err
 	}
