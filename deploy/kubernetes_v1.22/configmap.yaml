@@ -49,7 +49,7 @@ data:
       mode: "all"
       serverAddress: #POLARIS_HOST#
       # 北极星开启鉴权时需要配置
-      accessToken: ""
+      accessToken: #POLARIS_TOKEN#
     defaultConfig:
       proxyMetadata:
         serverAddress: #POLARIS_HOST#

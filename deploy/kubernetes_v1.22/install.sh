@@ -21,7 +21,7 @@ fi
 
 export -f replaceVar
 
-cat $varFile | awk -F '=' '{print "replaceVar", $1, $2 | "/bin/bash"}'
+cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
 
 kubectl apply -f namespace.yaml
 kubectl create secret generic polaris-sidecar-injector -n polaris-system \

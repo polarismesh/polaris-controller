@@ -37,8 +37,8 @@ import (
 )
 
 var (
-	PolarisHttpURL     = "http://127.0.0.1:8080"
-	PolarisGrpc        = "127.0.0.1:8090"
+	PolarisHttpURL     = "http://127.0.0.1:8090"
+	PolarisGrpc        = "127.0.0.1:8091"
 	PolarisAccessToken = ""
 )
 
