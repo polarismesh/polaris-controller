@@ -167,7 +167,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-bootstrap-writer
-        image: ccr.ccs.tencentyun.com/polaris_mesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
+        image: polaris_mesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
         - name: NAMESPACE
