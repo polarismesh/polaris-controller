@@ -438,32 +438,32 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	metadata *metav1.ObjectMeta, proxyConfig *meshconfig.ProxyConfig, meshConfig *meshconfig.MeshConfig) (
 	*SidecarInjectionSpec, string, error,
 ) {
-	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to Istio Pilot.
+	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to polaris.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
 		podName := potentialPodName(metadata)
-		log.Warnf("%q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to Istio Pilot",
+		log.Warnf("[Webhook] %q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to Istio Pilot",
 			metadata.Namespace+"/"+podName, corev1.DNSClusterFirst)
 	}
 
 	if err := validateAnnotations(metadata.GetAnnotations()); err != nil {
-		log.Errorf("Injection failed due to invalid annotations: %v", err)
+		log.Errorf("[Webhook] injection failed due to invalid annotations: %v", err)
 		return nil, "", err
 	}
 
 	values := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(valuesConfig), &values); err != nil {
-		log.Infof("Failed to parse values config: %v [%v]\n", err, valuesConfig)
+		log.Infof("[Webhook] failed to parse values config: %v [%v]\n", err, valuesConfig)
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
 	tlsMode := "none"
-	if mode, ok := metadata.Labels["polarismesh.cn/tls-mode"]; ok {
+	if mode, ok := metadata.Annotations["polarismesh.cn/tls-mode"]; ok {
 		mode = strings.ToLower(mode)
 		if mode == "strict" || mode == "permissive" {
 			tlsMode = mode
 		}
 	}
-	metadata.Labels["polarismesh.cn/tls-mode"] = tlsMode
+	metadata.Annotations["polarismesh.cn/tls-mode"] = tlsMode
 
 	data := SidecarTemplateData{
 		TypeMeta:       typeMetadata,

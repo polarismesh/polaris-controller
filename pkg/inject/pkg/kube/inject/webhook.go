@@ -878,10 +878,10 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		pod.ObjectMeta.Namespace = req.Namespace
 	}
 
-	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
+	log.Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	log.Infof("Object: %v", string(req.Object.Raw))
-	log.Infof("OldObject: %v", string(req.OldObject.Raw))
+	log.Infof("[Webhook] object: %v", string(req.Object.Raw))
+	log.Infof("[Webhook] oldObject: %v", string(req.OldObject.Raw))
 
 	config := wh.sidecarMeshConfig
 	tempVersion := wh.sidecarMeshTemplateVersion
@@ -891,7 +891,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		log.Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+		log.Infof("[Webhook] skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
 		return &v1.AdmissionResponse{
 			Allowed: true,
 		}
@@ -971,7 +971,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		return toV1AdmissionResponse(err)
 	}
 
-	log.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	log.Infof("[Webhook] admissionResponse: patch=%v\n", string(patchBytes))
 
 	reviewResponse := v1.AdmissionResponse{
 		Allowed: true,
@@ -991,6 +991,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 			body = data
 		}
 	}
+	log.Infof("[Webhook] receive webhook request path %s, data %s", r.URL.RawPath, string(body))
 	if len(body) == 0 {
 		handleError("no body found")
 		http.Error(w, "no body found", http.StatusBadRequest)
@@ -1019,7 +1020,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1beta1.AdmissionReview)
 		if !ok {
-			log.Errorf("Expected v1beta1.AdmissionReview but got: %T", obj)
+			log.Errorf("[Webhook] expected v1beta1.AdmissionReview but got: %T", obj)
 			return
 		}
 		responseAdmissionReview := &v1beta1.AdmissionReview{}
@@ -1030,7 +1031,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1.AdmissionReview)
 		if !ok {
-			log.Errorf("Expected v1.AdmissionReview but got: %T", obj)
+			log.Errorf("[Webhook] expected v1.AdmissionReview but got: %T", obj)
 			return
 		}
 		responseAdmissionReview := &v1.AdmissionReview{}
@@ -1039,7 +1040,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 		responseAdmissionReview.Response.UID = requestAdmissionReview.Request.UID
 		responseObj = responseAdmissionReview
 	default:
-		msg := fmt.Sprintf("Unsupported group version kind: %v", gvk)
+		msg := fmt.Sprintf("[Webhook] unsupported group version kind: %v", gvk)
 		log.Error(msg)
 		http.Error(w, msg, http.StatusBadRequest)
 	}
