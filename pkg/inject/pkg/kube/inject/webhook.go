@@ -481,7 +481,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	for k, v := range envMap {
 		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
 	}
-	add.Args = []string{"start"}
+	//add.Args = []string{"start"}
 	return true, nil
 }
 
