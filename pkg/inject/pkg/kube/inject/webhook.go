@@ -455,9 +455,17 @@ type PolarisGoConfig struct {
 	PolarisServer string
 }
 
+func enableMtls(pod *corev1.Pod) bool {
+	value, ok := pod.Annotations[utils.PolarisTLSMode]
+	if ok && value != utils.MTLSModeNone {
+		return true
+	}
+	return false
+}
+
 func (wh *Webhook) handlePolarisSidecarEnvInject(
 	sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
-	err := wh.ensureRootCertExist(pod.Namespace)
+	err := wh.ensureRootCertExist(pod)
 	if err != nil {
 		return false, err
 	}
@@ -473,7 +481,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	}
 	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
 	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
-	if pod.Annotations[utils.PolarisTLSMode] != utils.MTLSModeNone {
+	if enableMtls(pod) {
 		envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
 	}
 	log.Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
@@ -481,7 +489,6 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	for k, v := range envMap {
 		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
 	}
-	//add.Args = []string{"start"}
 	return true, nil
 }
 
@@ -499,7 +506,11 @@ func buildLabelsStr(labels map[string]string) string {
 const rootNamespace = "polaris-system"
 
 // ensureRootCertExist ensure that we have rootca pem secret in current namespace
-func (wh *Webhook) ensureRootCertExist(ns string) error {
+func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
+	if !enableMtls(pod) {
+		return nil
+	}
+	ns := pod.Namespace
 	_, err := wh.k8sClient.CoreV1().Secrets(ns).Get(utils.PolarisSidecarRootCert, metav1.GetOptions{})
 	if err == nil {
 		return nil
