@@ -151,7 +151,6 @@ data:
         securityContext:
           runAsUser: 1337
           runAsGroup: 1337
-        command: ["./polaris-sidecar"]
         resources:
           limits:
             cpu: 200m
