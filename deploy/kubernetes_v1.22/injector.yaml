@@ -50,7 +50,6 @@ data:
           runAsNonRoot: false
           runAsUser: 1337
         imagePullPolicy: Always
-        command: ["./polaris-sidecar"]
         resources:
           limits:
             cpu: 200m
