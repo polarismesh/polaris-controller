@@ -6,6 +6,7 @@ RUN apk update upgrade && \
 COPY bootstrap_template.yaml /bootstrap_template.yaml
 COPY bootstrap_template_tls.yaml /bootstrap_template_tls.yaml
 COPY start.sh /start.sh
+RUN mkdir -p /logs && chmod 777 /logs
 
 RUN ["chmod", "+x", "/start.sh"]
 ENTRYPOINT ["/bin/bash", "-c", "/start.sh"]

@@ -112,6 +112,8 @@ data:
       - name: envoy
         image: envoyproxy/envoy:v1.18.3
         imagePullPolicy: Always
+        command: ["/usr/local/bin/envoy"]
+        args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy/logs/envoy.log"]
         resources:
         {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) }}
           {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) }}
@@ -143,6 +145,7 @@ data:
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-bootstrap
+          readOnly: false
       - image: polarismesh/polaris-sidecar:#SIDECAR_VERSION#
         name: polaris-sidecar
         securityContext:

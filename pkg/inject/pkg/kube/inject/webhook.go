@@ -479,6 +479,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
 	}
+	envMap[EnvSidecarLogLevel] = "info"
 	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
 	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
 	if enableMtls(pod) {
@@ -872,7 +873,6 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 
 // inject istio 核心准入注入逻辑
 func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
-	log.Debugf("---------进入inject 核心逻辑 ------")
 	req := ar.Request
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
