@@ -748,7 +748,6 @@ func toV1beta1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
 }
 
 func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	log.Debugf("---------进入inject 核心逻辑 ------")
 	req := ar.Request
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
@@ -763,6 +762,9 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	podName := potentialPodName(&pod.ObjectMeta)
 	if pod.ObjectMeta.Namespace == "" {
 		pod.ObjectMeta.Namespace = req.Namespace
+	}
+	if len(pod.ObjectMeta.Annotations) == 0 {
+		pod.ObjectMeta.Annotations = make(map[string]string)
 	}
 
 	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
@@ -887,6 +889,9 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	podName := potentialPodName(&pod.ObjectMeta)
 	if pod.ObjectMeta.Namespace == "" {
 		pod.ObjectMeta.Namespace = req.Namespace
+	}
+	if len(pod.ObjectMeta.Annotations) == 0 {
+		pod.ObjectMeta.Annotations = make(map[string]string)
 	}
 
 	log.Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
