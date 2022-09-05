@@ -847,7 +847,10 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		return toV1beta1AdmissionResponse(err)
 	}
 
-	annotations := map[string]string{annotation.SidecarStatus.Name: iStatus}
+	annotations := map[string]string{}
+	if len(iStatus) != 0 {
+		annotations[annotation.SidecarStatus.Name] = iStatus
+	}
 
 	// Add all additional injected annotations
 	for k, v := range config.InjectedAnnotations {
@@ -974,7 +977,10 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		return toV1AdmissionResponse(err)
 	}
 
-	annotations := map[string]string{annotation.SidecarStatus.Name: iStatus}
+	annotations := map[string]string{}
+	if len(iStatus) != 0 {
+		annotations[annotation.SidecarStatus.Name] = iStatus
+	}
 
 	// Add all additional injected annotations
 	for k, v := range config.InjectedAnnotations {

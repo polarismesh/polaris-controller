@@ -51,7 +51,7 @@ type Instance struct {
 var (
 
 		AlphaCanonicalServiceAccounts = Instance {
-          Name: "alpha.istio.io/canonical-serviceaccounts",
+          Name: "alpha.polarismesh.io/canonical-serviceaccounts",
           Description: "Specifies the non-Kubernetes service accounts that are "+
                         "allowed to run this service. NOTE This API is Alpha and "+
                         "has no stability guarantees.",
@@ -61,7 +61,7 @@ var (
         }
 
 		AlphaIdentity = Instance {
-          Name: "alpha.istio.io/identity",
+          Name: "alpha.polarismesh.io/identity",
           Description: "Identity for the workload. NOTE This API is Alpha and has "+
                         "no stability guarantees.",
           Hidden: true,
@@ -70,7 +70,7 @@ var (
         }
 
 		AlphaKubernetesServiceAccounts = Instance {
-          Name: "alpha.istio.io/kubernetes-serviceaccounts",
+          Name: "alpha.polarismesh.io/kubernetes-serviceaccounts",
           Description: "Specifies the Kubernetes service accounts that are "+
                         "allowed to run this service on the VMs. NOTE This API is "+
                         "Alpha and has no stability guarantees.",
@@ -80,13 +80,13 @@ var (
         }
 
 		GalleyAnalyzeSuppress = Instance {
-          Name: "galley.istio.io/analyze-suppress",
+          Name: "galley.polarismesh.io/analyze-suppress",
           Description: "A comma separated list of configuration analysis message "+
                         "codes to suppress when Istio analyzers are run. For "+
                         "example, to suppress reporting of IST0103 "+
                         "(PodMissingProxy) and IST0108 (UnknownAnnotation) on a "+
                         "resource, apply the annotation "+
-                        "'galley.istio.io/analyze-suppress=IST0108,IST0103'. If "+
+                        "'galley.polarismesh.io/analyze-suppress=IST0108,IST0103'. If "+
                         "the value is '*', then all configuration analysis "+
                         "messages are suppressed.",
           Hidden: false,
@@ -95,7 +95,7 @@ var (
         }
 
 		OperatorInstallChartOwner = Instance {
-          Name: "install.operator.istio.io/chart-owner",
+          Name: "install.operator.polarismesh.io/chart-owner",
           Description: "Represents the name of the chart used to create this "+
                         "resource.",
           Hidden: false,
@@ -104,7 +104,7 @@ var (
         }
 
 		OperatorInstallOwnerGeneration = Instance {
-          Name: "install.operator.istio.io/owner-generation",
+          Name: "install.operator.polarismesh.io/owner-generation",
           Description: "Represents the generation to which the resource was last "+
                         "reconciled.",
           Hidden: false,
@@ -113,7 +113,7 @@ var (
         }
 
 		OperatorInstallVersion = Instance {
-          Name: "install.operator.istio.io/version",
+          Name: "install.operator.polarismesh.io/version",
           Description: "Represents the Istio version associated with the resource",
           Hidden: false,
           Deprecated: false,
@@ -130,7 +130,7 @@ var (
         }
 
 		AlphaNetworkingEndpointsVersion = Instance {
-          Name: "networking.alpha.istio.io/endpointsVersion",
+          Name: "networking.alpha.polarismesh.io/endpointsVersion",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
                         "raw resource version from the most recent Kubernetes "+
                         "endpoints update (if available). NOTE This API is Alpha "+
@@ -141,7 +141,7 @@ var (
         }
 
 		AlphaNetworkingNotReadyEndpoints = Instance {
-          Name: "networking.alpha.istio.io/notReadyEndpoints",
+          Name: "networking.alpha.polarismesh.io/notReadyEndpoints",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
                         "'NotReadyAddresses' from the Kubernetes Endpoints "+
                         "resource. The value is a comma-separated list of IP:port. "+
@@ -152,7 +152,7 @@ var (
         }
 
 		AlphaNetworkingServiceVersion = Instance {
-          Name: "networking.alpha.istio.io/serviceVersion",
+          Name: "networking.alpha.polarismesh.io/serviceVersion",
           Description: "Added to synthetic ServiceEntry resources to provide the "+
                         "raw resource version from the most recent Kubernetes "+
                         "service update. This will always be available for "+
@@ -164,7 +164,7 @@ var (
         }
 
 		NetworkingExportTo = Instance {
-          Name: "networking.istio.io/exportTo",
+          Name: "networking.polarismesh.io/exportTo",
           Description: "Specifies the namespaces to which this service should be "+
                         "exported to. A value of '*' indicates it is reachable "+
                         "within the mesh '.' indicates it is reachable within its "+
@@ -175,7 +175,7 @@ var (
         }
 
 		PolicyCheck = Instance {
-          Name: "policy.istio.io/check",
+          Name: "policy.polarismesh.io/check",
           Description: "Determines the policy for behavior when unable to connect "+
                         "to Mixer. If not set, FAIL_CLOSE is set, rejecting "+
                         "requests.",
@@ -185,7 +185,7 @@ var (
         }
 
 		PolicyCheckBaseRetryWaitTime = Instance {
-          Name: "policy.istio.io/checkBaseRetryWaitTime",
+          Name: "policy.polarismesh.io/checkBaseRetryWaitTime",
           Description: "Base time to wait between retries, will be adjusted by "+
                         "backoff and jitter. In duration format. If not set, this "+
                         "will be 80ms.",
@@ -195,7 +195,7 @@ var (
         }
 
 		PolicyCheckMaxRetryWaitTime = Instance {
-          Name: "policy.istio.io/checkMaxRetryWaitTime",
+          Name: "policy.polarismesh.io/checkMaxRetryWaitTime",
           Description: "Maximum time to wait between retries to Mixer. In "+
                         "duration format. If not set, this will be 1000ms.",
           Hidden: false,
@@ -204,7 +204,7 @@ var (
         }
 
 		PolicyCheckRetries = Instance {
-          Name: "policy.istio.io/checkRetries",
+          Name: "policy.polarismesh.io/checkRetries",
           Description: "The maximum number of retries on transport errors to "+
                         "Mixer. If not set, this will be 0, indicating no retries.",
           Hidden: false,
@@ -213,7 +213,7 @@ var (
         }
 
 		PolicyLang = Instance {
-          Name: "policy.istio.io/lang",
+          Name: "policy.polarismesh.io/lang",
           Description: "Selects the attribute expression language runtime for "+
                         "Mixer.",
           Hidden: false,
@@ -222,7 +222,7 @@ var (
         }
 
 		SidecarStatusReadinessApplicationPorts = Instance {
-          Name: "readiness.status.sidecar.istio.io/applicationPorts",
+          Name: "readiness.status.sidecar.polarismesh.io/applicationPorts",
           Description: "Specifies the list of ports exposed by the application "+
                         "container. Used by the Envoy sidecar readiness probe to "+
                         "determine that Envoy is configured and ready to receive "+
@@ -233,7 +233,7 @@ var (
         }
 
 		SidecarStatusReadinessFailureThreshold = Instance {
-          Name: "readiness.status.sidecar.istio.io/failureThreshold",
+          Name: "readiness.status.sidecar.polarismesh.io/failureThreshold",
           Description: "Specifies the failure threshold for the Envoy sidecar "+
                         "readiness probe.",
           Hidden: false,
@@ -242,7 +242,7 @@ var (
         }
 
 		SidecarStatusReadinessInitialDelaySeconds = Instance {
-          Name: "readiness.status.sidecar.istio.io/initialDelaySeconds",
+          Name: "readiness.status.sidecar.polarismesh.io/initialDelaySeconds",
           Description: "Specifies the initial delay (in seconds) for the Envoy "+
                         "sidecar readiness probe.",
           Hidden: false,
@@ -251,7 +251,7 @@ var (
         }
 
 		SidecarStatusReadinessPeriodSeconds = Instance {
-          Name: "readiness.status.sidecar.istio.io/periodSeconds",
+          Name: "readiness.status.sidecar.polarismesh.io/periodSeconds",
           Description: "Specifies the period (in seconds) for the Envoy sidecar "+
                         "readiness probe.",
           Hidden: false,
@@ -260,7 +260,7 @@ var (
         }
 
 		SecurityAutoMTLS = Instance {
-          Name: "security.istio.io/autoMTLS",
+          Name: "security.polarismesh.io/autoMTLS",
           Description: "Determines whether the client proxy uses auto mTLS. This "+
                         "overrides the mesh default specified in "+
                         "MeshConfig.enable_auto_mtls.",
@@ -270,7 +270,7 @@ var (
         }
 
 		SidecarBootstrapOverride = Instance {
-          Name: "sidecar.istio.io/bootstrapOverride",
+          Name: "sidecar.polarismesh.io/bootstrapOverride",
           Description: "Specifies an alternative Envoy bootstrap configuration "+
                         "file.",
           Hidden: false,
@@ -279,7 +279,7 @@ var (
         }
 
 		SidecarComponentLogLevel = Instance {
-          Name: "sidecar.istio.io/componentLogLevel",
+          Name: "sidecar.polarismesh.io/componentLogLevel",
           Description: "Specifies the component log level for Envoy.",
           Hidden: false,
           Deprecated: false,
@@ -287,7 +287,7 @@ var (
         }
 
 		SidecarControlPlaneAuthPolicy = Instance {
-          Name: "sidecar.istio.io/controlPlaneAuthPolicy",
+          Name: "sidecar.polarismesh.io/controlPlaneAuthPolicy",
           Description: "Specifies the auth policy used by the Istio control "+
                         "plane. If NONE, traffic will not be encrypted. If "+
                         "MUTUAL_TLS, traffic between Envoy sidecar will be wrapped "+
@@ -298,7 +298,7 @@ var (
         }
 
 		SidecarDiscoveryAddress = Instance {
-          Name: "sidecar.istio.io/discoveryAddress",
+          Name: "sidecar.polarismesh.io/discoveryAddress",
           Description: "Specifies the XDS discovery address to be used by the "+
                         "Envoy sidecar.",
           Hidden: false,
@@ -307,7 +307,7 @@ var (
         }
 
 		SidecarEnableCoreDump = Instance {
-          Name: "sidecar.istio.io/enableCoreDump",
+          Name: "sidecar.polarismesh.io/enableCoreDump",
           Description: "Specifies whether or not an Envoy sidecar should enable "+
                         "core dump.",
           Hidden: false,
@@ -325,7 +325,7 @@ var (
         }
 
 		SidecarInterceptionMode = Instance {
-          Name: "sidecar.istio.io/interceptionMode",
+          Name: "sidecar.polarismesh.io/interceptionMode",
           Description: "Specifies the mode used to redirect inbound connections "+
                         "to Envoy (REDIRECT or TPROXY).",
           Hidden: false,
@@ -334,7 +334,7 @@ var (
         }
 
 		SidecarLogLevel = Instance {
-          Name: "sidecar.istio.io/logLevel",
+          Name: "sidecar.polarismesh.io/logLevel",
           Description: "Specifies the log level for Envoy.",
           Hidden: false,
           Deprecated: false,
@@ -342,7 +342,7 @@ var (
         }
 
 		SidecarProxyCPU = Instance {
-          Name: "sidecar.istio.io/proxyCPU",
+          Name: "sidecar.polarismesh.io/proxyCPU",
           Description: "Specifies the requested CPU setting for the Envoy "+
                         "sidecar.",
           Hidden: false,
@@ -351,7 +351,7 @@ var (
         }
 
 		SidecarProxyImage = Instance {
-          Name: "sidecar.istio.io/proxyImage",
+          Name: "sidecar.polarismesh.io/proxyImage",
           Description: "Specifies the Docker image to be used by the Envoy "+
                         "sidecar.",
           Hidden: false,
@@ -360,7 +360,7 @@ var (
         }
 
 		SidecarProxyMemory = Instance {
-          Name: "sidecar.istio.io/proxyMemory",
+          Name: "sidecar.polarismesh.io/proxyMemory",
           Description: "Specifies the requested memory setting for the Envoy "+
                         "sidecar.",
           Hidden: false,
@@ -369,7 +369,7 @@ var (
         }
 
 		SidecarRewriteAppHTTPProbers = Instance {
-          Name: "sidecar.istio.io/rewriteAppHTTPProbers",
+          Name: "sidecar.polarismesh.io/rewriteAppHTTPProbers",
           Description: "Rewrite HTTP readiness and liveness probes to be "+
                         "redirected to the Envoy sidecar.",
           Hidden: false,
@@ -378,7 +378,7 @@ var (
         }
 
 		SidecarStatsInclusionPrefixes = Instance {
-          Name: "sidecar.istio.io/statsInclusionPrefixes",
+          Name: "sidecar.polarismesh.io/statsInclusionPrefixes",
           Description: "Specifies the comma separated list of prefixes of the "+
                         "stats to be emitted by Envoy.",
           Hidden: false,
@@ -387,7 +387,7 @@ var (
         }
 
 		SidecarStatsInclusionRegexps = Instance {
-          Name: "sidecar.istio.io/statsInclusionRegexps",
+          Name: "sidecar.polarismesh.io/statsInclusionRegexps",
           Description: "Specifies the comma separated list of regexes the stats "+
                         "should match to be emitted by Envoy.",
           Hidden: false,
@@ -396,7 +396,7 @@ var (
         }
 
 		SidecarStatsInclusionSuffixes = Instance {
-          Name: "sidecar.istio.io/statsInclusionSuffixes",
+          Name: "sidecar.polarismesh.io/statsInclusionSuffixes",
           Description: "Specifies the comma separated list of suffixes of the "+
                         "stats to be emitted by Envoy.",
           Hidden: false,
@@ -405,7 +405,7 @@ var (
         }
 
 		SidecarStatus = Instance {
-          Name: "sidecar.istio.io/status",
+          Name: "sidecar.polarismesh.io/status",
           Description: "Generated by Envoy sidecar injection that indicates the "+
                         "status of the operation. Includes a version hash of the "+
                         "executed template, as well as names of injected "+
@@ -416,7 +416,7 @@ var (
         }
 
 		SidecarUserVolume = Instance {
-          Name: "sidecar.istio.io/userVolume",
+          Name: "sidecar.polarismesh.io/userVolume",
           Description: "Specifies one or more user volumes (as a JSON array) to "+
                         "be added to the Envoy sidecar.",
           Hidden: false,
@@ -425,7 +425,7 @@ var (
         }
 
 		SidecarUserVolumeMount = Instance {
-          Name: "sidecar.istio.io/userVolumeMount",
+          Name: "sidecar.polarismesh.io/userVolumeMount",
           Description: "Specifies one or more user volume mounts (as a JSON "+
                         "array) to be added to the Envoy sidecar.",
           Hidden: false,
@@ -434,7 +434,7 @@ var (
         }
 
 		SidecarStatusPort = Instance {
-          Name: "status.sidecar.istio.io/port",
+          Name: "status.sidecar.polarismesh.io/port",
           Description: "Specifies the HTTP status Port for the Envoy sidecar. If "+
                         "zero, the sidecar will not provide status.",
           Hidden: false,
@@ -443,7 +443,7 @@ var (
         }
 
 		SidecarTrafficExcludeInboundPorts = Instance {
-          Name: "traffic.sidecar.istio.io/excludeInboundPorts",
+          Name: "traffic.sidecar.polarismesh.io/excludeInboundPorts",
           Description: "A comma separated list of inbound ports to be excluded "+
                         "from redirection to Envoy. Only applies when all inbound "+
                         "traffic (i.e. '*') is being redirected.",
@@ -453,7 +453,7 @@ var (
         }
 
 		SidecarTrafficExcludeOutboundIPRanges = Instance {
-          Name: "traffic.sidecar.istio.io/excludeOutboundIPRanges",
+          Name: "traffic.sidecar.polarismesh.io/excludeOutboundIPRanges",
           Description: "A comma separated list of IP ranges in CIDR form to be "+
                         "excluded from redirection. Only applies when all outbound "+
                         "traffic (i.e. '*') is being redirected.",
@@ -463,7 +463,7 @@ var (
         }
 
 		SidecarTrafficExcludeOutboundPorts = Instance {
-          Name: "traffic.sidecar.istio.io/excludeOutboundPorts",
+          Name: "traffic.sidecar.polarismesh.io/excludeOutboundPorts",
           Description: "A comma separated list of outbound ports to be excluded "+
                         "from redirection to Envoy.",
           Hidden: false,
@@ -472,7 +472,7 @@ var (
         }
 
 		SidecarTrafficIncludeInboundPorts = Instance {
-          Name: "traffic.sidecar.istio.io/includeInboundPorts",
+          Name: "traffic.sidecar.polarismesh.io/includeInboundPorts",
           Description: "A comma separated list of inbound ports for which traffic "+
                         "is to be redirected to Envoy. The wildcard character '*' "+
                         "can be used to configure redirection for all ports. An "+
@@ -483,7 +483,7 @@ var (
         }
 
 		SidecarTrafficIncludeOutboundIPRanges = Instance {
-          Name: "traffic.sidecar.istio.io/includeOutboundIPRanges",
+          Name: "traffic.sidecar.polarismesh.io/includeOutboundIPRanges",
           Description: "A comma separated list of IP ranges in CIDR form to "+
                         "redirect to Envoy (optional). The wildcard character '*' "+
                         "can be used to redirect all outbound traffic. An empty "+
@@ -494,7 +494,7 @@ var (
         }
 
 		SidecarTrafficKubevirtInterfaces = Instance {
-          Name: "traffic.sidecar.istio.io/kubevirtInterfaces",
+          Name: "traffic.sidecar.polarismesh.io/kubevirtInterfaces",
           Description: "A comma separated list of virtual interfaces whose "+
                         "inbound traffic (from VM) will be treated as outbound.",
           Hidden: false,
