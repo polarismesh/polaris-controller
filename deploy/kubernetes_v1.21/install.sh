@@ -5,11 +5,14 @@ set -e
 # preprocess the variables
 
 function replaceVar() {
-  for file in `ls *.yaml`
-  do
+  for file in $(ls *.yaml); do
     key="#$1#"
     echo "process replace file $file, key $key, value $2"
-    sed -i "s/$key/$2/g" $file
+    if ["$(uname)"=="Darwin"]; then
+      sed -i "" "s/$key/$2/g" $file
+    elif
+      sed -i "s/$key/$2/g" $file
+    fi
   done
 }
 

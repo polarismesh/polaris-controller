@@ -773,7 +773,9 @@ func IntoObject(sidecarTemplate string, valuesConfig string, meshconfig *meshcon
 		rewriteCniPodSpec(metadata.Annotations, spec)
 	}
 
-	metadata.Annotations[annotation.SidecarStatus.Name] = status
+	if len(status) != 0 {
+		metadata.Annotations[annotation.SidecarStatus.Name] = status
+	}
 	return out, nil
 }
 
