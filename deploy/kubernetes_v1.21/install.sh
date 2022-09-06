@@ -8,10 +8,10 @@ function replaceVar() {
   for file in $(ls *.yaml); do
     key="#$1#"
     echo "process replace file $file, key $key, value $2"
-    if ["$(uname)"=="Darwin"]; then
-      sed -i "" "s/$key/$2/g" $file
-    elif
-      sed -i "s/$key/$2/g" $file
+    if [ "$(uname)" == "Darwin" ]; then
+      sed -i "" "s?$key?$2?g" $file
+    else
+      sed -i "s?$key?$2?g" $file
     fi
   done
 }
@@ -28,9 +28,9 @@ cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
 
 kubectl apply -f namespace.yaml
 kubectl create secret generic polaris-sidecar-injector -n polaris-system \
---from-file=secrets/key.pem \
---from-file=secrets/cert.pem \
---from-file=secrets/ca-cert.pem
+  --from-file=secrets/key.pem \
+  --from-file=secrets/cert.pem \
+  --from-file=secrets/ca-cert.pem
 
 kubectl apply -f rbac.yaml
 kubectl apply -f polaris-client-config-tpl.yaml
