@@ -31,6 +31,7 @@ import (
 	"text/template"
 
 	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 
 	"github.com/ghodss/yaml"
@@ -424,7 +425,7 @@ func isset(m map[string]string, key string) bool {
 	return ok
 }
 
-func assertMapValue(m map[string]string, key, val string) bool {
+func openTlsMode(m map[string]string, key string) bool {
 	if len(m) == 0 {
 		return false
 	}
@@ -434,7 +435,7 @@ func assertMapValue(m map[string]string, key, val string) bool {
 		return false
 	}
 
-	return v == val
+	return v != util.MTLSModeNone
 }
 
 func directory(filepath string) string {
@@ -469,16 +470,16 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
-	tlsMode := "none"
-	if mode, ok := metadata.Annotations["polarismesh.cn/tls-mode"]; ok {
+	tlsMode := util.MTLSModeNone
+	if mode, ok := metadata.Annotations[util.PolarisTLSMode]; ok {
 		mode = strings.ToLower(mode)
-		if mode == "strict" || mode == "permissive" {
+		if mode == util.MTLSModeStrict || mode == util.MTLSModePermissive {
 			tlsMode = mode
 		}
 	}
 
 	if len(metadata.Annotations) != 0 {
-		metadata.Annotations["polarismesh.cn/tls-mode"] = tlsMode
+		metadata.Annotations[util.PolarisTLSMode] = tlsMode
 	}
 
 	data := SidecarTemplateData{
@@ -510,7 +511,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		"directory":           directory,
 		"contains":            flippedContains,
 		"toLower":             strings.ToLower,
-		"assertMapValue":      assertMapValue,
+		"openTlsMode":         openTlsMode,
 	}
 
 	// Allows the template to use env variables from istiod.
