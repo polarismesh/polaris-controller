@@ -424,7 +424,7 @@ func isset(m map[string]string, key string) bool {
 	return ok
 }
 
-func isExpect(m map[string]string, key, val string) bool {
+func assertMapValue(m map[string]string, key, val string) bool {
 	if len(m) == 0 {
 		return false
 	}
@@ -510,7 +510,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		"directory":           directory,
 		"contains":            flippedContains,
 		"toLower":             strings.ToLower,
-		"isExpect":            isExpect,
+		"assertMapValue":      assertMapValue,
 	}
 
 	// Allows the template to use env variables from istiod.
