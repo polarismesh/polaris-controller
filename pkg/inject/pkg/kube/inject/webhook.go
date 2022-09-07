@@ -614,6 +614,10 @@ func addLabels(target map[string]string, added map[string]string) []rfc6902Patch
 
 	for _, key := range addedKeys {
 		value := added[key]
+		if len(value) == 0 {
+			continue
+		}
+
 		patch := rfc6902PatchOperation{
 			Op:    "add",
 			Path:  "/metadata/labels/" + escapeJSONPointerValue(key),
@@ -646,6 +650,9 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 
 	for _, key := range keys {
 		value := added[key]
+		if len(value) == 0 {
+			continue
+		}
 		if target == nil {
 			target = map[string]string{}
 			patch = append(patch, rfc6902PatchOperation{
@@ -762,9 +769,6 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	podName := potentialPodName(&pod.ObjectMeta)
 	if pod.ObjectMeta.Namespace == "" {
 		pod.ObjectMeta.Namespace = req.Namespace
-	}
-	if len(pod.ObjectMeta.Annotations) == 0 {
-		pod.ObjectMeta.Annotations = make(map[string]string)
 	}
 
 	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
@@ -892,9 +896,6 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	podName := potentialPodName(&pod.ObjectMeta)
 	if pod.ObjectMeta.Namespace == "" {
 		pod.ObjectMeta.Namespace = req.Namespace
-	}
-	if len(pod.ObjectMeta.Annotations) == 0 {
-		pod.ObjectMeta.Annotations = make(map[string]string)
 	}
 
 	log.Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",

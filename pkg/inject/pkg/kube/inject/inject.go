@@ -424,6 +424,19 @@ func isset(m map[string]string, key string) bool {
 	return ok
 }
 
+func assertMapValue(m map[string]string, key, val string) bool {
+	if len(m) == 0 {
+		return false
+	}
+
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+
+	return v == val
+}
+
 func directory(filepath string) string {
 	dir, _ := path.Split(filepath)
 	return dir
@@ -463,7 +476,10 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 			tlsMode = mode
 		}
 	}
-	metadata.Annotations["polarismesh.cn/tls-mode"] = tlsMode
+
+	if len(metadata.Annotations) != 0 {
+		metadata.Annotations["polarismesh.cn/tls-mode"] = tlsMode
+	}
 
 	data := SidecarTemplateData{
 		TypeMeta:       typeMetadata,
@@ -494,6 +510,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		"directory":           directory,
 		"contains":            flippedContains,
 		"toLower":             strings.ToLower,
+		"assertMapValue":      assertMapValue,
 	}
 
 	// Allows the template to use env variables from istiod.
