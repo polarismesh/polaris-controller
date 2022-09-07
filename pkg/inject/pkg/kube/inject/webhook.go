@@ -480,6 +480,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
 	}
 	envMap[EnvSidecarLogLevel] = "info"
+	envMap[EnvSidecarNamespace] = pod.GetNamespace()
 	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
 	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
 	if enableMtls(pod) {
