@@ -167,7 +167,7 @@ data:
         volumeMounts:
           - name: sds
             mountPath: /var/run/polaris/mtls
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none" }}
+          {{ if not ( isExpect .ObjectMeta.Annotations `polarismesh.cn/tls-mode` `none`) }}
           - name: root-ca
             mountPath: /etc/polaris-sidecar/certs
           {{ end }}
@@ -176,7 +176,7 @@ data:
         image: polarismesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
-        {{if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+        {{if not ( isExpect .ObjectMeta.Annotations `polarismesh.cn/tls-mode` `none`) }}
         - name: METADATA
           value: {{ toJSON .ObjectMeta.Labels | printf "%q" }}
         - name: TLS_MODE
@@ -202,7 +202,7 @@ data:
           - istio-iptables
           - -p
           - "15001"
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+          {{ if not ( isExpect .ObjectMeta.Annotations `polarismesh.cn/tls-mode` `none`) }}
           - "-z"
           - "15006"
           {{end }}
@@ -212,7 +212,7 @@ data:
           - REDIRECT
           - -i
           - "10.4.4.4/32"
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+          {{ if not ( isExpect .ObjectMeta.Annotations `polarismesh.cn/tls-mode` `none`) }}
           - -b
           - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) }}"
           {{else}}
@@ -249,7 +249,7 @@ data:
       volumes:
         - name: sds
           emptyDir: {}
-        {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+        {{ if not ( isExpect .ObjectMeta.Annotations `polarismesh.cn/tls-mode` `none`) }}
         - name: root-ca
           secret: 
             secretName: polaris-sidecar-secret
