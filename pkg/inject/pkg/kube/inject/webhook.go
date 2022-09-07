@@ -232,7 +232,8 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 		cert:                       &pair,
 
 		// 新增查询 k8s 资源的操作者
-		k8sClient: p.Client,
+		k8sClient:          p.Client,
+		defaultSidecarMode: p.DefaultSidecarMode,
 	}
 
 	var mux *http.ServeMux

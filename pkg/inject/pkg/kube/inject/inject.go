@@ -284,23 +284,26 @@ func validateBool(value string) error {
 
 func (wh *Webhook) getSidecarMode(namespace string) utils.SidecarMode {
 	// 这里主要是处理北极星 sidecar
-	sidecarMode := "mesh"
+	sidecarMode := ""
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用默认dns的注入方式
 		log.Errorf("get pod namespace %q failed: %v", namespace, err)
-		return utils.SidecarForMesh
+		return wh.defaultSidecarMode
 	} else {
 		if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
 			sidecarMode = val
 		}
 	}
 
-	if sidecarMode == utils.SidecarMeshModeName {
+	switch sidecarMode {
+	case utils.SidecarMeshModeName:
 		return utils.SidecarForMesh
+	case utils.SidecarDnsModeName:
+		return utils.SidecarForDns
+	default:
+		return wh.defaultSidecarMode
 	}
-
-	return utils.SidecarForDns
 }
 
 func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, metadata *metav1.ObjectMeta) bool { // nolint: lll
