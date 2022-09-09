@@ -217,7 +217,6 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 	}
 
 	wh := &Webhook{
-		defaultSidecarMode:         p.DefaultSidecarMode,
 		sidecarMeshConfig:          sidecarMeshConfig,
 		sidecarMeshTemplateVersion: sidecarTemplateVersionHash(sidecarMeshConfig.Template),
 		sidecarDnsConfig:           sidecarDnsConfig,
