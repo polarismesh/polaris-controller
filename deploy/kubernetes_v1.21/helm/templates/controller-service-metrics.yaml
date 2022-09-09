@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "{{ default 80 .Values.controller.metrics.port }}"
+    prometheus.io/scrape: "true"
+  labels:
+    k8s-app: polaris-controller
+  name: {{ include "polaris-controller.controller.fullname" . }}-metrics
+  namespace: polaris-system
+spec:
+  ports:
+    - port: {{ default 80 .Values.controller.metrics.port }}
+      protocol: TCP
+      targetPort: {{ default 80 .Values.controller.metrics.port }}
+  selector:
+    {{- include "polaris-controller.controller.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None
+  type: {{ .Values.controller.metrics.type }}
