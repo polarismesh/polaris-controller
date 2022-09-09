@@ -89,7 +89,12 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
+        volumeMounts:
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       volumes:
+        - name: polaris-client-config
+          emptyDir: {}
         - name: polaris-sidecar-iptables
           configMap:
             defaultMode: 420
