@@ -282,28 +282,29 @@ func validateBool(value string) error {
 	return err
 }
 
-func (wh *Webhook) getSidecarMode(namespace string) utils.SidecarMode {
-	// 这里主要是处理北极星 sidecar
+func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.SidecarMode {
+	// 这里主要是处理北极星 sidecar, 优先级: pod.annotations > namespace.labels > configmap
 	sidecarMode := ""
+	// 1. pod.annotations
+	if val, ok := pod.Annotations[utils.PolarisSidecarMode]; ok {
+		sidecarMode = val
+		return utils.ParseSidecarMode(sidecarMode)
+	}
+
+	// 2. namespace.labels
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用默认dns的注入方式
 		log.Errorf("get pod namespace %q failed: %v", namespace, err)
-		return wh.defaultSidecarMode
 	} else {
-		if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
+		if val, ok := ns.Labels[utils.PolarisSidecarModeLabel]; ok {
 			sidecarMode = val
 		}
+		return utils.ParseSidecarMode(sidecarMode)
 	}
 
-	switch sidecarMode {
-	case utils.SidecarMeshModeName:
-		return utils.SidecarForMesh
-	case utils.SidecarDnsModeName:
-		return utils.SidecarForDns
-	default:
-		return wh.defaultSidecarMode
-	}
+	return wh.defaultSidecarMode
+
 }
 
 func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, metadata *metav1.ObjectMeta) bool { // nolint: lll

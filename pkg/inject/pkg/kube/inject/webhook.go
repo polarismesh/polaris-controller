@@ -96,7 +96,7 @@ type Webhook struct {
 
 // env will be used for other things besides meshConfig - when webhook is running in Istiod it can take advantage
 // of the config and endpoint cache.
-//nolint directives: interfacer
+// nolint directives: interfacer
 func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Config, *Config, *meshconfig.MeshConfig, string, error) {
 	// 处理 polaris-sidecar mesh 模式的注入
 	meshData, err := ioutil.ReadFile(injectMeshFile)
@@ -806,7 +806,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		return toV1beta1AdmissionResponse(err)
 	}
 
-	sidecarMode := wh.getSidecarMode(req.Namespace)
+	sidecarMode := wh.getSidecarMode(req.Namespace, &pod)
 
 	// Deal with potential empty fields, e.g., when the pod is created by a deployment
 	podName := potentialPodName(&pod.ObjectMeta)
@@ -933,7 +933,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		return toV1AdmissionResponse(err)
 	}
 
-	sidecarMode := wh.getSidecarMode(req.Namespace)
+	sidecarMode := wh.getSidecarMode(req.Namespace, &pod)
 
 	// Deal with potential empty fields, e.g., when the pod is created by a deployment
 	podName := potentialPodName(&pod.ObjectMeta)
