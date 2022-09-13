@@ -89,7 +89,12 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
+        volumeMounts:
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       volumes:
+        - name: polaris-client-config
+          emptyDir: {}
         - name: polaris-sidecar-iptables
           configMap:
             defaultMode: 420
@@ -167,7 +172,7 @@ data:
         volumeMounts:
           - name: sds
             mountPath: /var/run/polaris/mtls
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none" }}
+          {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
           - name: root-ca
             mountPath: /etc/polaris-sidecar/certs
           {{ end }}
@@ -176,7 +181,7 @@ data:
         image: polarismesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
-        {{if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+        {{if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
         - name: METADATA
           value: {{ toJSON .ObjectMeta.Labels | printf "%q" }}
         - name: TLS_MODE
@@ -202,7 +207,7 @@ data:
           - istio-iptables
           - -p
           - "15001"
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+          {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
           - "-z"
           - "15006"
           {{end }}
@@ -212,7 +217,7 @@ data:
           - REDIRECT
           - -i
           - "10.4.4.4/32"
-          {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+          {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
           - -b
           - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) }}"
           {{else}}
@@ -249,7 +254,7 @@ data:
       volumes:
         - name: sds
           emptyDir: {}
-        {{ if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"}}
+        {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
         - name: root-ca
           secret: 
             secretName: polaris-sidecar-secret

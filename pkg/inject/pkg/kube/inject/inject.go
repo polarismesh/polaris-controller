@@ -31,6 +31,7 @@ import (
 	"text/template"
 
 	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 
 	"github.com/ghodss/yaml"
@@ -283,23 +284,26 @@ func validateBool(value string) error {
 
 func (wh *Webhook) getSidecarMode(namespace string) utils.SidecarMode {
 	// 这里主要是处理北极星 sidecar
-	sidecarMode := "mesh"
+	sidecarMode := ""
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用默认dns的注入方式
 		log.Errorf("get pod namespace %q failed: %v", namespace, err)
-		return utils.SidecarForMesh
+		return wh.defaultSidecarMode
 	} else {
 		if val, ok := ns.Labels[utils.PolarisSidecarMode]; ok {
 			sidecarMode = val
 		}
 	}
 
-	if sidecarMode == utils.SidecarMeshModeName {
+	switch sidecarMode {
+	case utils.SidecarMeshModeName:
 		return utils.SidecarForMesh
+	case utils.SidecarDnsModeName:
+		return utils.SidecarForDns
+	default:
+		return wh.defaultSidecarMode
 	}
-
-	return utils.SidecarForDns
 }
 
 func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, metadata *metav1.ObjectMeta) bool { // nolint: lll
@@ -424,6 +428,19 @@ func isset(m map[string]string, key string) bool {
 	return ok
 }
 
+func openTlsMode(m map[string]string, key string) bool {
+	if len(m) == 0 {
+		return false
+	}
+
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+
+	return v != util.MTLSModeNone
+}
+
 func directory(filepath string) string {
 	dir, _ := path.Split(filepath)
 	return dir
@@ -456,14 +473,17 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
-	tlsMode := "none"
-	if mode, ok := metadata.Annotations["polarismesh.cn/tls-mode"]; ok {
+	tlsMode := util.MTLSModeNone
+	if mode, ok := metadata.Annotations[util.PolarisTLSMode]; ok {
 		mode = strings.ToLower(mode)
-		if mode == "strict" || mode == "permissive" {
+		if mode == util.MTLSModeStrict || mode == util.MTLSModePermissive {
 			tlsMode = mode
 		}
 	}
-	metadata.Annotations["polarismesh.cn/tls-mode"] = tlsMode
+
+	if len(metadata.Annotations) != 0 {
+		metadata.Annotations[util.PolarisTLSMode] = tlsMode
+	}
 
 	data := SidecarTemplateData{
 		TypeMeta:       typeMetadata,
@@ -494,6 +514,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		"directory":           directory,
 		"contains":            flippedContains,
 		"toLower":             strings.ToLower,
+		"openTlsMode":         openTlsMode,
 	}
 
 	// Allows the template to use env variables from istiod.
