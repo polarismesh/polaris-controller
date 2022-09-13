@@ -15,6 +15,7 @@
 package inject
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
@@ -26,11 +27,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/yaml"
 
 	gyaml "github.com/ghodss/yaml"
 	"github.com/howeyc/fsnotify"
@@ -407,30 +410,30 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 		}
 
 		// mesh condition || dns condition
-		//if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
-		//	log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
-		//		pod.Namespace, pod.Name)
-		//	if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
-		//		log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
-		//			pod.Namespace, pod.Name, err)
-		//	}
-		//}
+		if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
+			log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
+				pod.Namespace, pod.Name)
+			if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
+				log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
+					pod.Namespace, pod.Name, err)
+			}
+		}
 
 		if add.Name == "polaris-sidecar" {
 			log.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
-			//if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
-			//	log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
-			//}
 			if _, err := wh.handlePolarisSidecarEnvInject(sidecarMode, pod, &add); err != nil {
 				log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
 
+			//if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
+			//	log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
+			//}
 			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
-			//add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
-			//	Name:      utils.PolarisGoConfigFile,
-			//	SubPath:   "polaris.yaml",
-			//	MountPath: "/data/polaris.yaml",
-			//})
+			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
+				Name:      utils.PolarisGoConfigFile,
+				SubPath:   "polaris.yaml",
+				MountPath: "/data/polaris.yaml",
+			})
 		}
 
 		value = add
@@ -462,6 +465,44 @@ func enableMtls(pod *corev1.Pod) bool {
 		return true
 	}
 	return false
+}
+
+// addPolarisConfigToInitContainerEnv 将polaris-sidecar 的配置注入到init container中
+func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) error {
+	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
+		Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
+	if err != nil {
+		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		return err
+	}
+	buf := new(bytes.Buffer)
+	if err := tmp.Execute(buf, PolarisGoConfig{
+		Name:          utils.PolarisGoConfigFile,
+		PolarisServer: common.PolarisServerGrpcAddress,
+	}); err != nil {
+		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	// 获取 polaris-sidecar 配置
+	configMap := corev1.ConfigMap{}
+	str := buf.String()
+	if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
+		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		return err
+	}
+
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  utils.PolarisGoConfigFile,
+		Value: configMap.Data["polaris.yaml"],
+	})
+	return nil
 }
 
 func (wh *Webhook) handlePolarisSidecarEnvInject(
