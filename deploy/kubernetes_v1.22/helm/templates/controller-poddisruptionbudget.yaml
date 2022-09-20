@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "polaris-controller.controller.fullname" . }}
+  namespace: polaris-system
+  labels:
+    app: sidecar-injector
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "polaris-controller.controller.selectorLabels" . | nindent 6 }}

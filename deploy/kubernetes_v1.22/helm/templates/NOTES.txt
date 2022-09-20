@@ -1,0 +1,2 @@
+The polaris controller has been installed.
+Visit http://{{ .Values.polaris.server.address }}:8080 to access polaris console via HTTP.

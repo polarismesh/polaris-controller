@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "polaris-controller.controller.fullname" . }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - endpoints
+      - events
+      - statefulsets
+      - services
+      - namespaces
+      - configmaps
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch

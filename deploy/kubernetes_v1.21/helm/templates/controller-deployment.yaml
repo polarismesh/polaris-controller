@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "polaris-controller.controller.labels" . | nindent 4 }}
+  name: {{ include "polaris-controller.controller.fullname" . }}
+  namespace: polaris-system
+spec:
+  progressDeadlineSeconds: 60
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      {{- include "polaris-controller.controller.selectorLabels" . | nindent 6 }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+      {{- include "polaris-controller.controller.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: polaris-controller
+          image: {{ template "polaris-controller.controller.image" . }}
+          command: ["./polaris-controller"]
+          args: ["--min-resync-period=60s",
+                 "--v=4",
+                 "--leader-elect-namespace=polaris-system",
+                 "--concurrency-polaris-size=100",
+                 "--stderrthreshold=0",
+                 "--log-dir=/polaris-controller/log",
+                 "--log-file=/polaris-controller/log/test.log",
+                 "--logtostderr=false",
+                 "--log-file-max-size=1800",
+                 "--leader-elect=true"
+          ]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          volumeMounts:
+            - mountPath: /polaris-controller/log
+              name: log
+            - name: certs
+              mountPath: /etc/polaris-inject/certs
+              readOnly: true
+            - name: inject-config
+              mountPath: /etc/polaris-inject/inject
+              readOnly: true
+            - name: config-volume
+              mountPath: /etc/polaris-inject/config
+              readOnly: true
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+        - name: qcloudregistrykey
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
+      serviceAccountName: {{ include "polaris-controller.controller.fullname" . }}
+      volumes:
+        - name: certs
+          secret:
+            secretName: {{ include "polaris-controller.controller.fullname" . }}
+        - name: inject-config
+          configMap:
+            name: {{ include "polaris-controller.controller.fullname" . }}-sidecar
+            items:
+              - key: mesh-config
+                path: mesh-config
+              - key: dns-config
+                path: dns-config
+              - key: values
+                path: values
+        - name: config-volume
+          configMap:
+            name: {{ include "polaris-controller.controller.fullname" . }}-mesh
+        - hostPath:
+            path: /data/polaris-controller/log
+            type: "DirectoryOrCreate"
+          name: log

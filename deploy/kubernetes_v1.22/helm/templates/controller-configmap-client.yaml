@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "polaris-controller.controller.fullname" . }}-tpl
+  namespace: polaris-system
+data:
+  polaris.yaml: |-
+    {{ include "configmap-client.config_tpl" . | nindent 4 }}

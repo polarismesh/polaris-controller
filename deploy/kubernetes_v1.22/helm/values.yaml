@@ -1,0 +1,44 @@
+## polaris controller
+## Ref:https://github.com/polarismesh/polaris-controller/blob/main/README.md
+
+## Overrides for generated resource names
+# See templates/_helpers.tpl
+# nameOverride:
+# fullnameOverride:
+
+## cluster name register in polaris server
+cluster:
+  name: default
+
+## sidecar config for controller injector
+sidecar:
+  port: 443
+  mode: mesh
+  image:
+    repo: polarismesh/polaris-sidecar
+    tag: v1.3.0-beta.0
+    pullPolicy: Always
+  init:
+    image:
+      repo: polarismesh/polaris-sidecar
+      tag: v1.3.0-beta.0
+      pullPolicy: Always
+
+## polaris server config
+polaris:
+  server:
+    address: localhost
+    token: nu/0WRA4EqSR1FagrjRj0fZwPXuGlMpX+zCuWu4uMqy8xr1vRjisSbA25aAC3mtU8MeeRsKhQiDAynUR09I=
+
+## polaris controller config
+controller:
+  name: polaris-controller
+  webhook:
+    host: polaris.tencent.com
+  image:
+    repo: polarismesh/polaris-controller
+    tag: v1.3.0-beta.0
+    pullPolicy: IfNotPresent
+  metrics:
+    port: 80
+    type: ClusterIP
