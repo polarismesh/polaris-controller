@@ -27,7 +27,7 @@ sidecar:
 ## polaris server config
 polaris:
   server:
-    address: 106.52.224.46
+    address: localhost
     token: nu/0WRA4EqSR1FagrjRj0fZwPXuGlMpX+zCuWu4uMqy8xr1vRjisSbA25aAC3mtU8MeeRsKhQiDAynUR09I=
 
 ## polaris controller config
