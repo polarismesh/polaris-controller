@@ -40,6 +40,9 @@ const (
 	EnvSidecarMtlsEnable               = "SIDECAR_MTLS_ENABLE"
 	EnvSidecarMtlsCAServer             = "SIDECAR_MTLS_CA_SERVER"
 	EnvPolarisAddress                  = "POLARIS_ADDRESS"
+	EnvSidecarMetricEnable             = "SIDECAR_METRIC_ENABLE"
+	EnvSidecarMetricListenPort         = "SIDECAR_METRIC_LISTEN_PORT"
 
-	ValueListenPort = 15053
+	ValueListenPort       = 15053
+	ValueMetricListenPort = 15985
 )
