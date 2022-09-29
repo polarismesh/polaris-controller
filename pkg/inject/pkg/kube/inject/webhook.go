@@ -517,9 +517,13 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	if sidecarMode == utils.SidecarForDns {
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
+		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(false)
+		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
 	} else {
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
+		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(true)
+		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
 	}
 	envMap[EnvSidecarLogLevel] = "info"
 	envMap[EnvSidecarNamespace] = pod.GetNamespace()
