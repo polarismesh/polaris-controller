@@ -16,10 +16,3 @@ data:
           serverConnector:
             addresses:
               - {{ .PolarisServer }}
-          statReporter:
-            enable: true
-            chain:
-            - prometheus
-            plugin:
-              prometheus:
-                metricPort: 0
