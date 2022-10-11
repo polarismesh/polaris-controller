@@ -296,17 +296,27 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	}
 
 	if cur.PolarisInstance.IsEnableHealthCheck() != *enableHealthCheck {
-		log.Errorf("%s healthy check changed", cur.PolarisInstance.GetHost())
+		log.Infof("%s healthy check changed, old %v, new %v",
+			cur.PolarisInstance.GetHost(), cur.PolarisInstance.IsEnableHealthCheck(), *enableHealthCheck)
 		return true
 	}
 
 	// healthy update
 	if cur.PolarisInstance.IsHealthy() != spec.Healthy {
+		log.Infof("%s healthy check changed, old %v, new %v",
+			cur.PolarisInstance.GetHost(), cur.PolarisInstance.IsEnableHealthCheck(), *enableHealthCheck)
 		return true
 	}
 
 	// weight update
-	if spec.Weight != cur.Weight {
+	if cur.Weight != spec.Weight {
+		log.Infof("%s weight changed, old %v, new %v", cur.PolarisInstance.GetHost(), cur.Weight, spec.Weight)
+		return true
+	}
+
+	// protocol update
+	if cur.Protocol != spec.Protocol {
+		log.Infof("%s protocol changed, old %v, new %v", cur.PolarisInstance.GetHost(), cur.Protocol, spec.Protocol)
 		return true
 	}
 
@@ -314,7 +324,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	newMetadataStr := service.GetAnnotations()[util.PolarisMetadata]
 	oldMetadata := cur.PolarisInstance.GetMetadata()
 	if oldMetadata == nil {
-		log.Errorf("%s old metadata is nil", cur.PolarisInstance.GetHost())
+		log.Infof("%s old metadata is nil, new %s", cur.PolarisInstance.GetHost(), newMetadataStr)
 		return true
 	}
 
@@ -325,11 +335,10 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 			return false
 		}
 	} else {
-
 		newMetaMap := make(map[string]string)
 		err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
 		if err != nil {
-			log.Errorf("unmarshal json from service annotations error %v", err)
+			log.Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
 			return false
 		}
 
