@@ -47,13 +47,59 @@ type Address struct {
 type InstanceSet map[string]*Address
 
 // GetAddressMapFromEndpoints
-//  形成
-//  [{
-//  "10.10.10.10-80": {
-//  "ip": "10.10.10.10",
-//  "port": "80"
-//   }
-//  }]
+//
+//	形成
+//	[{
+//	"10.10.10.10-80": {
+//	"ip": "10.10.10.10",
+//	"port": "80"
+//	 }
+//	}]
+
+func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, hasIndex bool,
+	podLister corelisters.PodLister, defaultWeight int, indexPortMap util.IndexPortMap) InstanceSet {
+	tmpReadyIndex := ""
+	if hasIndex {
+		tmpIndexArray := strings.Split(endpoint.TargetRef.Name, "-")
+		if len(tmpIndexArray) > 1 {
+			tmpReadyIndex = tmpIndexArray[len(tmpIndexArray)-1]
+		}
+	}
+
+	pod, err := podLister.Pods(endpoint.TargetRef.Namespace).Get(endpoint.TargetRef.Name)
+
+	instanceSet := make(InstanceSet)
+	for _, port := range subset.Ports {
+		ipPort := fmt.Sprintf("%s-%d", endpoint.IP, port.Port)
+		indexPort := fmt.Sprintf("%s-%d", tmpReadyIndex, port.Port)
+		tmpWeight := defaultWeight
+		if w, ok := indexPortMap[indexPort]; ok {
+			if w >= 0 || w <= 100 {
+				tmpWeight = w
+			}
+		}
+
+		address := &Address{
+			IP:       endpoint.IP,
+			Port:     int(port.Port),
+			PodName:  endpoint.TargetRef.Name,
+			Index:    tmpReadyIndex,
+			Weight:   tmpWeight,
+			Healthy:  true,
+			Protocol: port.Name + "/" + string(port.Protocol),
+		}
+
+		instanceSet[ipPort] = address
+
+		if err != nil {
+			continue
+		}
+
+		address.Metadata = pod.Labels
+	}
+	return instanceSet
+}
+
 func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 	podLister corelisters.PodLister, indexPortMap util.IndexPortMap) InstanceSet {
 	instanceSet := make(InstanceSet)
@@ -67,85 +113,17 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
-			tmpReadyIndex := ""
-			if hasIndex {
-				tmpIndexArray := strings.Split(readyAds.TargetRef.Name, "-")
-				if len(tmpIndexArray) > 1 {
-					tmpReadyIndex = tmpIndexArray[len(tmpIndexArray)-1]
-				}
-			}
-
-			pod, err := podLister.Pods(readyAds.TargetRef.Namespace).Get(readyAds.TargetRef.Name)
-
-			for _, port := range subset.Ports {
-				ipPort := fmt.Sprintf("%s-%d", readyAds.IP, port.Port)
-				indexPort := fmt.Sprintf("%s-%d", tmpReadyIndex, port.Port)
-				tmpWeight := defaultWeight
-				if w, ok := indexPortMap[indexPort]; ok {
-					if w >= 0 || w <= 100 {
-						tmpWeight = w
-					}
-				}
-
-				address := &Address{
-					IP:       readyAds.IP,
-					Port:     int(port.Port),
-					PodName:  readyAds.TargetRef.Name,
-					Index:    tmpReadyIndex,
-					Weight:   tmpWeight,
-					Healthy:  true,
-					Protocol: port.Name,
-				}
-
-				instanceSet[ipPort] = address
-
-				if err != nil {
-					continue
-				}
-
-				address.Metadata = pod.Labels
+			addresses := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap)
+			for k, v := range addresses {
+				instanceSet[k] = v
 			}
 		}
 
 		// 如果不需要优雅同步，就不把notReadyAddress加入的同步列表里面。
 		for _, notReadyAds := range subset.NotReadyAddresses {
-			tmpNotReadyIndex := ""
-			if hasIndex {
-				tmpIndexArray := strings.Split(notReadyAds.TargetRef.Name, "-")
-				if len(tmpIndexArray) > 1 {
-					tmpNotReadyIndex = tmpIndexArray[len(tmpIndexArray)-1]
-				}
-			}
-
-			pod, err := podLister.Pods(notReadyAds.TargetRef.Namespace).
-				Get(notReadyAds.TargetRef.Name)
-
-			for _, port := range subset.Ports {
-				ipPort := fmt.Sprintf("%s-%d", notReadyAds.IP, port.Port)
-				indexPort := fmt.Sprintf("%s-%d", tmpNotReadyIndex, port.Port)
-				tmpWeight := defaultWeight
-				if w, ok := indexPortMap[indexPort]; ok {
-					if w >= 0 || w <= 100 {
-						tmpWeight = w
-					}
-				}
-				address := &Address{
-					IP:       notReadyAds.IP,
-					Port:     int(port.Port),
-					PodName:  notReadyAds.TargetRef.Name,
-					Index:    tmpNotReadyIndex,
-					Weight:   tmpWeight,
-					Healthy:  false,
-					Protocol: port.Name,
-				}
-
-				instanceSet[ipPort] = address
-
-				if err != nil {
-					continue
-				}
-
-				address.Metadata = pod.Labels
+			addresses := buildAddresses(&notReadyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap)
+			for k, v := range addresses {
+				instanceSet[k] = v
 			}
 		}
 	}
@@ -187,6 +165,7 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 				IP:              instance.GetHost(),
 				Port:            int(instance.GetPort()),
 				Weight:          instance.GetWeight(),
+				Protocol:        instance.GetProtocol(),
 				PolarisInstance: instance,
 				Healthy:         instance.IsHealthy(),
 			}
