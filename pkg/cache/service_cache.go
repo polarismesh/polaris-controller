@@ -55,3 +55,16 @@ func (csm *CachedServiceMap) Load(key string) (value *v1.Service, ok bool) {
 func (csm *CachedServiceMap) Store(key string, value *v1.Service) {
 	csm.sm.Store(key, value)
 }
+
+// Clear remove all elements in cache
+func (csm *CachedServiceMap) Clear() {
+	csm.sm.Range(func(key interface{}, value interface{}) bool {
+		csm.sm.Delete(key)
+		return true
+	})
+}
+
+// Range execute f for each element of cache
+func (csm *CachedServiceMap) Range(f func(key, value interface{}) bool) {
+	csm.sm.Range(f)
+}
