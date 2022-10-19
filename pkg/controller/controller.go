@@ -183,6 +183,7 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 
 	p.serviceCache = localCache.NewCachedServiceMap()
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
+	p.isPolarisServerHealthy.Store(true)
 
 	cfg := api.NewConfiguration()
 
@@ -230,10 +231,18 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 	go p.MetricTracker(stopCh)
 
 	// 定时对账
-	go wait.Until(p.resyncWorker, time.Second*30, stopCh)
+	if p.config.PolarisController.ResyncDuration != 0 {
+		go wait.Until(p.resyncWorker, time.Second*time.Duration(p.config.PolarisController.ResyncDuration), stopCh)
+	} else {
+		go wait.Until(p.resyncWorker, time.Second*30, stopCh)
+	}
 
 	// 定时健康探测
-	go wait.Until(p.checkHealth, time.Second, stopCh)
+	if p.config.PolarisController.HealthCheckDuration != 0 {
+		go wait.Until(p.resyncWorker, time.Second*time.Duration(p.config.PolarisController.HealthCheckDuration), stopCh)
+	} else {
+		go wait.Until(p.checkHealth, time.Second, stopCh)
+	}
 
 	<-stopCh
 }

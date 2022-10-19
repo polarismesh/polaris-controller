@@ -211,6 +211,10 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	// 4. 配置 polaris-sidecar 注入模式的
 	s.PolarisController.SidecarMode = config.SidecarInject.Mode
 
+	// 5.设置健康检查时间以及定时对账时间
+	s.PolarisController.HealthCheckDuration = config.ServiceSync.HealthCheckDuration
+	s.PolarisController.ResyncDuration = config.ServiceSync.ResyncDuration
+
 	common.PolarisServerAddress = polarisServerAddress
 	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
 
@@ -510,6 +514,10 @@ type ServiceSync struct {
 	Mode               string `yaml:"mode"`
 	ServerAddress      string `yaml:"serverAddress"`
 	PolarisAccessToken string `yaml:"accessToken"`
+	// 健康探测时间间隔
+	HealthCheckDuration int `yaml:"healthCheckDuration"`
+	// 定时对账时间间隔
+	ResyncDuration int `yaml:"resyncDuration"`
 }
 
 // SidecarInject sidecar 注入相关
