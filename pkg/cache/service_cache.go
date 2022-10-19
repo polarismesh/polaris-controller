@@ -65,6 +65,8 @@ func (csm *CachedServiceMap) Clear() {
 }
 
 // Range execute f for each element of cache
-func (csm *CachedServiceMap) Range(f func(key, value interface{}) bool) {
-	csm.sm.Range(f)
+func (csm *CachedServiceMap) Range(f func(key string, value *v1.Service) bool) {
+	csm.sm.Range(func(key, value interface{}) bool {
+		return f(key.(string), value.(*v1.Service))
+	})
 }

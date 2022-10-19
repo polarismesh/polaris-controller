@@ -988,9 +988,8 @@ func (p *PolarisController) resyncWorker() {
 		return
 	}
 
-	p.resyncServiceCache.Range(func(key, value interface{}) bool {
-		keyStr, _ := key.(string)
-		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(keyStr))
+	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
+		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
 		if !ok {
 			p.onServiceAdd(value)
 			return true
