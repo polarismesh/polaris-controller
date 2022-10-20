@@ -232,14 +232,14 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 
 	// 定时对账
 	if p.config.PolarisController.ResyncDuration != 0 {
-		go wait.Until(p.resyncWorker, time.Second*time.Duration(p.config.PolarisController.ResyncDuration), stopCh)
+		go wait.Until(p.resyncWorker, p.config.PolarisController.ResyncDuration, stopCh)
 	} else {
 		go wait.Until(p.resyncWorker, time.Second*30, stopCh)
 	}
 
 	// 定时健康探测
 	if p.config.PolarisController.HealthCheckDuration != 0 {
-		go wait.Until(p.resyncWorker, time.Second*time.Duration(p.config.PolarisController.HealthCheckDuration), stopCh)
+		go wait.Until(p.checkHealth, p.config.PolarisController.HealthCheckDuration, stopCh)
 	} else {
 		go wait.Until(p.checkHealth, time.Second, stopCh)
 	}
@@ -1000,7 +1000,7 @@ func (p *PolarisController) resyncWorker() {
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
 		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
 		if !ok {
-			p.onServiceAdd(value)
+			p.enqueueService(key, value, "Add")
 			return true
 		}
 
