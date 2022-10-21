@@ -18,9 +18,10 @@
 package util
 
 import (
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"strings"
 )
 
 var (
@@ -34,6 +35,16 @@ func GenObjectQueueKey(obj interface{}) (string, error) {
 	}
 
 	return key, err
+}
+
+// GetOriginKeyWithResyncQueueKey 通过同步任务key生成原始key
+func GetOriginKeyWithResyncQueueKey(key string) string {
+	return key[:len(key)-len("~resync")]
+}
+
+// GenServiceResyncQueueKeyWithOrigin 通过原始key生成用于同步任务的key便于区分不同的任务
+func GenServiceResyncQueueKeyWithOrigin(key string) string {
+	return key + "~" + "resync"
 }
 
 // GenServiceQueueKeyWithFlag 在 namespace 的事件流程中使用。

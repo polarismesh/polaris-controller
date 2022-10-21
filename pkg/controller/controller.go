@@ -31,6 +31,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
 	"github.com/polarismesh/polaris-go/api"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -92,11 +93,21 @@ type PolarisController struct {
 	// serviceCache 记录了service历史service相关信息
 	serviceCache *localCache.CachedServiceMap
 
+	// resyncServiceCache 需要进行同步的service历史
+	resyncServiceCache *localCache.CachedServiceMap
+
 	consumer api.ConsumerAPI
 	provider api.ProviderAPI
 
 	// ComponentConfig provides access to init options for a given controller
 	config options.KubeControllerManagerConfiguration
+
+	// isPolarisServerHealthy indicates whether the polaris server is healthy
+	// used to decide when to trigger a full resync
+	isPolarisServerHealthy atomic.Bool
+
+	// polarisServerFailedTimes record the failed time of polaris server which is used to trigger full resync
+	polarisServerFailedTimes int
 }
 
 const (
@@ -171,6 +182,8 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	p.eventRecorder = recorder
 
 	p.serviceCache = localCache.NewCachedServiceMap()
+	p.resyncServiceCache = localCache.NewCachedServiceMap()
+	p.isPolarisServerHealthy.Store(true)
 
 	cfg := api.NewConfiguration()
 
@@ -217,6 +230,20 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 	// 定时任务
 	go p.MetricTracker(stopCh)
 
+	// 定时对账
+	if p.config.PolarisController.ResyncDuration != 0 {
+		go wait.Until(p.resyncWorker, p.config.PolarisController.ResyncDuration, stopCh)
+	} else {
+		go wait.Until(p.resyncWorker, time.Second*30, stopCh)
+	}
+
+	// 定时健康探测
+	if p.config.PolarisController.HealthCheckDuration != 0 {
+		go wait.Until(p.checkHealth, p.config.PolarisController.HealthCheckDuration, stopCh)
+	} else {
+		go wait.Until(p.checkHealth, time.Second, stopCh)
+	}
+
 	<-stopCh
 }
 
@@ -249,6 +276,7 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 			log.Infof("Service %s is update because sync no to false", key)
 			metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
 			p.queue.Add(key)
+			p.resyncServiceCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
 			return
 		}
 	}
@@ -267,11 +295,13 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 		metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
 		p.queue.Add(key)
 		p.serviceCache.Store(key, oldService)
+		p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curService)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
 		log.Infof("Service %s is update to polaris type", key)
 		metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
 		p.queue.Add(key)
+		p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curService)
 	}
 }
 
@@ -290,6 +320,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 	}
 
 	p.enqueueService(key, service, "Add")
+	p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), service)
 }
 
 // onServiceDelete 在识别到是这个北极星类型service删除的时候，才进行处理
@@ -322,6 +353,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 	}
 
 	p.enqueueService(key, service, "Delete")
+	p.resyncServiceCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
 }
 
 func (p *PolarisController) onEndpointAdd(obj interface{}) {
@@ -956,4 +988,51 @@ func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 		p.CounterPolarisService()
 	}
 	<-stopCh
+}
+
+// resyncWorker 定时对账
+func (p *PolarisController) resyncWorker() {
+	if !p.isPolarisServerHealthy.Load() {
+		log.Info("Resync: Polaris server failed, not sync")
+		return
+	}
+
+	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
+		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+		if !ok {
+			p.enqueueService(key, value, "Add")
+			return true
+		}
+
+		if !reflect.DeepEqual(value, v) {
+			p.onServiceUpdate(v, value)
+		}
+
+		return true
+	})
+}
+
+// checkHealth 健康检查
+func (p *PolarisController) checkHealth() {
+	if polarisapi.CheckHealth() {
+		// failed -> healthy, clear service cache and start full resync
+		if !p.isPolarisServerHealthy.Load() {
+			p.isPolarisServerHealthy.Store(true)
+			p.serviceCache.Clear()
+			log.Info("Polaris server health check: clear local cache and resync")
+		}
+
+		// 清除网络波动导致的健康检测失败记录
+		p.polarisServerFailedTimes = 0
+		return
+	}
+
+	// 失败三次以上认为server down
+	if p.isPolarisServerHealthy.Load() {
+		p.polarisServerFailedTimes++
+		if p.polarisServerFailedTimes >= 3 {
+			p.isPolarisServerHealthy.Store(false)
+			p.polarisServerFailedTimes = 0
+		}
+	}
 }

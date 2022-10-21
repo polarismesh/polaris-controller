@@ -52,6 +52,7 @@ const (
 	createServiceAlias = "/naming/v1/service/alias"
 	getNamespace       = "/naming/v1/namespaces"
 	createNamespace    = "/naming/v1/namespaces"
+	checkHealth        = ""
 )
 
 // GetAllInstances 获取全量Instances
@@ -744,6 +745,21 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 	}
 
 	return response, nil
+}
+
+// CheckHealth checks whether the polaris server is healthy
+func CheckHealth() bool {
+	requestID := uuid.New().String()
+	url := fmt.Sprintf("%s%s", PolarisHttpURL, checkHealth)
+
+	statusCode, _, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
+
+	if err != nil || statusCode != http.StatusOK {
+		log.Debug("Failed to check health of polaris server")
+		return false
+	}
+
+	return true
 }
 
 func splitArray(instances []Instance, size int) [][]Instance {

@@ -18,6 +18,8 @@
 package options
 
 import (
+	"time"
+
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -36,6 +38,8 @@ type PolarisControllerConfiguration struct {
 	MinAccountingPeriod    metav1.Duration
 	SyncMode               string
 	SidecarMode            string
+	HealthCheckDuration    time.Duration
+	ResyncDuration         time.Duration
 }
 
 // AddFlags adds flags related to generic for controller manager to the specified FlagSet.
@@ -52,6 +56,9 @@ func (o *PolarisControllerOptions) AddFlags(fs *pflag.FlagSet) {
 		"The resync period in reflectors will be random between MinResyncPeriod and 2*MinResyncPeriod.")
 	fs.StringVar(&o.SyncMode, "sync-mode", "", "polaris-controller sync mode, supports 'all', 'demand'")
 	fs.StringVar(&o.SidecarMode, "sidecarinject-mode", "", "polaris-controller sidecarinject mode, supports 'mesh', 'dns'")
+	fs.DurationVar(&o.HealthCheckDuration, "healthcheck-duration", time.Second,
+		"The health checking duration of the polaris server (eg. 5h30m2s).")
+	fs.DurationVar(&o.ResyncDuration, "resync-duration", time.Second*30, "The resync duration (eg. 5h30m2s).")
 }
 
 // ApplyTo fills up generic config with options.
@@ -66,6 +73,8 @@ func (o *PolarisControllerOptions) ApplyTo(cfg *PolarisControllerConfiguration) 
 	cfg.MinAccountingPeriod = o.MinAccountingPeriod
 	cfg.SyncMode = o.SyncMode
 	cfg.SidecarMode = o.SidecarMode
+	cfg.HealthCheckDuration = o.HealthCheckDuration
+	cfg.ResyncDuration = o.ResyncDuration
 
 	return nil
 }
