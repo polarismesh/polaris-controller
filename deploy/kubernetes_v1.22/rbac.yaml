@@ -11,21 +11,14 @@ metadata:
   name: polaris-controller
 rules:
   - apiGroups: [""]
-    resources:
-      - pods
-      - endpoints
-      - events
-      - statefulsets
-      - services
-      - namespaces
-      - configmaps
-    verbs:
-      - create
-      - get
-      - list
-      - patch
-      - update
-      - watch
+    resources: ["endpoints"]
+    verbs: ["update", "get", "list", "watch"]
+  - apiGroups:  [""]
+    resources: ["pods", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups:  [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

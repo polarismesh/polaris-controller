@@ -35,6 +35,7 @@ controller:
   name: polaris-controller
   webhook:
     host: polaris.tencent.com
+    service: polaris-sidecar-injector
   image:
     repo: polarismesh/polaris-controller
     tag: v1.3.0-beta.0

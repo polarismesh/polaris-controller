@@ -168,6 +168,7 @@ metadata:
   annotations:
     polarismesh.cn/sync: "true"
 
+---
 apiVersion: v1
 kind: Service
 metadata:
