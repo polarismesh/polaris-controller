@@ -16,12 +16,12 @@ sidecar:
   mode: mesh
   image:
     repo: polarismesh/polaris-sidecar
-    tag: v1.3.0-beta.0
+    tag: v1.4.0-beta.0
     pullPolicy: Always
   init:
     image:
       repo: polarismesh/polaris-sidecar
-      tag: v1.3.0-beta.0
+      tag: v1.4.0-beta.0
       pullPolicy: Always
 
 ## polaris server config
@@ -38,7 +38,7 @@ controller:
     service: polaris-sidecar-injector
   image:
     repo: polarismesh/polaris-controller
-    tag: v1.3.0-beta.0
+    tag: v1.4.0-beta.0
     pullPolicy: IfNotPresent
   metrics:
     port: 80
