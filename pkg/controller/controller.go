@@ -361,7 +361,7 @@ func (p *PolarisController) onEndpointAdd(obj interface{}) {
 	endpoint := obj.(*v1.Endpoints)
 
 	if !util.IgnoreEndpoint(endpoint) {
-		log.Infof("Endpoint %s/%s in ignore namespaces", endpoint.Name, endpoint.Namespace)
+		log.Infof("Endpoint %s/%s in ignore namespaces", endpoint.Namespace, endpoint.Name)
 		return
 	}
 
@@ -502,7 +502,7 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 
 	key, err := util.GenObjectQueueKey(old)
 	if err != nil {
-		log.Errorf("get object key for endpoint %s/%s error, %v", oldEndpoint.Name, oldEndpoint.Namespace, err)
+		log.Errorf("get object key for endpoint %s/%s error, %v", oldEndpoint.Namespace, oldEndpoint.Name, err)
 		return
 	}
 
@@ -543,7 +543,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
 	if err != nil {
 		log.Errorf("Unable to find the service of the endpoint %s/%s, %v",
-			endpoint.Name, endpoint.Namespace, err)
+			endpoint.Namespace, endpoint.Name, err)
 		return false, "", err
 	}
 
@@ -551,7 +551,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 		// 情况 1 ，要处理
 		key, err := util.GenServiceQueueKey(service)
 		if err != nil {
-			log.Errorf("get service %s/%s key in enqueueEndpoint error, %v", service.Name, service.Namespace, err)
+			log.Errorf("get service %s/%s key in enqueueEndpoint error, %v", service.Namespace, service.Name, err)
 			return false, "", err
 		}
 		return true, key, nil
@@ -565,7 +565,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 		namespace, err := p.namespaceLister.Get(service.Namespace)
 		if err != nil {
 			log.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
-				endpoint.Name, endpoint.Namespace, err)
+				endpoint.Namespace, endpoint.Name, err)
 			return false, "", err
 		}
 		if util.IsNamespaceSyncEnable(namespace) {
@@ -573,7 +573,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 			key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
 			if err != nil {
 				log.Errorf("Unable to find the key of the service %s/%s, %v",
-					service.Name, service.Namespace, err)
+					service.Namespace, service.Name, err)
 			}
 			return true, key, nil
 		}
@@ -587,7 +587,7 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 	endpoint := obj.(*v1.Endpoints)
 
 	if !util.IgnoreEndpoint(endpoint) {
-		log.Infof("Endpoint %s/%s in ignore namespaces", endpoint.Name, endpoint.Namespace)
+		log.Infof("Endpoint %s/%s in ignore namespaces", endpoint.Namespace, endpoint.Name)
 		return
 	}
 
