@@ -360,6 +360,8 @@ func (p *PolarisController) onEndpointAdd(obj interface{}) {
 	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
 	endpoint := obj.(*v1.Endpoints)
 
+	p.registerController(endpoint)
+
 	if !util.IgnoreEndpoint(endpoint) {
 		log.Infof("Endpoint %s/%s in ignore namespaces", endpoint.Namespace, endpoint.Name)
 		return
@@ -1033,6 +1035,35 @@ func (p *PolarisController) checkHealth() {
 		if p.polarisServerFailedTimes >= 3 {
 			p.isPolarisServerHealthy.Store(false)
 			p.polarisServerFailedTimes = 0
+		}
+	}
+}
+
+// registerController 将controller注册到server
+func (p *PolarisController) registerController(endpoint *v1.Endpoints) {
+	if endpoint.Namespace == "polaris-system" && endpoint.Name == "polaris-controller-metrics" {
+		port := endpoint.Subsets[0].Ports[0].Port
+		host := ""
+		healthy := util.Bool(false)
+		if len(endpoint.Subsets[0].Addresses) != 0 {
+			host = endpoint.Subsets[0].Addresses[0].IP
+			healthy = util.Bool(true)
+		} else {
+			host = endpoint.Subsets[0].NotReadyAddresses[0].IP
+		}
+
+		req := &api.InstanceRegisterRequest{}
+		req.Service = "polaris-controller." + endpoint.ClusterName
+		req.ServiceToken = globalToken
+		req.Namespace = "Polaris"
+		req.Host = host
+		req.Port = int(port)
+		req.Healthy = healthy
+		req.SetTTL(5)
+
+		_, err := p.provider.Register(req)
+		if err != nil {
+			log.Errorf("Sync: Failed to register controller to polaris server, %v", err)
 		}
 	}
 }

@@ -39,10 +39,6 @@ var ignoredNamespaces = []string{
 	"kube-node-lease",
 }
 
-var controllerNamespace = "polaris-system"
-var controllerServiceName = "polaris-controller-metrics"
-var controllerNewNamespace = "Polaris"
-
 const (
 	DefaultWeight = 100
 )
@@ -147,12 +143,6 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 
 // IgnoreService 添加 service 时，忽略一些不需要处理的 service
 func IgnoreService(svc *v1.Service) bool {
-	// sync polaris-controller
-	if svc.Namespace == controllerNamespace && svc.Name == controllerServiceName {
-		svc.Namespace = controllerNewNamespace
-		svc.Name = "polaris-controller" + "." + svc.ClusterName
-		return false
-	}
 
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
@@ -178,12 +168,6 @@ func IgnoreService(svc *v1.Service) bool {
 
 // IgnoreEndpoint 忽略一些命名空间下的 endpoints
 func IgnoreEndpoint(endpoint *v1.Endpoints) bool {
-	// sync polaris-controller
-	if endpoint.Namespace == controllerNamespace && endpoint.Name == controllerServiceName {
-		endpoint.Namespace = controllerNewNamespace
-		endpoint.Name = "polaris-controller" + "." + endpoint.ClusterName
-		return true
-	}
 
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
