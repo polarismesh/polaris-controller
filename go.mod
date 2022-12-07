@@ -11,7 +11,7 @@ require (
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/openshift/api v3.9.1-0.20191008181517-e4fd21196097+incompatible
-	github.com/polarismesh/polaris-go v1.1.0
+	github.com/polarismesh/polaris-go v1.2.0
 	github.com/prometheus/client_golang v1.12.2 // indirect
 	github.com/prometheus/common v0.34.0 // indirect
 	github.com/spf13/cobra v1.1.3
@@ -41,6 +41,7 @@ require (
 	github.com/blang/semver v3.5.0+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
 	github.com/go-openapi/jsonpointer v0.19.3 // indirect
