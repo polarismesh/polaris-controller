@@ -66,7 +66,6 @@ const (
 	PolarisAccountingControllerName = "polaris-accounting-controller"
 	DefaultLockObjectName           = "polaris-controller"
 	DefaultLeaderElectionName       = "polaris-controller"
-	globalToken                     = "polaris@12345678"
 
 	MeshConfigFile = "/etc/polaris-inject/inject/mesh-config"
 	DnsConfigFile  = "/etc/polaris-inject/inject/dns-config"
@@ -607,7 +606,7 @@ func readConfFromFile() (*controllerConfig, error) {
 func registerController(c *options.KubeControllerManagerConfiguration, provider api.ProviderAPI) {
 	req := &api.InstanceRegisterRequest{}
 	req.Service = "polaris-controller." + c.PolarisController.ClusterName
-	req.ServiceToken = globalToken
+	req.ServiceToken = polarisapi.PolarisAccessToken
 	req.Namespace = "Polaris"
 	if podIP == "" {
 		conn, err := net.Dial("ip4:1", common.PolarisServerAddress)
@@ -633,7 +632,7 @@ func deregisterController(c *options.KubeControllerManagerConfiguration, provide
 	req := &api.InstanceDeRegisterRequest{}
 	req.Service = "polaris-controller." + c.PolarisController.ClusterName
 	req.Namespace = "Polaris"
-	req.ServiceToken = globalToken
+	req.ServiceToken = polarisapi.PolarisAccessToken
 	req.Host = podIP
 	req.Port = int(c.Generic.Port)
 
