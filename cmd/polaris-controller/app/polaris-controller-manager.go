@@ -485,7 +485,7 @@ func ResyncPeriod(c *options.CompletedConfig) func() time.Duration {
 }
 
 // buildAPI
-func buildAPI() (consumerAPI api.ConsumerAPI, providerAPI api.ProviderAPI, err error) {
+func buildAPI() (api.ConsumerAPI, api.ProviderAPI, error) {
 	cfg := api.NewConfiguration()
 
 	cfg.GetGlobal().GetServerConnector().SetAddresses([]string{polarisapi.PolarisGrpc})
@@ -493,19 +493,19 @@ func buildAPI() (consumerAPI api.ConsumerAPI, providerAPI api.ProviderAPI, err e
 	cfg.GetGlobal().GetServerConnector().SetMessageTimeout(time.Second * 10)
 	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
 
-	consumerAPI, err = api.NewConsumerAPIByConfig(cfg)
+	consumerAPI, err := api.NewConsumerAPIByConfig(cfg)
 	if err != nil {
 		log.Errorf("fail to create consumer with %s, err: %v", polarisapi.PolarisGrpc, err)
-		return
+		return nil, nil, err
 	}
 
-	providerAPI, err = api.NewProviderAPIByConfig(cfg)
+	providerAPI, err := api.NewProviderAPIByConfig(cfg)
 	if err != nil {
 		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
-		return
+		return nil, nil, err
 	}
 
-	return
+	return consumerAPI, providerAPI, nil
 }
 
 // startPolarisController
