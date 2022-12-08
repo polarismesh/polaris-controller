@@ -130,6 +130,8 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	namespaceInformer coreinformers.NamespaceInformer,
 	client clientset.Interface,
 	config options.KubeControllerManagerConfiguration,
+	consumerAPI api.ConsumerAPI,
+	providerAPI api.ProviderAPI,
 ) (*PolarisController, error) {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(log.Infof)
@@ -185,23 +187,8 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
 	p.isPolarisServerHealthy.Store(true)
 
-	cfg := api.NewConfiguration()
-
-	cfg.GetGlobal().GetServerConnector().SetAddresses([]string{polarisapi.PolarisGrpc})
-	cfg.GetGlobal().GetServerConnector().SetConnectTimeout(time.Second * 10)
-	cfg.GetGlobal().GetServerConnector().SetMessageTimeout(time.Second * 10)
-	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
-
-	var err error
-	if p.consumer, err = api.NewConsumerAPIByConfig(cfg); err != nil {
-		log.Errorf("fail to create consumer with %s, err: %v", polarisapi.PolarisGrpc, err)
-		return nil, err
-	}
-	// 获取默认配置
-	if p.provider, err = api.NewProviderAPIByConfig(cfg); err != nil {
-		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
-		return nil, err
-	}
+	p.consumer = consumerAPI
+	p.provider = providerAPI
 
 	p.config = config
 	return p, nil

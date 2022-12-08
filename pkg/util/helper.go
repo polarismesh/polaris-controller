@@ -143,6 +143,7 @@ func IsPolarisService(svc *v1.Service, syncMode string) bool {
 
 // IgnoreService 添加 service 时，忽略一些不需要处理的 service
 func IgnoreService(svc *v1.Service) bool {
+
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if svc.GetNamespace() == namespaces {
@@ -167,6 +168,7 @@ func IgnoreService(svc *v1.Service) bool {
 
 // IgnoreEndpoint 忽略一些命名空间下的 endpoints
 func IgnoreEndpoint(endpoint *v1.Endpoints) bool {
+
 	// 默认忽略某些命名空间
 	for _, namespaces := range ignoredNamespaces {
 		if endpoint.GetNamespace() == namespaces {

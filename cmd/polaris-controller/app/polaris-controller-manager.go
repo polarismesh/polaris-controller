@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -35,6 +36,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
+	"github.com/polarismesh/polaris-go/api"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/yaml.v2"
@@ -82,6 +84,7 @@ var (
 
 		polarisServerAddress string
 	}{}
+	podIP string
 )
 
 // ControllerContext defines the context object for controller
@@ -480,8 +483,37 @@ func ResyncPeriod(c *options.CompletedConfig) func() time.Duration {
 	}
 }
 
+// buildAPI
+func buildAPI() (api.ConsumerAPI, api.ProviderAPI, error) {
+	cfg := api.NewConfiguration()
+
+	cfg.GetGlobal().GetServerConnector().SetAddresses([]string{polarisapi.PolarisGrpc})
+	cfg.GetGlobal().GetServerConnector().SetConnectTimeout(time.Second * 10)
+	cfg.GetGlobal().GetServerConnector().SetMessageTimeout(time.Second * 10)
+	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
+
+	consumerAPI, err := api.NewConsumerAPIByConfig(cfg)
+	if err != nil {
+		log.Errorf("fail to create consumer with %s, err: %v", polarisapi.PolarisGrpc, err)
+		return nil, nil, err
+	}
+
+	providerAPI, err := api.NewProviderAPIByConfig(cfg)
+	if err != nil {
+		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
+		return nil, nil, err
+	}
+
+	return consumerAPI, providerAPI, nil
+}
+
 // startPolarisController
 func startPolarisController(ctx ControllerContext) (http.Handler, error) {
+	consumerAPI, providerAPI, err := buildAPI()
+	if err != nil {
+		return nil, err
+	}
+
 	handler, err := polarisController.NewPolarisController(
 		ctx.InformerFactory.Core().V1().Pods(),
 		ctx.InformerFactory.Core().V1().Services(),
@@ -489,11 +521,23 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 		ctx.InformerFactory.Core().V1().Namespaces(),
 		ctx.ClientBuilder.ClientOrDie(ControllerName),
 		ctx.ComponentConfig,
+		consumerAPI,
+		providerAPI,
 	)
 	if err != nil {
 		return nil, err
 	}
 	go handler.Run(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop)
+
+	// register controller to server
+	registerController(&ctx.ComponentConfig, providerAPI)
+
+	// deregister controller from server
+	go func() {
+		defer deregisterController(&ctx.ComponentConfig, providerAPI)
+		<-ctx.Stop
+	}()
+
 	return nil, nil
 }
 
@@ -557,3 +601,43 @@ func readConfFromFile() (*controllerConfig, error) {
 //	).Run(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop)
 //	return nil, nil
 //}
+
+// registerController register controller to server
+func registerController(c *options.KubeControllerManagerConfiguration, provider api.ProviderAPI) {
+	req := &api.InstanceRegisterRequest{}
+	req.Service = "polaris-controller." + c.PolarisController.ClusterName
+	req.ServiceToken = polarisapi.PolarisAccessToken
+	req.Namespace = "Polaris"
+	if podIP == "" {
+		conn, err := net.Dial("ip4:1", common.PolarisServerAddress)
+		if err != nil {
+			log.Errorf("Sync: Failed to get controller ip address, %v", err)
+		}
+		defer conn.Close()
+
+		podIP = conn.LocalAddr().(*net.IPAddr).IP.String()
+	}
+	req.Host = podIP
+	req.Port = int(c.Generic.Port)
+	req.SetTTL(5)
+
+	_, err := provider.RegisterInstance(req)
+	if err != nil {
+		log.Errorf("Sync: Failed to register controller to polaris server, %v", err)
+	}
+}
+
+// deregisterController deregister controller from server
+func deregisterController(c *options.KubeControllerManagerConfiguration, provider api.ProviderAPI) {
+	req := &api.InstanceDeRegisterRequest{}
+	req.Service = "polaris-controller." + c.PolarisController.ClusterName
+	req.Namespace = "Polaris"
+	req.ServiceToken = polarisapi.PolarisAccessToken
+	req.Host = podIP
+	req.Port = int(c.Generic.Port)
+
+	err := provider.Deregister(req)
+	if err != nil {
+		log.Errorf("Sync: Failed to deregister controller from polaris server, %v", err)
+	}
+}
