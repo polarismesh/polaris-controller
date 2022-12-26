@@ -26,6 +26,7 @@ import (
 
 // resyncWorker 定时对账
 func (p *PolarisController) resyncWorker() {
+	log.Info("start do Resync job")
 	if !p.isPolarisServerHealthy.Load() {
 		log.Info("Resync: Polaris server failed, not sync")
 		return
