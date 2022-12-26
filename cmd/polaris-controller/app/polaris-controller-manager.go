@@ -636,8 +636,7 @@ func deregisterController(c *options.KubeControllerManagerConfiguration, provide
 	req.Host = podIP
 	req.Port = int(c.Generic.Port)
 
-	err := provider.Deregister(req)
-	if err != nil {
+	if err := provider.Deregister(req); err != nil {
 		log.Errorf("Sync: Failed to deregister controller from polaris server, %v", err)
 	}
 }
