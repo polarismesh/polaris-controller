@@ -115,7 +115,7 @@ data:
     template: |
       containers:
       - name: envoy
-        image: envoyproxy/envoy:v1.18.3
+        image: envoyproxy/envoy-contrib:#ENVOY_VERSION#
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
