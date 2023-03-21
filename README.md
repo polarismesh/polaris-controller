@@ -118,7 +118,7 @@ Start polaris-controller in full synchronization service mode, and synchronize a
 apiVersion: v1
 kind: ConfigMap
 data:
-  mesh:
+  mesh: |-
     serviceSync
       mode: "all"
 ```
@@ -131,7 +131,7 @@ Start polaris-controller in the mode of on-demand synchronization service. By de
 apiVersion: v1
 kind: ConfigMap
 data:
-  mesh:
+  mesh: |-
     serviceSync
       mode: "demand"
 ```
