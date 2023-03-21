@@ -116,8 +116,8 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```yaml
 apiVersion: v1
 kind: ConfigMap
-data: |-
-  mesh:
+data:
+  mesh: |-
     serviceSync
       mode: "all"
 ```
@@ -129,8 +129,8 @@ data: |-
 ```yaml
 apiVersion: v1
 kind: ConfigMap
-data: |-
-  mesh:
+data:
+  mesh: |-
     serviceSync
       mode: "demand"
 ```
