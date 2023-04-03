@@ -46,6 +46,7 @@ type Scope struct {
 }
 
 var scopes = make(map[string]*Scope)
+
 var lock = sync.RWMutex{}
 
 // RegisterScope registers a new logging scope. If the same name is used multiple times

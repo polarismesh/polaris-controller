@@ -24,6 +24,7 @@ type Response struct {
 	Amount    uint32     `json:"amount"`
 	Size      uint32     `json:"size"`
 	Instances []Instance `json:"instances"`
+	User      User       `json:"user"`
 	LogicSet  string     `json:"logic_set"`
 	Ctime     bool       `json:"ctime"`
 	Mtime     bool       `json:"mtime"`
@@ -211,4 +212,10 @@ type CreateNamespaceResponse struct {
 type Namespace struct {
 	Name   string `json:"name"`
 	Owners string `json:"owners"`
+}
+
+type User struct {
+	Id        string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name      string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	AuthToken string `protobuf:"bytes,6,opt,name=auth_token,proto3" json:"auth_token,omitempty"`
 }

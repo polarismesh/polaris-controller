@@ -22,14 +22,15 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/metrics"
-	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/metrics"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // onServiceUpdate 比较是否有必要加入service队列

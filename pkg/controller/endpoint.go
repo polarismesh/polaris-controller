@@ -20,12 +20,14 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strings"
+
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
-	v1 "k8s.io/api/core/v1"
 )
 
 func (p *PolarisController) onEndpointAdd(obj interface{}) {
@@ -215,10 +217,13 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
 
-	log.Infof("%s Current polaris instance from sdk is %v", serviceMsg, instances)
-	log.Infof("%s Spec endpoint instance is %v", serviceMsg, specIPs)
-	log.Infof("%s Current polaris instance is %v", serviceMsg, currentIPs)
-	log.Infof("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns)
+	msg := []string{
+		fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
+		fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
+		fmt.Sprintf("%s Current polaris instance is %v", serviceMsg, currentIPs),
+		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+	}
+	log.Infof(strings.Join(msg, "\n"))
 
 	var addInsErr, deleteInsErr, updateInsErr error
 

@@ -22,12 +22,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // Address 记录IP端口信息

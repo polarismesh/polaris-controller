@@ -24,14 +24,15 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
-	"github.com/polarismesh/polaris-go/api"
-	"github.com/polarismesh/polaris-go/pkg/model"
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -240,14 +241,14 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 
 // CompareInstance 比较预期示例和现有实例的区别
 func (p *PolarisController) CompareInstance(service *v1.Service,
-	spec address.InstanceSet, cur address.InstanceSet) (addIns,
+	spec, cur address.InstanceSet) (addIns,
 	deleteIns, updateIns []address.Address) {
 	// 对比预期的endpoint和当前的北极星获取的值，如果没有就增加，如果更新
 	for index, instance := range spec {
 		if cur[index] != nil {
 			// 如果存在，判断是否要更新
 			if p.compareInstanceUpdate(service, instance, cur[index]) {
-				log.Errorf("need update %v", instance.IP)
+				log.Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
 				updateIns = append(updateIns, *instance)
 			}
 		} else {
@@ -259,7 +260,7 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 	// 对比当前北极星的跟预期列表，删除没有用的。
 	for i, ins := range cur {
 		if spec[i] == nil {
-			log.Errorf("need delete %v-%v", ins.IP, ins.Port)
+			log.Warnf("%s %s need delete %v-%v", service.Namespace, service.Name, ins.IP, ins.Port)
 			deleteIns = append(deleteIns, *ins)
 		}
 	}

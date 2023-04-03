@@ -23,8 +23,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app"
 	"k8s.io/component-base/logs"
+
+	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app"
 )
 
 func main() {

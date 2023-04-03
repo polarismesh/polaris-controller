@@ -21,11 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
-	"github.com/polarismesh/polaris-controller/common/log"
-	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
-	"github.com/polarismesh/polaris-controller/pkg/metrics"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/api"
 	"go.uber.org/atomic"
 	v1 "k8s.io/api/core/v1"
@@ -41,6 +36,12 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
+
+	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
+	"github.com/polarismesh/polaris-controller/common/log"
+	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
+	"github.com/polarismesh/polaris-controller/pkg/metrics"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // PolarisController

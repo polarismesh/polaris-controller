@@ -18,10 +18,11 @@
 package controller
 
 import (
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
-	v1 "k8s.io/api/core/v1"
 )
 
 // resyncWorker 定时对账

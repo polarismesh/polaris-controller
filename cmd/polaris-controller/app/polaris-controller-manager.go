@@ -29,13 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
-	"github.com/polarismesh/polaris-controller/common"
-	"github.com/polarismesh/polaris-controller/common/log"
-	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
-	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
@@ -56,6 +49,13 @@ import (
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 
+	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
+	"github.com/polarismesh/polaris-controller/common"
+	"github.com/polarismesh/polaris-controller/common/log"
+	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
 )
@@ -198,6 +198,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	log.Infof("[Manager] polaris http address %s, grpc address %s", polarisapi.PolarisHttpURL, polarisapi.PolarisGrpc)
 	// 设置北极星开启鉴权之后，需要使用的访问token
 	polarisapi.PolarisAccessToken = config.ServiceSync.PolarisAccessToken
+	polarisapi.PolarisOperator = config.ServiceSync.Operator
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
@@ -555,19 +556,24 @@ type DefaultConfig struct {
 
 // ServiceSync 服务同步相关配置
 type ServiceSync struct {
-	Mode               string `yaml:"mode"`
-	ServerAddress      string `yaml:"serverAddress"`
-	PolarisAccessToken string `yaml:"accessToken"`
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
 	// 健康探测时间间隔
 	HealthCheckDuration string `yaml:"healthCheckDuration"`
 	// 定时对账时间间隔
 	ResyncDuration string `yaml:"resyncDuration"`
+	// 以下配置仅 polaris-server 开启 console auth
+	// 调用 polaris-server OpenAPI 的凭据
+	PolarisAccessToken string `yaml:"accessToken"`
+	// 用于数据同步的帐户ID
+	Operator string `yaml:"operator"`
 }
 
 // SidecarInject sidecar 注入相关
 type SidecarInject struct {
 	Mode string `yaml:"mode"`
 }
+
 type controllerConfig struct {
 	Logger        map[string]*log.Options `yaml:"logger"`
 	ClusterName   string                  `yaml:"clusterName"`

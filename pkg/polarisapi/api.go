@@ -20,6 +20,7 @@ package polarisapi
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -30,16 +31,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/util"
-	v1 "k8s.io/api/core/v1"
 )
 
 var (
 	PolarisHttpURL     = "http://127.0.0.1:8090"
 	PolarisGrpc        = "127.0.0.1:8091"
 	PolarisAccessToken = ""
+	PolarisOperator    = ""
 )
 
 const (
@@ -53,6 +56,7 @@ const (
 	getNamespace       = "/naming/v1/namespaces"
 	createNamespace    = "/naming/v1/namespaces"
 	checkHealth        = ""
+	getUserToken       = "/core/v1/user/token"
 )
 
 // GetAllInstances 获取全量Instances
@@ -798,9 +802,15 @@ func polarisHttpRequest(
 		log.Errorf("Failed to set request %v", err)
 		return 0, nil, 0, err
 	}
+	accessToken, err := lookAccessToken()
+	if err != nil {
+		log.Errorf("Failed to lookup access token %v", err)
+		return 0, nil, 0, err
+	}
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Request-Id", requestID)
-	req.Header.Set(AccessTokenHeader, PolarisAccessToken)
+	req.Header.Set(AccessTokenHeader, accessToken)
 
 	resp, err := client.Do(req)
 
@@ -819,4 +829,41 @@ func polarisHttpRequest(
 	}
 
 	return resp.StatusCode, body, time.Since(startTime), err
+}
+
+func lookAccessToken() (string, error) {
+	if len(PolarisOperator) == 0 {
+		return PolarisAccessToken, nil
+	}
+	url := fmt.Sprintf("%s%s?id=%s", PolarisHttpURL, getUserToken, PolarisOperator)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Errorf("Failed to set request %v", err)
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Request-Id", uuid.NewString())
+	req.Header.Set(AccessTokenHeader, PolarisAccessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Errorf("Failed to get request %v", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("Failed to get request %v", err)
+		return "", err
+	}
+	if resp.StatusCode == http.StatusOK {
+		return "", errors.New(string(body))
+	}
+
+	userResp := &Response{}
+	if err := json.Unmarshal(body, userResp); err != nil {
+		return "", err
+	}
+
+	return userResp.User.AuthToken, nil
 }

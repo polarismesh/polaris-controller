@@ -20,12 +20,13 @@ package controller
 import (
 	"fmt"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 func (p *PolarisController) onNamespaceAdd(obj interface{}) {

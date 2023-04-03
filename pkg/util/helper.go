@@ -22,13 +22,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/common/log"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 )
 
 var ignoredNamespaces = []string{
@@ -168,10 +168,9 @@ func IgnoreService(svc *v1.Service) bool {
 
 // IgnoreEndpoint 忽略一些命名空间下的 endpoints
 func IgnoreEndpoint(endpoint *v1.Endpoints) bool {
-
 	// 默认忽略某些命名空间
-	for _, namespaces := range ignoredNamespaces {
-		if endpoint.GetNamespace() == namespaces {
+	for _, ns := range ignoredNamespaces {
+		if endpoint.GetNamespace() == ns {
 			return false
 		}
 	}

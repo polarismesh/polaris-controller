@@ -17,10 +17,11 @@ limitations under the License.
 package options
 
 import (
+	"time"
+
 	"github.com/spf13/pflag"
 	rl "k8s.io/client-go/tools/leaderelection/resourcelock"
 	componentbaseconfig "k8s.io/component-base/config"
-	"time"
 )
 
 const (
