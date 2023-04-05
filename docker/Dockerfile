@@ -1,4 +1,8 @@
-FROM alpine:latest
+FROM --platform=$TARGETPLATFORM  alpine:latest
+
+ARG TARGETARCH
+ARG TARGETPLATFORM
+
 RUN apk update \
     && apk add tzdata \
     && apk add --no-cache bash \
@@ -10,4 +14,4 @@ RUN mkdir -p /polaris-controller/log && \
     chmod -R 755 /polaris-controller
 
 WORKDIR /polaris-controller
-COPY ./bin/polaris-controller /polaris-controller/polaris-controller
+COPY ./bin/$TARGETARCH/polaris-controller /polaris-controller/polaris-controller
