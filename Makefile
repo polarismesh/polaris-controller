@@ -18,7 +18,7 @@ init-builder:
 	@echo "------------------"
 	@echo "--> Create a builder instance (if not created yet) and switch the build environment to the newly created builder instance"
 	@echo "------------------"
-	@if ! docker buildx ls | grep -q  polaris-controller-builder; then \
+	@if [ $(HAS_BUILDER) -ne 0 ]; then \
       	docker buildx create --name polaris-controller-builder --use; \
     fi
 
@@ -52,7 +52,7 @@ build-multi-arch-image:
 build-sidecar-init:
 	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
-.PHONY: build-envoy-sidecar-init:
+.PHONY: build-envoy-sidecar-init
 build-envoy-sidecar-init:
 	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
@@ -62,7 +62,7 @@ login:
 		@docker login --username=$(DOCKER_USER) --password=$(DOCKER_PASS) $(REGISTRY)
 	fi
 
-.PHONY: build-envoy-sidecar-init:
+.PHONY: push-image
 push-image:
 	docker push $(REGISTRY)$(REPO):$(IMAGE_TAG)
 	docker push $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
