@@ -25,14 +25,14 @@ init-builder:
 .PHONY: build-amd64
 build-amd64:
 	@echo "------------------"
-	@echo "--> Building docker image for polaris-controller (amd64)"
+	@echo "--> Building binary for polaris-controller (amd64)"
 	@echo "------------------"
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o ./bin/amd64/polaris-controller ./cmd/polaris-controller/main.go
 
 .PHONY: build-arm64
 build-arm64:
 	@echo "------------------"
-	@echo "-->  Building docker image for polaris-controller (arm64)"
+	@echo "--> Building binary for polaris-controller (arm64)"
 	@echo "------------------"
 	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -a -o ./bin/arm64/polaris-controller ./cmd/polaris-controller/main.go
 
