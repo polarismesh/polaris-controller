@@ -30,19 +30,11 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/util"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
-
 	"github.com/ghodss/yaml"
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/hashicorp/go-multierror"
-
-	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
-
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/batch/v2alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +43,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	yamlDecoder "k8s.io/apimachinery/pkg/util/yaml"
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
+	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
+	"github.com/polarismesh/polaris-controller/pkg/util"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 type annotationValidationFunc func(value string) error

@@ -30,25 +30,24 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/util/yaml"
-
 	gyaml "github.com/ghodss/yaml"
 	"github.com/howeyc/fsnotify"
-	"github.com/polarismesh/polaris-controller/common"
-	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
-
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/polarismesh/polaris-controller/common"
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
+	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 var (

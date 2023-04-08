@@ -1,31 +1,31 @@
-/**
- * Tencent is pleased to support the open source community by making polaris-go available.
- *
- * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
- *
- * Licensed under the BSD 3-Clause License (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://opensource.org/licenses/BSD-3-Clause
- *
- * Unless required by applicable law or agreed to in writing, software distributed
- * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
- */
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
 
 package controller
 
 import (
 	"fmt"
 	"reflect"
+	"strings"
+
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
-	v1 "k8s.io/api/core/v1"
 )
 
 func (p *PolarisController) onEndpointAdd(obj interface{}) {
@@ -157,30 +157,28 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 			return false, "", err
 		}
 		return true, key, nil
-	} else {
-		// 检查 service 是否有 false 注解
-		if util.IsServiceSyncDisable(service) {
-			// 情况 2 ，不处理
-			return false, "", nil
-		}
-		// 再检查 namespace 上是否有注解
-		namespace, err := p.namespaceLister.Get(service.Namespace)
-		if err != nil {
-			log.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
-				endpoint.Namespace, endpoint.Name, err)
-			return false, "", err
-		}
-		if util.IsNamespaceSyncEnable(namespace) {
-			// 情况 3 ，要处理
-			key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
-			if err != nil {
-				log.Errorf("Unable to find the key of the service %s/%s, %v",
-					service.Namespace, service.Name, err)
-			}
-			return true, key, nil
-		}
 	}
-
+	// 检查 service 是否有 false 注解
+	if util.IsServiceSyncDisable(service) {
+		// 情况 2 ，不处理
+		return false, "", nil
+	}
+	// 再检查 namespace 上是否有注解
+	namespace, err := p.namespaceLister.Get(service.Namespace)
+	if err != nil {
+		log.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
+			endpoint.Namespace, endpoint.Name, err)
+		return false, "", err
+	}
+	if util.IsNamespaceSyncEnable(namespace) {
+		// 情况 3 ，要处理
+		key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
+		if err != nil {
+			log.Errorf("Unable to find the key of the service %s/%s, %v",
+				service.Namespace, service.Name, err)
+		}
+		return true, key, nil
+	}
 	return false, "", nil
 }
 
@@ -215,10 +213,13 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
 
-	log.Infof("%s Current polaris instance from sdk is %v", serviceMsg, instances)
-	log.Infof("%s Spec endpoint instance is %v", serviceMsg, specIPs)
-	log.Infof("%s Current polaris instance is %v", serviceMsg, currentIPs)
-	log.Infof("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns)
+	msg := []string{
+		fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
+		fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
+		fmt.Sprintf("%s Current polaris instance is %v", serviceMsg, currentIPs),
+		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+	}
+	log.Infof(strings.Join(msg, "\n"))
 
 	var addInsErr, deleteInsErr, updateInsErr error
 

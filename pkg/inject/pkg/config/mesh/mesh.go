@@ -15,8 +15,6 @@
 package mesh
 
 import (
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/constants"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/util"
 	"io/ioutil"
 	"time"
 
@@ -24,6 +22,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/constants"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/util"
 )
 
 // DefaultProxyConfig for individual proxies

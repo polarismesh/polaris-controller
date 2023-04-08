@@ -23,8 +23,6 @@ import (
 	goruntime "runtime"
 	"time"
 
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/util/configz"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -35,6 +33,9 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/component-base/metrics/legacyregistry"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/util/configz"
 )
 
 // BuildHandlerChain builds a handler chain with a base handler and CompletedConfig.

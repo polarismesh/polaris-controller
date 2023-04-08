@@ -8,3 +8,7 @@ bin
 .vscode/
 vendor
 .codecc/
+
+
+style_tool/
+goimports-reviser

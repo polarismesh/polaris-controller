@@ -22,9 +22,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/pflag"
-	"k8s.io/klog"
-
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/klog"
 )
 
 // PrintFlags logs the flags in the flagset

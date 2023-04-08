@@ -1,25 +1,24 @@
-/**
- * Tencent is pleased to support the open source community by making polaris-go available.
- *
- * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
- *
- * Licensed under the BSD 3-Clause License (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://opensource.org/licenses/BSD-3-Clause
- *
- * Unless required by applicable law or agreed to in writing, software distributed
- * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
- */
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
 
 package polarisapi
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -30,20 +29,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/util"
-	v1 "k8s.io/api/core/v1"
 )
 
 var (
 	PolarisHttpURL     = "http://127.0.0.1:8090"
 	PolarisGrpc        = "127.0.0.1:8091"
 	PolarisAccessToken = ""
+	PolarisOperator    = ""
 )
 
 const (
-	//getInstances    = "/naming/v1/instances"
+	getInstances       = "/naming/v1/instances"
 	addInstances       = "/naming/v1/instances"
 	deleteInstances    = "/naming/v1/instances/delete"
 	getService         = "/naming/v1/services"
@@ -53,44 +54,8 @@ const (
 	getNamespace       = "/naming/v1/namespaces"
 	createNamespace    = "/naming/v1/namespaces"
 	checkHealth        = ""
+	getUserToken       = "/core/v1/user/token"
 )
-
-// GetAllInstances 获取全量Instances
-//func GetAllInstances(namespace, service string, offset, limit int) (res Response, err error) {
-//
-//	var response Response
-//	client := &http.Client{}
-//	url := fmt.Sprintf("%s%s?namespace=%s&service=%s&offset=%d&limit=%d", PolarisHttpURL, getInstances,
-//		namespace, service, offset, limit)
-//	req, err := http.NewRequest(http.MethodGet, url, nil)
-//	if err != nil {
-//		log.Errorf("Failed to build request %v", err)
-//		return response, err
-//	}
-//
-//	resp, err := client.Do(req)
-//
-//	if err != nil {
-//		log.Errorf("Failed to get request %v", err)
-//		return response, err
-//	}
-//
-//	defer resp.Body.Close()
-//
-//	body, err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		log.Errorf("Failed to get request %v", err)
-//		return response, err
-//	}
-//
-//	err = json.Unmarshal(body, &response)
-//
-//	if err != nil {
-//		log.Errorf("Failed to unmarshal result %v", err)
-//	}
-//
-//	return response, nil
-//}
 
 // AddInstances 平台增加实例接口
 func AddInstances(instances []Instance, size int, msg string) (err error) {
@@ -798,9 +763,15 @@ func polarisHttpRequest(
 		log.Errorf("Failed to set request %v", err)
 		return 0, nil, 0, err
 	}
+	accessToken, err := lookAccessToken()
+	if err != nil {
+		log.Errorf("Failed to lookup access token %v", err)
+		return 0, nil, 0, err
+	}
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Request-Id", requestID)
-	req.Header.Set(AccessTokenHeader, PolarisAccessToken)
+	req.Header.Set(AccessTokenHeader, accessToken)
 
 	resp, err := client.Do(req)
 
@@ -819,4 +790,41 @@ func polarisHttpRequest(
 	}
 
 	return resp.StatusCode, body, time.Since(startTime), err
+}
+
+func lookAccessToken() (string, error) {
+	if len(PolarisOperator) == 0 {
+		return PolarisAccessToken, nil
+	}
+	url := fmt.Sprintf("%s%s?id=%s", PolarisHttpURL, getUserToken, PolarisOperator)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Errorf("Failed to set request %v", err)
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Request-Id", uuid.NewString())
+	req.Header.Set(AccessTokenHeader, PolarisAccessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Errorf("Failed to get request %v", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("Failed to get request %v", err)
+		return "", err
+	}
+	if resp.StatusCode == http.StatusOK {
+		return "", errors.New(string(body))
+	}
+
+	userResp := &Response{}
+	if err := json.Unmarshal(body, userResp); err != nil {
+		return "", err
+	}
+
+	return userResp.User.AuthToken, nil
 }
