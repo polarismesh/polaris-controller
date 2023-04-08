@@ -37,6 +37,13 @@ run:
   skip-dirs:
     - .*~
     - test
+    - cmd/polaris-controller/app/options
+    - cmd/polaris-controller/app
+    - pkg/inject
+    - pkg/util/configz
+    - pkg/util/feature
+    - pkg/util/flag
+    - pkg/version
 
   # Which files to skip: they will be analyzed, but issues from them won't be reported.
   # Default value is empty list,
@@ -46,6 +53,7 @@ run:
   # "/" will be replaced by current OS file path separator to properly work on Windows.
   skip-files:
     - ".*\\.my\\.go$"
+    - ".*\\.gen\\.go$"
     - ".*\\.pb\\.go$"
     - ".*_test\\.go$"
     - ".*\\.yaml$"

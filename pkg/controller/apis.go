@@ -1,19 +1,17 @@
-/**
- * Tencent is pleased to support the open source community by making polaris-go available.
- *
- * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
- *
- * Licensed under the BSD 3-Clause License (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://opensource.org/licenses/BSD-3-Clause
- *
- * Unless required by applicable law or agreed to in writing, software distributed
- * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
- */
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
 
 package controller
 
@@ -66,15 +64,15 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 }
 
 // addInstances 批量增加实例接口
-func (p *PolarisController) addInstances(service *v1.Service, address []address.Address) error {
+func (p *PolarisController) addInstances(service *v1.Service, addresses []address.Address) error {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
-	if len(address) == 0 {
+	if len(addresses) == 0 {
 		log.Infof("No Instance need to add %s", serviceMsg)
 		return nil
 	}
 
-	log.Infof("This IP need add to %s %v", serviceMsg, address)
+	log.Infof("This IP need add to %s %v", serviceMsg, addresses)
 	// 处理健康检查
 	var healthCheck polarisapi.HealthCheck
 	healthy := util.Bool(true)
@@ -96,11 +94,11 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 		}
 	}
 
-	instances := make([]polarisapi.Instance, 0, len(address))
+	instances := make([]polarisapi.Instance, 0, len(addresses))
 
 	// 装载Instances
-	for i := range address {
-		addr := address[i]
+	for i := range addresses {
+		addr := addresses[i]
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
@@ -126,14 +124,14 @@ func (p *PolarisController) addInstances(service *v1.Service, address []address.
 }
 
 // deleteInstances 批量删除实例接口
-func (p *PolarisController) deleteInstances(service *v1.Service, address []address.Address) error {
+func (p *PolarisController) deleteInstances(service *v1.Service, addresses []address.Address) error {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
-	if len(address) == 0 {
+	if len(addresses) == 0 {
 		log.Infof("No Instance need to delete %s", serviceMsg)
 		return nil
 	}
-	log.Infof("Start to delete all %s IP is %v", serviceMsg, address)
+	log.Infof("Start to delete all %s IP is %v", serviceMsg, addresses)
 
 	startTime := time.Now()
 	defer func() {
@@ -142,7 +140,7 @@ func (p *PolarisController) deleteInstances(service *v1.Service, address []addre
 
 	var instances []polarisapi.Instance
 
-	for _, i := range address {
+	for _, i := range addresses {
 		tmpInstance := polarisapi.Instance{
 			Service:      service.Name,
 			Namespace:    service.Namespace,
@@ -156,16 +154,16 @@ func (p *PolarisController) deleteInstances(service *v1.Service, address []addre
 }
 
 // updateInstances 批量更新实例接口
-func (p *PolarisController) updateInstances(service *v1.Service, address []address.Address) error {
+func (p *PolarisController) updateInstances(service *v1.Service, addresses []address.Address) error {
 
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 
-	if len(address) == 0 {
+	if len(addresses) == 0 {
 		log.Infof("No Instance need to update %s", serviceMsg)
 		return nil
 	}
 
-	log.Infof("Start to update all %s IP is %v", serviceMsg, address)
+	log.Infof("Start to update all %s IP is %v", serviceMsg, addresses)
 
 	startTime := time.Now()
 	defer func() {
@@ -191,10 +189,10 @@ func (p *PolarisController) updateInstances(service *v1.Service, address []addre
 		}
 	}
 
-	instances := make([]polarisapi.Instance, 0, len(address))
+	instances := make([]polarisapi.Instance, 0, len(addresses))
 
-	for i := range address {
-		addr := address[i]
+	for i := range addresses {
+		addr := addresses[i]
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
@@ -332,38 +330,33 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	if newMetadataStr == "" {
 		if isPolarisInstanceHasCustomMeta(oldMetadata) {
 			return true
-		} else {
-			return false
 		}
-	} else {
-		newMetaMap := make(map[string]string)
-		err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
-		if err != nil {
-			log.Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
-			return false
-		}
-
-		for k, v := range newMetaMap {
-			// 这里的 meta ，后面的流程会覆盖掉，不用处理
-			if _, ok := util.PolarisSystemMetaSet[k]; ok {
-				continue
-			} else {
-				// 不是系统 meta ，查看 polaris ins 中是否有这个 meta key
-				curV, ok := oldMetadata[k]
-				if !ok {
-					// polaris ins 中没有，则是修改
-					return true
-				} else {
-					// polaris ins 中有，查看 value 是否相同
-					if curV != v {
-						// 不同，则是修改
-						return true
-					}
-				}
-			}
-		}
+		return false
+	}
+	newMetaMap := make(map[string]string)
+	err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
+	if err != nil {
+		log.Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
+		return false
 	}
 
+	for k, v := range newMetaMap {
+		// 这里的 meta ，后面的流程会覆盖掉，不用处理
+		if _, ok := util.PolarisSystemMetaSet[k]; ok {
+			continue
+		}
+		// 不是系统 meta ，查看 polaris ins 中是否有这个 meta key
+		curV, ok := oldMetadata[k]
+		if !ok {
+			// polaris ins 中没有，则是修改
+			return true
+		}
+		// polaris ins 中有，查看 value 是否相同
+		if curV != v {
+			// 不同，则是修改
+			return true
+		}
+	}
 	return false
 }
 

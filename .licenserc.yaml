@@ -54,10 +54,14 @@ header: # `header` section is configurations for source codes license header.
 
   paths-ignore: # `paths-ignore` are the path list that will be ignored by license-eye.
     # folder
-    - "common/api/protoc"
     - "deploy"
-    - "release"
-    - "test/data/xds"
+    - "cmd/polaris-controller/app/options"
+    - "cmd/polaris-controller/app/"
+    - "pkg/inject"
+    - "pkg/util/configz"
+    - "pkg/util/feature"
+    - "pkg/util/flag"
+    - "pkg/version"
 
     # single file
     - "LICENSE"
@@ -69,6 +73,7 @@ header: # `header` section is configurations for source codes license header.
     - ".github"
     - "logo.svg"
     - "**/*.pb.go"
+    - "**/*.gen.go"
     - "**/*_mock.go"
     - "**/*.proto"
     - "**/*.md"

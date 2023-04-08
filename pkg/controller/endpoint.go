@@ -1,19 +1,17 @@
-/**
- * Tencent is pleased to support the open source community by making polaris-go available.
- *
- * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
- *
- * Licensed under the BSD 3-Clause License (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://opensource.org/licenses/BSD-3-Clause
- *
- * Unless required by applicable law or agreed to in writing, software distributed
- * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
- */
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
 
 package controller
 
@@ -159,30 +157,28 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 			return false, "", err
 		}
 		return true, key, nil
-	} else {
-		// 检查 service 是否有 false 注解
-		if util.IsServiceSyncDisable(service) {
-			// 情况 2 ，不处理
-			return false, "", nil
-		}
-		// 再检查 namespace 上是否有注解
-		namespace, err := p.namespaceLister.Get(service.Namespace)
-		if err != nil {
-			log.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
-				endpoint.Namespace, endpoint.Name, err)
-			return false, "", err
-		}
-		if util.IsNamespaceSyncEnable(namespace) {
-			// 情况 3 ，要处理
-			key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
-			if err != nil {
-				log.Errorf("Unable to find the key of the service %s/%s, %v",
-					service.Namespace, service.Name, err)
-			}
-			return true, key, nil
-		}
 	}
-
+	// 检查 service 是否有 false 注解
+	if util.IsServiceSyncDisable(service) {
+		// 情况 2 ，不处理
+		return false, "", nil
+	}
+	// 再检查 namespace 上是否有注解
+	namespace, err := p.namespaceLister.Get(service.Namespace)
+	if err != nil {
+		log.Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
+			endpoint.Namespace, endpoint.Name, err)
+		return false, "", err
+	}
+	if util.IsNamespaceSyncEnable(namespace) {
+		// 情况 3 ，要处理
+		key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
+		if err != nil {
+			log.Errorf("Unable to find the key of the service %s/%s, %v",
+				service.Namespace, service.Name, err)
+		}
+		return true, key, nil
+	}
 	return false, "", nil
 }
 

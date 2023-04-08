@@ -1,19 +1,17 @@
-/**
- * Tencent is pleased to support the open source community by making polaris-go available.
- *
- * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
- *
- * Licensed under the BSD 3-Clause License (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://opensource.org/licenses/BSD-3-Clause
- *
- * Unless required by applicable law or agreed to in writing, software distributed
- * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
- * CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
- */
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
 
 package polarisapi
 
@@ -46,7 +44,7 @@ var (
 )
 
 const (
-	//getInstances    = "/naming/v1/instances"
+	getInstances       = "/naming/v1/instances"
 	addInstances       = "/naming/v1/instances"
 	deleteInstances    = "/naming/v1/instances/delete"
 	getService         = "/naming/v1/services"
@@ -58,43 +56,6 @@ const (
 	checkHealth        = ""
 	getUserToken       = "/core/v1/user/token"
 )
-
-// GetAllInstances 获取全量Instances
-//func GetAllInstances(namespace, service string, offset, limit int) (res Response, err error) {
-//
-//	var response Response
-//	client := &http.Client{}
-//	url := fmt.Sprintf("%s%s?namespace=%s&service=%s&offset=%d&limit=%d", PolarisHttpURL, getInstances,
-//		namespace, service, offset, limit)
-//	req, err := http.NewRequest(http.MethodGet, url, nil)
-//	if err != nil {
-//		log.Errorf("Failed to build request %v", err)
-//		return response, err
-//	}
-//
-//	resp, err := client.Do(req)
-//
-//	if err != nil {
-//		log.Errorf("Failed to get request %v", err)
-//		return response, err
-//	}
-//
-//	defer resp.Body.Close()
-//
-//	body, err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		log.Errorf("Failed to get request %v", err)
-//		return response, err
-//	}
-//
-//	err = json.Unmarshal(body, &response)
-//
-//	if err != nil {
-//		log.Errorf("Failed to unmarshal result %v", err)
-//	}
-//
-//	return response, nil
-//}
 
 // AddInstances 平台增加实例接口
 func AddInstances(instances []Instance, size int, msg string) (err error) {
