@@ -817,7 +817,7 @@ func lookAccessToken() (string, error) {
 		log.Errorf("Failed to get request %v", err)
 		return "", err
 	}
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode != http.StatusOK {
 		return "", errors.New(string(body))
 	}
 
