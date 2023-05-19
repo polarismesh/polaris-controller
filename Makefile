@@ -13,6 +13,11 @@ all: init-builder build-amd64 build-arm64 build-multi-arch-image \
  	 build-sidecar-init build-envoy-sidecar-init \
  	 login push-image
 
+.PHONY: all-nologin
+all-nologin: init-builder build-amd64 build-arm64 build-multi-arch-image \
+ 	 build-sidecar-init build-envoy-sidecar-init \
+ 	 push-image
+
 .PHONY: init-builder
 init-builder:
 	@echo "------------------"
