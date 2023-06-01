@@ -94,7 +94,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		log.Errorf("generate queue key for %s/%s error, %v", service.Namespace, service.Name, err)
+		log.Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 
@@ -109,7 +109,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		log.Errorf("generate queue key for %s/%s error, %v", service.Namespace, service.Name, err)
+		log.Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 

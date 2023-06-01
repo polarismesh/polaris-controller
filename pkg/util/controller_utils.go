@@ -83,3 +83,25 @@ func GetServiceRealKeyWithFlag(queueKey string) (string, string, string, string,
 	}
 	return ss[0], namespace, service, op, nil
 }
+
+// GenConfigMapQueueKeyWithFlag 在 namespace 的事件流程中使用。
+// 产生 service queue 中的 key，flag 表示添加时是否是北极星的服务
+func GenConfigMapQueueKeyWithFlag(svc *v1.ConfigMap, flag string) (string, error) {
+	key, err := keyFunc(svc)
+	if err != nil {
+		return "", err
+	}
+	key += "~" + flag
+
+	return key, nil
+}
+
+// GenConfigMapQueueKey 产生 service 中 queue 中用的 key
+func GenConfigMapQueueKey(svc *v1.ConfigMap) (string, error) {
+	key, err := keyFunc(svc)
+	if err != nil {
+		return "", err
+	}
+
+	return key, nil
+}

@@ -33,6 +33,10 @@ const (
 	PolarisSidecarModeLabel = "polaris-sidecar-mode"
 
 	PolarisTLSMode = "polarismesh.cn/tls-mode"
+
+	PolarisConfigGroup       = "polarismesh.cn/configGroup"
+	PolarisConfigEncrypt     = "polarismesh.cn/enableEncrypt"
+	PolarisConfigEncryptAlog = "polarismesh.cn/enableEncryptAlog"
 )
 
 const (

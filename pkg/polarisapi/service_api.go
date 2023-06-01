@@ -44,7 +44,6 @@ var (
 )
 
 const (
-	getInstances       = "/naming/v1/instances"
 	addInstances       = "/naming/v1/instances"
 	deleteInstances    = "/naming/v1/instances/delete"
 	getService         = "/naming/v1/services"

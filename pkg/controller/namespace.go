@@ -75,9 +75,9 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 
 		// 有几种情况：
 		// 1. 无 sync -> 无 sync，不处理 ns 和 service
-		// 2. 有 sync -> 有 sync，将 ns 下 service 加入队列，标志为 polaris 要处理的，即添加
-		// 3. 无 sync -> 有 sync，将 ns 下 service 加入队列，标志为 polaris 要处理的，即添加
-		// 4. 有 sync -> 无 sync，将 ns 下 service 加入队列，标志为 polaris 不需要处理的，即删除
+		// 2. 有 sync -> 有 sync，将 ns 下 service、configmap 加入队列，标志为 polaris 要处理的，即添加
+		// 3. 无 sync -> 有 sync，将 ns 下 service、configmap 加入队列，标志为 polaris 要处理的，即添加
+		// 4. 有 sync -> 无 sync，将 ns 下 service、configmap 加入队列，标志为 polaris 不需要处理的，即删除
 
 		isOldSync := util.IsNamespaceSyncEnable(oldNs)
 		isCurSync := util.IsNamespaceSyncEnable(curNs)
@@ -94,38 +94,78 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 			operation = ServiceKeyFlagDelete
 		}
 
-		services, err := p.serviceLister.Services(oldNs.Name).List(labels.Everything())
+		p.syncServiceOnNamespaceUpdate(oldNs, curNs, operation)
+		p.syncConfigMapOnNamespaceUpdate(oldNs, curNs, operation)
+	}
+}
+
+func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namespace, operation string) {
+	services, err := p.serviceLister.Services(oldNs.Name).List(labels.Everything())
+	if err != nil {
+		log.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", curNs.Name, err)
+		return
+	}
+
+	log.Infof("namespace %s operation is %s", curNs.Name, operation)
+
+	for _, service := range services {
+		// 非法的 service 不处理
+		if util.IgnoreService(service) {
+			continue
+		}
+		// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
+		if util.IsServiceSyncEnable(service) {
+			log.Infof("service %s/%s is enabled", service.Namespace, service.Name)
+			continue
+		}
+
+		// namespace 当前有 sync ，且 service sync 为 false 的场景，namespace 流程不处理， service 流程来处理。
+		// 如果由 namespace 流程处理，则每次 resync ，多需要处理一次
+		if operation == ServiceKeyFlagAdd && util.IsServiceSyncDisable(service) {
+			continue
+		}
+
+		key, err := util.GenServiceQueueKeyWithFlag(service, operation)
 		if err != nil {
-			log.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", curNs.Name, err)
-			return
+			log.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, service.Name, err)
+			continue
+		}
+		p.queue.Add(key)
+	}
+}
+
+func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Namespace, operation string) {
+	configMaps, err := p.configMapLister.ConfigMaps(oldNs.Name).List(labels.Everything())
+	if err != nil {
+		log.Errorf("get namespaces %s ConfigMaps error in onNamespaceUpdate, %v\n", curNs.Name, err)
+		return
+	}
+
+	log.Infof("namespace %s operation is %s", curNs.Name, operation)
+
+	for _, configMap := range configMaps {
+		// 非法的 service 不处理
+		if util.IgnoreConfigMap(configMap) {
+			continue
+		}
+		// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
+		if util.IsConfigMapSyncEnable(configMap) {
+			log.Infof("service %s/%s is enabled", configMap.Namespace, configMap.Name)
+			continue
 		}
 
-		log.Infof("namespace %s operation is %s", curNs.Name, operation)
-
-		for _, service := range services {
-			// 非法的 service 不处理
-			if util.IgnoreService(service) {
-				continue
-			}
-			// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
-			if util.IsServiceSyncEnable(service) {
-				log.Infof("service %s/%s is enabled", service.Namespace, service.Name)
-				continue
-			}
-
-			// namespace 当前有 sync ，且 service sync 为 false 的场景，namespace 流程不处理， service 流程来处理。
-			// 如果由 namespace 流程处理，则每次 resync ，多需要处理一次
-			if operation == ServiceKeyFlagAdd && util.IsServiceSyncDisable(service) {
-				continue
-			}
-
-			key, err := util.GenServiceQueueKeyWithFlag(service, operation)
-			if err != nil {
-				log.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, service.Name, err)
-				continue
-			}
-			p.queue.Add(key)
+		// namespace 当前有 sync ，且 service sync 为 false 的场景，namespace 流程不处理， service 流程来处理。
+		// 如果由 namespace 流程处理，则每次 resync ，多需要处理一次
+		if operation == ServiceKeyFlagAdd && util.IsConfigMapSyncDisable(configMap) {
+			continue
 		}
+
+		key, err := util.GenConfigMapQueueKeyWithFlag(configMap, operation)
+		if err != nil {
+			log.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, configMap.Name, err)
+			continue
+		}
+		p.queue.Add(key)
 	}
 }
 

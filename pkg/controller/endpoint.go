@@ -226,7 +226,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	enableRegister := service.GetAnnotations()[util.PolarisEnableRegister]
 	enableSync := service.GetAnnotations()[util.PolarisSync]
 	// 如果 enableRegister = true,那么自注册，平台不负责注册IP
-	if enableRegister != noEnableRegister || enableSync != noEnableRegister {
+	if enableRegister != noAllow || enableSync != noAllow {
 		// 使用platform 接口
 		if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
 			log.Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())

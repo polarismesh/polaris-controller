@@ -518,6 +518,7 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 		ctx.InformerFactory.Core().V1().Services(),
 		ctx.InformerFactory.Core().V1().Endpoints(),
 		ctx.InformerFactory.Core().V1().Namespaces(),
+		ctx.InformerFactory.Core().V1().ConfigMaps(),
 		ctx.ClientBuilder.ClientOrDie(ControllerName),
 		ctx.ComponentConfig,
 		consumerAPI,
