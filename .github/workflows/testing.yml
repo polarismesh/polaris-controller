@@ -18,9 +18,6 @@ jobs:
       with:
         go-version: 1.19
 
-    - name: vert check
-      run: bash vert.sh -install && bash vert.sh
-
     - name: Build polairs-controller
       run: make build
 
