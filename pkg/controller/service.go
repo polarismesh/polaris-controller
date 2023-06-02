@@ -53,9 +53,8 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsServiceHasSyncAnnotation(oldService) && util.IsServiceSyncDisable(curService) {
 			log.Infof("Service %s is update because sync no to false", key)
-			metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
-			p.queue.Add(key)
-			p.resyncServiceCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
+			p.enqueueService(key, oldService, "Update")
+			p.resyncServiceCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
 			return
 		}
 	}
@@ -70,17 +69,13 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	curIsPolaris := util.IsPolarisService(curService, p.config.PolarisController.SyncMode)
 	if oldIsPolaris {
 		// 原来就是北极星类型的，增加cache
-		log.Infof("Service %s is update polaris config", key)
-		metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
-		p.queue.Add(key)
+		p.enqueueService(key, oldService, "Update")
 		p.serviceCache.Store(key, oldService)
-		p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curService)
+		p.resyncServiceCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curService)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
-		log.Infof("Service %s is update to polaris type", key)
-		metrics.SyncTimes.WithLabelValues("Update", "Service").Inc()
-		p.queue.Add(key)
-		p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curService)
+		p.enqueueService(key, curService, "Update")
+		p.resyncServiceCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curService)
 	}
 }
 
@@ -99,7 +94,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 	}
 
 	p.enqueueService(key, service, "Add")
-	p.resyncServiceCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), service)
+	p.resyncServiceCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), service)
 }
 
 // onServiceDelete 在识别到是这个北极星类型service删除的时候，才进行处理
@@ -121,9 +116,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 			return
 		}
 		if util.IsNamespaceSyncEnable(ns) {
-			log.Infof("Service %s is polaris type, in queue", key)
-			metrics.SyncTimes.WithLabelValues("Delete", "Service").Inc()
-			p.queue.Add(key)
+			p.enqueueService(key, service, "Delete")
 		}
 	}
 
@@ -132,7 +125,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 	}
 
 	p.enqueueService(key, service, "Delete")
-	p.resyncServiceCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
+	p.resyncServiceCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
 }
 
 func (p *PolarisController) enqueueService(key string, service *v1.Service, eventType string) {
@@ -148,9 +141,9 @@ func (p *PolarisController) syncService(key string) error {
 		log.Infof("Finished syncing service %q service. (%v)", key, time.Since(startTime))
 	}()
 
-	realKey, namespaces, name, op, err := util.GetServiceRealKeyWithFlag(key)
+	realKey, namespaces, name, op, err := util.GetResourceRealKeyWithFlag(key)
 	if err != nil {
-		log.Errorf("GetServiceRealKeyWithFlag %s error, %v", key, err)
+		log.Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
 		return err
 	}
 
@@ -161,7 +154,7 @@ func (p *PolarisController) syncService(key string) error {
 		cachedService, ok := p.serviceCache.Load(realKey)
 		if !ok {
 			// 如果之前的数据也已经不存在那么就跳过不在处理
-			log.Errorf("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
+			log.Infof("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
 			return nil
 		}
 		log.Infof("Service %s is in cache, cache info %v", realKey, cachedService.Name)
@@ -171,11 +164,13 @@ func (p *PolarisController) syncService(key string) error {
 			// 如果处理有失败的，那就入队列重新处理
 			p.eventRecorder.Eventf(cachedService, v1.EventTypeWarning, polarisEvent, "Delete polaris instances failed %v",
 				processError)
+			p.enqueueService(key, cachedService, op)
 			return processError
 		}
 		p.serviceCache.Delete(realKey)
 	case err != nil:
 		log.Errorf("Unable to retrieve service %v from store: %v", realKey, err)
+		p.enqueueService(key, nil, op)
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建service

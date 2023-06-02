@@ -41,9 +41,9 @@ func (p *PolarisController) syncConfigMap(key string) error {
 		log.Infof("Finished syncing ConfigMap %q. (%v)", key, time.Since(startTime))
 	}()
 
-	realKey, namespaces, name, op, err := util.GetServiceRealKeyWithFlag(key)
+	realKey, namespaces, name, op, err := util.GetResourceRealKeyWithFlag(key)
 	if err != nil {
-		log.Errorf("GetServiceRealKeyWithFlag %s error, %v", key, err)
+		log.Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
 		return err
 	}
 
@@ -64,11 +64,13 @@ func (p *PolarisController) syncConfigMap(key string) error {
 			// 如果处理有失败的，那就入队列重新处理
 			p.eventRecorder.Eventf(cachedConfigMap, v1.EventTypeWarning, polarisEvent, "Delete polaris ConfigMap failed %v",
 				processError)
+			p.enqueueConfigMap(key, cachedConfigMap, op)
 			return processError
 		}
 		p.configFileCache.Delete(realKey)
 	case err != nil:
 		log.Errorf("Unable to retrieve ConfigMap %v from store: %v", realKey, err)
+		p.enqueueConfigMap(key, nil, op)
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建 ConfigMap
@@ -177,7 +179,7 @@ func (p *PolarisController) onConfigMapAdd(cur interface{}) {
 	}
 
 	p.enqueueConfigMap(key, configMap, "Add")
-	p.resyncConfigFileCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), configMap)
+	p.resyncConfigFileCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), configMap)
 }
 
 func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
@@ -203,7 +205,7 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 			log.Infof("ConfigMap %s is update because sync no to false", key)
 			metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 			p.queue.Add(key)
-			p.resyncConfigFileCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
+			p.resyncConfigFileCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
 			return
 		}
 	}
@@ -222,13 +224,13 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 		metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 		p.queue.Add(key)
 		p.configFileCache.Store(key, oldCm)
-		p.resyncConfigFileCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curCm)
+		p.resyncConfigFileCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curCm)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
 		log.Infof("ConfigMap %s is update to polaris type", key)
 		metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 		p.queue.Add(key)
-		p.resyncConfigFileCache.Store(util.GenServiceResyncQueueKeyWithOrigin(key), curCm)
+		p.resyncConfigFileCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curCm)
 	}
 }
 
@@ -260,5 +262,5 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 	}
 
 	p.enqueueConfigMap(key, configmap, "Delete")
-	p.resyncServiceCache.Delete(util.GenServiceResyncQueueKeyWithOrigin(key))
+	p.resyncServiceCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
 }

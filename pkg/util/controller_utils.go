@@ -23,7 +23,9 @@ import (
 )
 
 var (
-	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc         = cache.DeletionHandlingMetaNamespaceKeyFunc
+	ServicePrefix   = "Service~"
+	ConfigMapPrefix = "ConfigMap~"
 )
 
 func GenObjectQueueKey(obj interface{}) (string, error) {
@@ -40,8 +42,8 @@ func GetOriginKeyWithResyncQueueKey(key string) string {
 	return key[:len(key)-len("~resync")]
 }
 
-// GenServiceResyncQueueKeyWithOrigin 通过原始key生成用于同步任务的key便于区分不同的任务
-func GenServiceResyncQueueKeyWithOrigin(key string) string {
+// GenResourceResyncQueueKeyWithOrigin 通过原始key生成用于同步任务的key便于区分不同的任务
+func GenResourceResyncQueueKeyWithOrigin(key string) string {
 	return key + "~" + "resync"
 }
 
@@ -64,11 +66,11 @@ func GenServiceQueueKey(svc *v1.Service) (string, error) {
 		return "", err
 	}
 
-	return key, nil
+	return ServicePrefix + key, nil
 }
 
-// GetServiceRealKeyWithFlag 从 service queue 中的 key ，解析出 namespace、service、flag
-func GetServiceRealKeyWithFlag(queueKey string) (string, string, string, string, error) {
+// GetResourceRealKeyWithFlag 从 service queue 中的 key ，解析出 namespace、service、flag
+func GetResourceRealKeyWithFlag(queueKey string) (string, string, string, string, error) {
 	if queueKey == "" {
 		return "", "", "", "", nil
 	}
@@ -103,5 +105,18 @@ func GenConfigMapQueueKey(svc *v1.ConfigMap) (string, error) {
 		return "", err
 	}
 
-	return key, nil
+	return ConfigMapPrefix + key, nil
+}
+
+func IsServiceKey(key string) (string, bool) {
+	if strings.HasPrefix(key, ServicePrefix) {
+		return strings.TrimPrefix(key, ServicePrefix), true
+	}
+	return key, false
+}
+func IsConfigMapKey(key string) (string, bool) {
+	if strings.HasPrefix(key, ConfigMapPrefix) {
+		return strings.TrimPrefix(key, ConfigMapPrefix), true
+	}
+	return key, false
 }

@@ -261,11 +261,15 @@ func (p *PolarisController) processNextWorkItem() bool {
 		// deal with namespace
 		err = p.syncNamespace(key.(string))
 	} else {
-		err = p.syncService(key.(string))
+		if v, isSvc := util.IsServiceKey(key.(string)); isSvc {
+			err = p.syncService(v)
+		}
+		if v, isConf := util.IsConfigMapKey(key.(string)); isConf {
+			err = p.syncConfigMap(v)
+		}
 	}
 
 	p.handleErr(err, key)
-
 	return true
 }
 
