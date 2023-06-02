@@ -86,7 +86,6 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 			log.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
 		} else {
 			if ttl > 0 && ttl <= 60 {
-				healthCheck.Type = util.IntPtr(0)
 				healthCheck.Heartbeat.TTL = ttl
 				*healthy = false
 				*enableHealthCheck = true

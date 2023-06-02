@@ -72,6 +72,9 @@ type PolarisController struct {
 	namespaceLister corelisters.NamespaceLister
 	namespaceSynced cache.InformerSynced
 
+	configMapLister corelisters.ConfigMapLister
+	configMapSynced cache.InformerSynced
+
 	// Services that need to be updated. A channel is inappropriate here,
 	// because it allows services with lots of pods to be serviced much
 	// more often than services with few pods; it also would cause a
@@ -84,9 +87,13 @@ type PolarisController struct {
 
 	// serviceCache 记录了service历史service相关信息
 	serviceCache *localCache.CachedServiceMap
-
 	// resyncServiceCache 需要进行同步的service历史
 	resyncServiceCache *localCache.CachedServiceMap
+
+	// configFileCache 记录了service历史service相关信息
+	configFileCache *localCache.CachedConfigFileMap
+	// resyncConfigFileCache 需要进行同步的service历史
+	resyncConfigFileCache *localCache.CachedConfigFileMap
 
 	consumer api.ConsumerAPI
 	provider api.ProviderAPI
@@ -106,7 +113,7 @@ const (
 	polarisControllerName       = "polaris-controller"
 	maxRetries                  = 10
 	metricPolarisControllerName = "polaris_controller"
-	noEnableRegister            = "false"
+	noAllow                     = "false"
 	polarisEvent                = "PolarisRegister"
 
 	// ServiceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
@@ -116,10 +123,12 @@ const (
 )
 
 // NewPolarisController
-func NewPolarisController(podInformer coreinformers.PodInformer,
+func NewPolarisController(
+	podInformer coreinformers.PodInformer,
 	serviceInformer coreinformers.ServiceInformer,
 	endpointsInformer coreinformers.EndpointsInformer,
 	namespaceInformer coreinformers.NamespaceInformer,
+	configmapInformer coreinformers.ConfigMapInformer,
 	client clientset.Interface,
 	config options.KubeControllerManagerConfiguration,
 	consumerAPI api.ConsumerAPI,
@@ -160,6 +169,12 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 		UpdateFunc: p.onNamespaceUpdate,
 	})
 
+	configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    p.onConfigMapAdd,
+		UpdateFunc: p.onConfigMapUpdate,
+		DeleteFunc: p.onConfigMapDelete,
+	})
+
 	p.serviceLister = serviceInformer.Lister()
 	p.servicesSynced = serviceInformer.Informer().HasSynced
 
@@ -171,6 +186,9 @@ func NewPolarisController(podInformer coreinformers.PodInformer,
 
 	p.namespaceLister = namespaceInformer.Lister()
 	p.namespaceSynced = namespaceInformer.Informer().HasSynced
+
+	p.configMapLister = configmapInformer.Lister()
+	p.configMapSynced = configmapInformer.Informer().HasSynced
 
 	p.eventBroadcaster = broadcaster
 	p.eventRecorder = recorder
@@ -243,11 +261,15 @@ func (p *PolarisController) processNextWorkItem() bool {
 		// deal with namespace
 		err = p.syncNamespace(key.(string))
 	} else {
-		err = p.syncService(key.(string))
+		if v, isSvc := util.IsServiceKey(key.(string)); isSvc {
+			err = p.syncService(v)
+		}
+		if v, isConf := util.IsConfigMapKey(key.(string)); isConf {
+			err = p.syncConfigMap(v)
+		}
 	}
 
 	p.handleErr(err, key)
-
 	return true
 }
 

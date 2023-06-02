@@ -233,3 +233,61 @@ func IsServiceHasSyncAnnotation(service *v1.Service) bool {
 	_, ok := service.Annotations[PolarisSync]
 	return ok
 }
+
+// IsConfigMapHasSyncAnnotation service 是否设置了 sync 注解
+func IsConfigMapHasSyncAnnotation(configMap *v1.ConfigMap) bool {
+	_, ok := configMap.Annotations[PolarisSync]
+	return ok
+}
+
+// IgnoreConfigMap 添加 service 时，忽略一些不需要处理的 service
+func IgnoreConfigMap(svc *v1.ConfigMap) bool {
+
+	// 默认忽略某些命名空间
+	for _, namespaces := range ignoredNamespaces {
+		if svc.GetNamespace() == namespaces {
+			return true
+		}
+	}
+	return false
+}
+
+// IsConfigMapSyncEnable ConfigMap 是否启用了 sync 注解
+func IsConfigMapSyncEnable(service *v1.ConfigMap) bool {
+	sync, ok := service.Annotations[PolarisSync]
+	if ok && sync == IsEnableSync {
+		return true
+	}
+	return false
+}
+
+// IsConfigMapSyncDisable ConfigMap 是否关闭了 sync 注解
+func IsConfigMapSyncDisable(service *v1.ConfigMap) bool {
+	sync, ok := service.Annotations[PolarisSync]
+	if ok && sync == IsDisableSync {
+		return true
+	}
+	return false
+}
+
+// IsPolarisConfigMap 用于判断是是否满足创建 PolarisConfigMap 的要求字段，这块逻辑应该在webhook中也增加
+func IsPolarisConfigMap(svc *v1.ConfigMap, syncMode string) bool {
+
+	// 过滤一些不合法的 service
+	if IgnoreConfigMap(svc) {
+		return false
+	}
+
+	// 按需同步情况下需要判断 service 是否带有 sync 注解
+	if syncMode == SyncModeDemand {
+		if !IsConfigMapSyncEnable(svc) {
+			return false
+		}
+	}
+
+	// service 显示标注sync为false不进行同步
+	if IsConfigMapSyncDisable(svc) {
+		return false
+	}
+	return true
+}
