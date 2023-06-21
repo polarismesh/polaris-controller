@@ -22,10 +22,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
+
+	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 const (
@@ -84,8 +85,6 @@ func DeleteConfigMap(configMap *v1.ConfigMap) error {
 		return err
 	}
 
-	log.Infof("%s ConfigMap %s, body %s", opdesc, key, string(requestByte))
-
 	requestID := uuid.New().String()
 	url := fmt.Sprintf("%s%s?namespace=%s&group=%s&name=%s", PolarisHttpURL, deleteConfigFiles,
 		req.Namespace, req.Group, req.Name)
@@ -99,7 +98,7 @@ func DeleteConfigMap(configMap *v1.ConfigMap) error {
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Errorf("Failed to unmarshal result %s, %v, %s", opdesc, key, err, string(body))
+			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return err
 		}
 		if response.Code != ExistedResource {
@@ -137,8 +136,6 @@ func releaseConfigMap(file *ConfigFile) error {
 		return err
 	}
 
-	log.Infof("%s ConfigMap %s, body %s", opdesc, key, string(requestByte))
-
 	requestID := uuid.New().String()
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, releaseConfigFile)
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
@@ -151,7 +148,7 @@ func releaseConfigMap(file *ConfigFile) error {
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Errorf("Failed to unmarshal result %s, %v, %s", opdesc, key, err, string(body))
+			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return err
 		}
 		if response.Code != ExistedResource {
@@ -185,8 +182,6 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 		return response, err
 	}
 
-	log.Infof("%s ConfigMap %s, body %s", opdesc, key, string(requestByte))
-
 	requestID := uuid.New().String()
 	statusCode, body, _, err := polarisHttpRequest(requestID, method, url, requestByte)
 
@@ -198,7 +193,7 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Errorf("Failed to unmarshal result %s, %v, %s", opdesc, key, err, string(body))
+			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return ConfigResponse{}, err
 		}
 		if response.Code != ExistedResource {

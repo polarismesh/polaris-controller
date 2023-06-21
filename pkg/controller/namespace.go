@@ -29,12 +29,9 @@ import (
 
 func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 	namespace := obj.(*v1.Namespace)
-
 	if !util.IgnoreNamespace(namespace) {
-		log.Infof("%s in ignore namespaces", namespace.Name)
 		return
 	}
-
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		// 过滤掉不需要处理 ns
 		if !util.IsNamespaceSyncEnable(namespace) {
@@ -47,7 +44,6 @@ func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", namespace, err))
 		return
 	}
-
 	p.enqueueNamespace(key, namespace)
 }
 
@@ -56,7 +52,6 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 	curNs := cur.(*v1.Namespace)
 
 	if !util.IgnoreNamespace(oldNs) {
-		log.Infof("ignore namespaces %s", oldNs.Name)
 		return
 	}
 
@@ -102,11 +97,11 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namespace, operation string) {
 	services, err := p.serviceLister.Services(oldNs.Name).List(labels.Everything())
 	if err != nil {
-		log.Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", curNs.Name, err)
+		log.SyncNamingScope().Errorf("get namespaces %s services error in onNamespaceUpdate, %v\n", curNs.Name, err)
 		return
 	}
 
-	log.Infof("namespace %s operation is %s", curNs.Name, operation)
+	log.SyncNamingScope().Infof("namespace %s operation is %s", curNs.Name, operation)
 
 	for _, service := range services {
 		// 非法的 service 不处理
@@ -115,7 +110,6 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 		}
 		// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
 		if util.IsServiceSyncEnable(service) {
-			log.Infof("service %s/%s is enabled", service.Namespace, service.Name)
 			continue
 		}
 
@@ -127,7 +121,8 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 
 		key, err := util.GenServiceQueueKeyWithFlag(service, operation)
 		if err != nil {
-			log.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, service.Name, err)
+			log.SyncNamingScope().Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v",
+				oldNs, service.Name, err)
 			continue
 		}
 		p.queue.Add(key)
@@ -135,13 +130,15 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 }
 
 func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Namespace, operation string) {
-	configMaps, err := p.configMapLister.ConfigMaps(oldNs.Name).List(labels.Everything())
-	if err != nil {
-		log.Errorf("get namespaces %s ConfigMaps error in onNamespaceUpdate, %v\n", curNs.Name, err)
+	if !p.config.PolarisController.SyncConfigMap {
 		return
 	}
 
-	log.Infof("namespace %s operation is %s", curNs.Name, operation)
+	configMaps, err := p.configMapLister.ConfigMaps(oldNs.Name).List(labels.Everything())
+	if err != nil {
+		log.SyncConfigScope().Errorf("get namespaces %s ConfigMaps error in onNamespaceUpdate, %v\n", curNs.Name, err)
+		return
+	}
 
 	for _, configMap := range configMaps {
 		// 非法的 service 不处理
@@ -150,7 +147,7 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 		}
 		// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
 		if util.IsConfigMapSyncEnable(configMap) {
-			log.Infof("service %s/%s is enabled", configMap.Namespace, configMap.Name)
+			log.SyncConfigScope().Infof("service %s/%s is enabled", configMap.Namespace, configMap.Name)
 			continue
 		}
 
@@ -162,7 +159,8 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 
 		key, err := util.GenConfigMapQueueKeyWithFlag(configMap, operation)
 		if err != nil {
-			log.Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v\n", oldNs, configMap.Name, err)
+			log.SyncConfigScope().Errorf("get key from service [%s/%s] in onNamespaceUpdate error, %v",
+				oldNs, configMap.Name, err)
 			continue
 		}
 		p.queue.Add(key)

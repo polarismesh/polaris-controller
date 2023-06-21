@@ -19,31 +19,30 @@ import (
 	"fmt"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (p *PolarisController) enqueueConfigMap(key string, configmap *v1.ConfigMap, eventType string) {
-	log.Infof("ConfigMap %s is polaris type, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "ConfigMap").Inc()
 	p.queue.Add(key)
 }
 
 func (p *PolarisController) syncConfigMap(key string) error {
-	log.Infof("Start sync ConfigMap %s, queue deep %d", key, p.queue.Len())
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finished syncing ConfigMap %q. (%v)", key, time.Since(startTime))
+		log.SyncConfigScope().Infof("Finished syncing ConfigMap %q. (%v)", key, time.Since(startTime))
 	}()
 
 	realKey, namespaces, name, op, err := util.GetResourceRealKeyWithFlag(key)
 	if err != nil {
-		log.Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
+		log.SyncConfigScope().Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
 		return err
 	}
 
@@ -54,10 +53,10 @@ func (p *PolarisController) syncConfigMap(key string) error {
 		cachedConfigMap, ok := p.configFileCache.Load(realKey)
 		if !ok {
 			// 如果之前的数据也已经不存在那么就跳过不在处理
-			log.Errorf("ConfigMap %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
+			//nolint: lll
+			log.SyncConfigScope().Infof("ConfigMap %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
 			return nil
 		}
-		log.Infof("ConfigMap %s is in cache, cache info %v", realKey, cachedConfigMap.Name)
 		// 查询原 ConfigMap 是啥，删除对应实例
 		processError := p.processDeleteConfigMap(cachedConfigMap)
 		if processError != nil {
@@ -69,14 +68,12 @@ func (p *PolarisController) syncConfigMap(key string) error {
 		}
 		p.configFileCache.Delete(realKey)
 	case err != nil:
-		log.Errorf("Unable to retrieve ConfigMap %v from store: %v", realKey, err)
+		log.SyncConfigScope().Errorf("Unable to retrieve ConfigMap %v from store: %v", realKey, err)
 		p.enqueueConfigMap(key, nil, op)
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建 ConfigMap
 		// 2. 更新 ConfigMap
-		log.Infof("Begin to process ConfigMap %s, operation is %s", realKey, op)
-
 		operationConfigMap := configMap
 
 		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 ConfigMap 打上 sync 标签
@@ -87,21 +84,20 @@ func (p *PolarisController) syncConfigMap(key string) error {
 
 		cachedConfigMap, ok := p.configFileCache.Load(realKey)
 		if !ok {
-			// 1. cached中没有数据，为首次添加场景
-			log.Infof("ConfigMap %s not in cache, begin to add new polaris", realKey)
 			if !util.IsPolarisConfigMap(operationConfigMap, p.config.PolarisController.SyncMode) {
-				log.Infof("ConfigMap %s is not valid, do not process ", realKey)
 				return nil
 			}
-			// 同步 k8s 的 namespace 和 service 到 polaris，失败投入队列重试
+			// 1. cached中没有数据，为首次添加场景
+			log.SyncConfigScope().Infof("ConfigMap %s not in cache, begin to add new polaris", realKey)
+			// 同步 k8s 的 namespace 和 configmap 到 polaris，失败投入队列重试
 			if processError := p.processSyncNamespaceAndConfigMap(operationConfigMap); processError != nil {
-				log.Errorf("ns/config %s sync failed", realKey)
+				log.SyncConfigScope().Errorf("ns/config %s sync failed", realKey)
 				return processError
 			}
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
 			if processError := p.processUpdateConfigMap(cachedConfigMap, operationConfigMap); processError != nil {
-				log.Errorf("ConfigMap %s update add failed", realKey)
+				log.SyncConfigScope().Errorf("ConfigMap %s update add failed", realKey)
 				return processError
 			}
 		}
@@ -114,8 +110,6 @@ func (p *PolarisController) syncConfigMap(key string) error {
 // polarisapi.Createxx 中做了兼容，创建时，若资源已经存在，不返回 error
 func (p *PolarisController) processSyncNamespaceAndConfigMap(configmap *v1.ConfigMap) error {
 	serviceMsg := fmt.Sprintf("[%s/%s]", configmap.GetNamespace(), configmap.GetName())
-	log.Infof("Begin to sync namespaces and ConfigMap, %s", serviceMsg)
-
 	// demand 模式，ConfigMap 不包含 sync 注解时，不需要创建 ns、ConfigMap
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsConfigMapSyncEnable(configmap) {
@@ -130,16 +124,17 @@ func (p *PolarisController) processSyncNamespaceAndConfigMap(configmap *v1.Confi
 
 	createNsResponse, err := polarisapi.CreateNamespaces(configmap.Namespace)
 	if err != nil {
-		log.Errorf("Failed create namespaces in processSyncNamespaceAndConfigMap %s, err %s, resp %v",
+		log.SyncConfigScope().Errorf("Failed create namespaces in processSyncNamespaceAndConfigMap %s, err %s, resp %v",
 			serviceMsg, err, createNsResponse)
 		p.eventRecorder.Eventf(configmap, v1.EventTypeWarning, polarisEvent,
 			"Failed create namespaces %s, err %s, resp %v", serviceMsg, err, createNsResponse)
 		return err
 	}
 
+	log.SyncConfigScope().Infof("Create ConfigMap %s/%s", configmap.GetNamespace(), configmap.GetName())
 	createFileResp, err := polarisapi.CreateConfigMap(configmap)
 	if err != nil {
-		log.Errorf("Failed create ConfigMap in processSyncNamespaceAndConfigMap %s, err %s, resp %v",
+		log.SyncConfigScope().Errorf("Failed create ConfigMap in processSyncNamespaceAndConfigMap %s, err %s, resp %v",
 			serviceMsg, err, createFileResp)
 		p.eventRecorder.Eventf(configmap, v1.EventTypeWarning, polarisEvent,
 			"Failed create ConfigMap %s, err %s, resp %v", serviceMsg, err, createNsResponse)
@@ -150,8 +145,7 @@ func (p *PolarisController) processSyncNamespaceAndConfigMap(configmap *v1.Confi
 
 // processUpdateConfigMap 处理更新状态下的场景
 func (p *PolarisController) processUpdateConfigMap(old, cur *v1.ConfigMap) error {
-	log.Infof("Update ConfigMap %s/%s", cur.GetNamespace(), cur.GetName())
-
+	log.SyncConfigScope().Infof("Update ConfigMap %s/%s", cur.GetNamespace(), cur.GetName())
 	if !util.IsPolarisConfigMap(cur, p.config.PolarisController.SyncMode) {
 		return polarisapi.DeleteConfigMap(cur)
 	}
@@ -160,7 +154,7 @@ func (p *PolarisController) processUpdateConfigMap(old, cur *v1.ConfigMap) error
 }
 
 func (p *PolarisController) processDeleteConfigMap(configmap *v1.ConfigMap) error {
-	log.Infof("Delete ConfigMap %s/%s", configmap.GetNamespace(), configmap.GetName())
+	log.SyncConfigScope().Infof("Delete ConfigMap %s/%s", configmap.GetNamespace(), configmap.GetName())
 	// 平台接口
 	return polarisapi.DeleteConfigMap(configmap)
 }
@@ -174,7 +168,8 @@ func (p *PolarisController) onConfigMapAdd(cur interface{}) {
 
 	key, err := util.GenConfigMapQueueKey(configMap)
 	if err != nil {
-		log.Errorf("generate queue key for configmap %s/%s error, %v", configMap.Namespace, configMap.Name, err)
+		log.SyncConfigScope().Errorf("generate queue key for configmap %s/%s error, %v",
+			configMap.Namespace, configMap.Name, err)
 		return
 	}
 
@@ -187,22 +182,19 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 	curCm, ok2 := cur.(*v1.ConfigMap)
 
 	if !(ok1 && ok2) {
-		log.Errorf("Error get update ConfigMaps old %v, new %v", old, cur)
+		log.SyncConfigScope().Errorf("Error get update ConfigMaps old %v, new %v", old, cur)
 		return
 	}
 
 	key, err := util.GenConfigMapQueueKey(curCm)
 	if err != nil {
-		log.Errorf("generate ConfigMap queue key in onConfigMapUpdate error, %v", err)
+		log.SyncConfigScope().Errorf("generate ConfigMap queue key in onConfigMapUpdate error, %v", err)
 		return
 	}
-
-	log.Infof("ConfigMap %s/%s is update", curCm.GetNamespace(), curCm.GetName())
 
 	// 如果是按需同步，则处理一下 sync 为 空 -> sync 为 false 的场景，需要删除。
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsConfigMapHasSyncAnnotation(oldCm) && util.IsConfigMapSyncDisable(curCm) {
-			log.Infof("ConfigMap %s is update because sync no to false", key)
 			metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 			p.queue.Add(key)
 			p.resyncConfigFileCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
@@ -220,14 +212,12 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 	curIsPolaris := util.IsPolarisConfigMap(curCm, p.config.PolarisController.SyncMode)
 	if oldIsPolaris {
 		// 原来就是北极星类型的，增加cache
-		log.Infof("ConfigMap %s is update polaris config", key)
 		metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 		p.queue.Add(key)
 		p.configFileCache.Store(key, oldCm)
 		p.resyncConfigFileCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curCm)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
-		log.Infof("ConfigMap %s is update to polaris type", key)
 		metrics.SyncTimes.WithLabelValues("Update", "ConfigMap").Inc()
 		p.queue.Add(key)
 		p.resyncConfigFileCache.Store(util.GenResourceResyncQueueKeyWithOrigin(key), curCm)
@@ -239,7 +229,8 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 
 	key, err := util.GenConfigMapQueueKey(configmap)
 	if err != nil {
-		log.Errorf("generate queue key for ConfigMap %s/%s error, %v", configmap.Namespace, configmap.Name, err)
+		log.SyncConfigScope().Errorf("generate queue key for ConfigMap %s/%s error, %v",
+			configmap.Namespace, configmap.Name, err)
 		return
 	}
 
@@ -247,11 +238,11 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		ns, err := p.namespaceLister.Get(configmap.Namespace)
 		if err != nil {
-			log.Errorf("get namespace for ConfigMap %s/%s error, %v", configmap.Namespace, configmap.Name, err)
+			log.SyncConfigScope().Errorf("get namespace for ConfigMap %s/%s error, %v",
+				configmap.Namespace, configmap.Name, err)
 			return
 		}
 		if util.IsNamespaceSyncEnable(ns) {
-			log.Infof("ConfigMap %s is polaris type, in queue", key)
 			metrics.SyncTimes.WithLabelValues("Delete", "ConfigMap").Inc()
 			p.queue.Add(key)
 		}

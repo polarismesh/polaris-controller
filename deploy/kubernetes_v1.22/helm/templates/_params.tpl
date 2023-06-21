@@ -27,6 +27,8 @@ Define the cmd args for the bootstrap init container.
 - istio-iptables
 - -p
 - "15001"
+- "-z"
+- "15006"
 - -u
 - "1337"
 - -m

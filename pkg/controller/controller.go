@@ -169,12 +169,6 @@ func NewPolarisController(
 		UpdateFunc: p.onNamespaceUpdate,
 	})
 
-	configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    p.onConfigMapAdd,
-		UpdateFunc: p.onConfigMapUpdate,
-		DeleteFunc: p.onConfigMapDelete,
-	})
-
 	p.serviceLister = serviceInformer.Lister()
 	p.servicesSynced = serviceInformer.Informer().HasSynced
 
@@ -187,15 +181,22 @@ func NewPolarisController(
 	p.namespaceLister = namespaceInformer.Lister()
 	p.namespaceSynced = namespaceInformer.Informer().HasSynced
 
-	p.configMapLister = configmapInformer.Lister()
-	p.configMapSynced = configmapInformer.Informer().HasSynced
-
 	p.eventBroadcaster = broadcaster
 	p.eventRecorder = recorder
 
 	p.serviceCache = localCache.NewCachedServiceMap()
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
 	p.isPolarisServerHealthy.Store(true)
+
+	if p.config.PolarisController.SyncConfigMap {
+		configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    p.onConfigMapAdd,
+			UpdateFunc: p.onConfigMapUpdate,
+			DeleteFunc: p.onConfigMapDelete,
+		})
+		p.configMapLister = configmapInformer.Lister()
+		p.configMapSynced = configmapInformer.Informer().HasSynced
+	}
 
 	p.consumer = consumerAPI
 	p.provider = providerAPI

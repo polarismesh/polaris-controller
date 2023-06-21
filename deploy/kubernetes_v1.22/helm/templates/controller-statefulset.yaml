@@ -1,22 +1,20 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     {{- include "polaris-controller.controller.labels" . | nindent 4 }}
   name: {{ include "polaris-controller.controller.fullname" . }}
   namespace: polaris-system
 spec:
-  progressDeadlineSeconds: 60
   replicas: 1
   revisionHistoryLimit: 10
+  serviceName: polaris-controller
   selector:
     matchLabels:
       {{- include "polaris-controller.controller.selectorLabels" . | nindent 6 }}
-  strategy:
+  updateStrategy:
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 1
-    type: RollingUpdate
+      partition: 0
   template:
     metadata:
       labels:
@@ -27,12 +25,9 @@ spec:
           image: {{ template "polaris-controller.controller.image" . }}
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
-                 "--v=4",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
                  "--stderrthreshold=0",
-                 "--log-dir=/polaris-controller/log",
-                 "--log-file=/polaris-controller/log/test.log",
                  "--logtostderr=false",
                  "--log-file-max-size=1800",
                  "--leader-elect=true"

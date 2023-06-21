@@ -15,17 +15,14 @@
 package inject
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path"
-	"reflect"
 	"strconv"
 	"strings"
 	"text/template"
@@ -35,14 +32,11 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/hashicorp/go-multierror"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/batch/v2alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	yamlDecoder "k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
@@ -60,32 +54,28 @@ var (
 	}
 
 	annotationRegistry = map[string]annotationValidationFunc{
-		annotation.SidecarInject.Name:                             alwaysValidFunc,
-		annotation.SidecarStatus.Name:                             alwaysValidFunc,
-		annotation.SidecarRewriteAppHTTPProbers.Name:              alwaysValidFunc,
-		annotation.SidecarControlPlaneAuthPolicy.Name:             alwaysValidFunc,
-		annotation.SidecarDiscoveryAddress.Name:                   alwaysValidFunc,
-		annotation.SidecarProxyImage.Name:                         alwaysValidFunc,
-		annotation.SidecarProxyCPU.Name:                           alwaysValidFunc,
-		annotation.SidecarProxyMemory.Name:                        alwaysValidFunc,
-		annotation.SidecarInterceptionMode.Name:                   alwaysValidFunc,
-		annotation.SidecarBootstrapOverride.Name:                  alwaysValidFunc,
-		annotation.SidecarStatsInclusionPrefixes.Name:             alwaysValidFunc,
-		annotation.SidecarStatsInclusionSuffixes.Name:             alwaysValidFunc,
-		annotation.SidecarStatsInclusionRegexps.Name:              alwaysValidFunc,
-		annotation.SidecarUserVolume.Name:                         alwaysValidFunc,
-		annotation.SidecarUserVolumeMount.Name:                    alwaysValidFunc,
-		annotation.SidecarEnableCoreDump.Name:                     validateBool,
-		annotation.SidecarStatusPort.Name:                         validateStatusPort,
-		annotation.SidecarStatusReadinessInitialDelaySeconds.Name: validateUInt32,
-		annotation.SidecarStatusReadinessPeriodSeconds.Name:       validateUInt32,
-		annotation.SidecarStatusReadinessFailureThreshold.Name:    validateUInt32,
-		annotation.SidecarTrafficIncludeOutboundIPRanges.Name:     ValidateIncludeIPRanges,
-		annotation.SidecarTrafficExcludeOutboundIPRanges.Name:     ValidateExcludeIPRanges,
-		annotation.SidecarTrafficIncludeInboundPorts.Name:         ValidateIncludeInboundPorts,
-		annotation.SidecarTrafficExcludeInboundPorts.Name:         ValidateExcludeInboundPorts,
-		annotation.SidecarTrafficExcludeOutboundPorts.Name:        ValidateExcludeOutboundPorts,
-		annotation.SidecarTrafficKubevirtInterfaces.Name:          alwaysValidFunc,
+		annotation.SidecarInject.Name:                         alwaysValidFunc,
+		annotation.SidecarStatus.Name:                         alwaysValidFunc,
+		annotation.SidecarRewriteAppHTTPProbers.Name:          alwaysValidFunc,
+		annotation.SidecarControlPlaneAuthPolicy.Name:         alwaysValidFunc,
+		annotation.SidecarDiscoveryAddress.Name:               alwaysValidFunc,
+		annotation.SidecarProxyImage.Name:                     alwaysValidFunc,
+		annotation.SidecarProxyCPU.Name:                       alwaysValidFunc,
+		annotation.SidecarProxyMemory.Name:                    alwaysValidFunc,
+		annotation.SidecarInterceptionMode.Name:               alwaysValidFunc,
+		annotation.SidecarBootstrapOverride.Name:              alwaysValidFunc,
+		annotation.SidecarStatsInclusionPrefixes.Name:         alwaysValidFunc,
+		annotation.SidecarStatsInclusionSuffixes.Name:         alwaysValidFunc,
+		annotation.SidecarStatsInclusionRegexps.Name:          alwaysValidFunc,
+		annotation.SidecarUserVolume.Name:                     alwaysValidFunc,
+		annotation.SidecarUserVolumeMount.Name:                alwaysValidFunc,
+		annotation.SidecarEnableCoreDump.Name:                 validateBool,
+		annotation.SidecarStatusPort.Name:                     validateStatusPort,
+		annotation.SidecarTrafficIncludeOutboundIPRanges.Name: ValidateIncludeIPRanges,
+		annotation.SidecarTrafficExcludeOutboundIPRanges.Name: ValidateExcludeIPRanges,
+		annotation.SidecarTrafficIncludeInboundPorts.Name:     ValidateIncludeInboundPorts,
+		annotation.SidecarTrafficExcludeInboundPorts.Name:     ValidateExcludeInboundPorts,
+		annotation.SidecarTrafficExcludeOutboundPorts.Name:    ValidateExcludeOutboundPorts,
 	}
 )
 
@@ -95,8 +85,6 @@ func validateAnnotations(annotations map[string]string) (err error) {
 			if e := v(value); e != nil {
 				err = multierror.Append(err, fmt.Errorf("invalid value '%s' for annotation '%s': %v", value, name, e))
 			}
-		} else if strings.Contains(name, "istio") {
-			log.Warnf("Potentially misspelled annotation '%s' with value '%s' encountered", name, value)
 		}
 	}
 	return
@@ -292,7 +280,7 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	// 2. namespace.labels
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
-		// 如果出现异常，则就采用默认dns的注入方式
+		// 如果出现异常，则就采用配置文件中的 Sidecar 的注入模式
 		log.Errorf("get pod namespace %q failed: %v", namespace, err)
 	} else {
 		if val, ok := ns.Labels[utils.PolarisSidecarModeLabel]; ok {
@@ -302,7 +290,6 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	}
 
 	return wh.defaultSidecarMode
-
 }
 
 func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, metadata *metav1.ObjectMeta) bool { // nolint: lll
@@ -457,8 +444,9 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to polaris.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
 		podName := potentialPodName(metadata)
-		log.Warnf("[Webhook] %q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to Istio Pilot",
+		log.Errorf("[Webhook] %q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to PolarisMesh Control Plane",
 			metadata.Namespace+"/"+podName, corev1.DNSClusterFirst)
+		return nil, "", nil
 	}
 
 	if err := validateAnnotations(metadata.GetAnnotations()); err != nil {
@@ -472,6 +460,10 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
+	if metadata.Annotations == nil {
+		metadata.Annotations = map[string]string{}
+	}
+
 	tlsMode := util.MTLSModeNone
 	if mode, ok := metadata.Annotations[util.PolarisTLSMode]; ok {
 		mode = strings.ToLower(mode)
@@ -479,9 +471,18 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 			tlsMode = mode
 		}
 	}
+	metadata.Annotations[util.PolarisTLSMode] = tlsMode
 
-	if len(metadata.Annotations) != 0 {
-		metadata.Annotations[util.PolarisTLSMode] = tlsMode
+	// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
+	// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
+	if _, ok := metadata.Annotations[utils.SidecarNamespaceName]; !ok {
+		metadata.Annotations[utils.SidecarNamespaceName] = metadata.Namespace
+	}
+	if _, ok := metadata.Annotations[utils.SidecarServiceName]; !ok {
+		// 如果官方注解没有查询到，那就默认按照 istio 的约定，从 labels 中读取 app 这个标签的 value 作为服务名
+		if val, ok := metadata.Labels["app"]; ok {
+			metadata.Annotations[utils.SidecarServiceName] = val
+		}
 	}
 
 	data := SidecarTemplateData{
@@ -589,47 +590,6 @@ func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarT
 	return tmpl, nil
 }
 
-// IntoResourceFile injects the istio proxy into the specified
-// kubernetes YAML file.
-func IntoResourceFile(sidecarTemplate string, valuesConfig string, meshconfig *meshconfig.MeshConfig, in io.Reader, out io.Writer) error {
-	reader := yamlDecoder.NewYAMLReader(bufio.NewReaderSize(in, 4096))
-	for {
-		raw, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		obj, err := FromRawToObject(raw)
-		if err != nil && !runtime.IsNotRegisteredError(err) {
-			return err
-		}
-
-		var updated []byte
-		if err == nil {
-			outObject, err := IntoObject(sidecarTemplate, valuesConfig, meshconfig, obj) // nolint: vetshadow
-			if err != nil {
-				return err
-			}
-			if updated, err = yaml.Marshal(outObject); err != nil {
-				return err
-			}
-		} else {
-			updated = raw // unchanged
-		}
-
-		if _, err = out.Write(updated); err != nil {
-			return err
-		}
-		if _, err = fmt.Fprint(out, "---\n"); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // FromRawToObject is used to convert from raw to the runtime object
 func FromRawToObject(raw []byte) (runtime.Object, error) {
 	var typeMeta metav1.TypeMeta
@@ -647,156 +607,6 @@ func FromRawToObject(raw []byte) (runtime.Object, error) {
 	}
 
 	return obj, nil
-}
-
-// IntoObject convert the incoming resources into Injected resources
-func IntoObject(sidecarTemplate string, valuesConfig string, meshconfig *meshconfig.MeshConfig, in runtime.Object) (interface{}, error) {
-	out := in.DeepCopyObject()
-
-	var deploymentMetadata *metav1.ObjectMeta
-	var metadata *metav1.ObjectMeta
-	var podSpec *corev1.PodSpec
-	var typeMeta *metav1.TypeMeta
-
-	// Handle Lists
-	if list, ok := out.(*corev1.List); ok {
-		result := list
-
-		for i, item := range list.Items {
-			obj, err := FromRawToObject(item.Raw)
-			if runtime.IsNotRegisteredError(err) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-
-			r, err := IntoObject(sidecarTemplate, valuesConfig, meshconfig, obj) // nolint: vetshadow
-			if err != nil {
-				return nil, err
-			}
-
-			re := runtime.RawExtension{}
-			re.Object = r.(runtime.Object)
-			result.Items[i] = re
-		}
-		return result, nil
-	}
-
-	// CronJobs have JobTemplates in them, instead of Templates, so we
-	// special case them.
-	switch v := out.(type) {
-	case *v2alpha1.CronJob:
-		job := v
-		typeMeta = &job.TypeMeta
-		metadata = &job.Spec.JobTemplate.ObjectMeta
-		deploymentMetadata = &job.ObjectMeta
-		podSpec = &job.Spec.JobTemplate.Spec.Template.Spec
-	case *corev1.Pod:
-		pod := v
-		typeMeta = &pod.TypeMeta
-		metadata = &pod.ObjectMeta
-		deploymentMetadata = &pod.ObjectMeta
-		podSpec = &pod.Spec
-	case *appsv1.Deployment: // Added to be explicit about the most expected case
-		deploy := v
-		typeMeta = &deploy.TypeMeta
-		deploymentMetadata = &deploy.ObjectMeta
-		metadata = &deploy.Spec.Template.ObjectMeta
-		podSpec = &deploy.Spec.Template.Spec
-	default:
-		// `in` is a pointer to an Object. Dereference it.
-		outValue := reflect.ValueOf(out).Elem()
-
-		typeMeta = outValue.FieldByName("TypeMeta").Addr().Interface().(*metav1.TypeMeta)
-
-		deploymentMetadata = outValue.FieldByName("ObjectMeta").Addr().Interface().(*metav1.ObjectMeta)
-
-		templateValue := outValue.FieldByName("Spec").FieldByName("Template")
-		// `Template` is defined as a pointer in some older API
-		// definitions, e.g. ReplicationController
-		if templateValue.Kind() == reflect.Ptr {
-			if templateValue.IsNil() {
-				return out, fmt.Errorf("spec.template is required value")
-			}
-			templateValue = templateValue.Elem()
-		}
-		metadata = templateValue.FieldByName("ObjectMeta").Addr().Interface().(*metav1.ObjectMeta)
-		podSpec = templateValue.FieldByName("Spec").Addr().Interface().(*corev1.PodSpec)
-	}
-
-	name := metadata.Name
-	if name == "" {
-		name = deploymentMetadata.Name
-	}
-	// Skip injection when host networking is enabled. The problem is
-	// that the iptable changes are assumed to be within the pod when,
-	// in fact, they are changing the routing at the host level. This
-	// often results in routing failures within a node which can
-	// affect the network provider within the cluster causing
-	// additional pod failures.
-	if podSpec.HostNetwork {
-		_, _ = fmt.Fprintf(os.Stderr, "Skipping injection because %q has host networking enabled\n",
-			name)
-		return out, nil
-	}
-
-	// skip injection for injected pods
-	if len(podSpec.Containers) > 1 {
-		for _, c := range podSpec.Containers {
-			if c.Name == ProxyContainerName {
-				_, _ = fmt.Fprintf(os.Stderr, "Skipping injection because %q has injected %q sidecar already\n",
-					name, ProxyContainerName)
-				return out, nil
-			}
-		}
-	}
-
-	spec, status, err := InjectionData(
-		sidecarTemplate,
-		valuesConfig,
-		sidecarTemplateVersionHash(sidecarTemplate),
-		typeMeta,
-		deploymentMetadata,
-		podSpec,
-		metadata,
-		meshconfig.DefaultConfig,
-		meshconfig)
-	if err != nil {
-		return nil, err
-	}
-
-	podSpec.InitContainers = append(podSpec.InitContainers, spec.InitContainers...)
-
-	podSpec.Containers = append(podSpec.Containers, spec.Containers...)
-	podSpec.Volumes = append(podSpec.Volumes, spec.Volumes...)
-
-	podSpec.DNSConfig = spec.DNSConfig
-
-	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
-	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
-	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
-	grp := int64(1337)
-	if podSpec.SecurityContext == nil {
-		podSpec.SecurityContext = &corev1.PodSecurityContext{
-			FSGroup: &grp,
-		}
-	} else {
-		podSpec.SecurityContext.FSGroup = &grp
-	}
-
-	if metadata.Annotations == nil {
-		metadata.Annotations = make(map[string]string)
-	}
-
-	if len(spec.PodRedirectAnnot) != 0 {
-		rewriteCniPodSpec(metadata.Annotations, spec)
-	}
-
-	if len(status) != 0 {
-		metadata.Annotations[annotation.SidecarStatus.Name] = status
-	}
-	return out, nil
 }
 
 func getPortsForContainer(container corev1.Container) []string {

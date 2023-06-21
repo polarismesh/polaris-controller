@@ -896,6 +896,13 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1beta1AdmissionResponse(err)
 	}
+	// 不需要做任何 POD 修改操作
+	if spec == nil {
+		reviewResponse := v1beta1.AdmissionResponse{
+			Allowed: true,
+		}
+		return &reviewResponse
+	}
 
 	annotations := map[string]string{}
 	if len(iStatus) != 0 {
@@ -1018,10 +1025,19 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		deployMeta.Name = pod.Name
 	}
 
-	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
+	// nolint: lll
+	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta,
+		&pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig)
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1AdmissionResponse(err)
+	}
+	// 不需要做任何 POD 修改操作
+	if spec == nil {
+		reviewResponse := v1.AdmissionResponse{
+			Allowed: true,
+		}
+		return &reviewResponse
 	}
 
 	annotations := map[string]string{}

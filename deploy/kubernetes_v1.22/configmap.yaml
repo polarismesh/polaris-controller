@@ -28,6 +28,28 @@ data:
           - stdout
         errorOutputPaths:
           - stderr
+      syncnaming:
+        rotateOutputPath: logs/polaris-syncnaming.log
+        errorRotateOutputPath: logs/polaris-syncnaming-error.log
+        rotationMaxSize: 100
+        rotationMaxBackups: 10
+        rotationMaxAge: 7
+        outputLevel: info
+        outputPaths:
+          - stdout
+        errorOutputPaths:
+          - stderr
+      syncconfig:
+        rotateOutputPath: logs/polaris-syncconfig.log
+        errorRotateOutputPath: logs/polaris-syncconfig-error.log
+        rotationMaxSize: 100
+        rotationMaxBackups: 10
+        rotationMaxAge: 7
+        outputLevel: info
+        outputPaths:
+          - stdout
+        errorOutputPaths:
+          - stderr
       inject:
         rotateOutputPath: logs/polaris-inject.log
         errorRotateOutputPath: logs/polaris-inject-error.log

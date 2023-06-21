@@ -17,15 +17,21 @@ package log
 
 // logger type
 const (
-	// NamingLoggerName naming logger name, can use FindScope function to get the logger
+	// NamingLoggerName sync logger name, can use FindScope function to get the logger
 	SyncLoggerName = "sync"
 	// ConfigLoggerName config logger name, can use FindScope function to get the logger
 	InjectLoggerName = "inject"
+	// SyncNamingLoggerName naming sync logger name, can use FindScope function to get the logger
+	SyncNamingLoggerName = "syncnaming"
+	// SyncConfigLoggerName config sync logger name, can use FindScope function to get the logger
+	SyncConfigLoggerName = "syncconfig"
 )
 
 var (
-	syncScope   = RegisterScope(SyncLoggerName, "sync logging messages.", 0)
-	injectScope = RegisterScope(InjectLoggerName, "naming logging messages.", 0)
+	syncScope       = RegisterScope(SyncLoggerName, "sync logging messages.", 0)
+	injectScope     = RegisterScope(InjectLoggerName, "pod inject logging messages.", 0)
+	syncNamingScope = RegisterScope(SyncNamingLoggerName, "naming sync logging messages.", 0)
+	syncConfigScope = RegisterScope(SyncConfigLoggerName, "config sync logging messages.", 0)
 )
 
 func allLoggerTypes() []string {
@@ -39,6 +45,16 @@ func DefaultScope() *Scope {
 
 // SyncScope naming logging scope handler
 func SyncScope() *Scope {
+	return syncScope
+}
+
+// SyncNamingScope naming logging scope handler
+func SyncNamingScope() *Scope {
+	return syncScope
+}
+
+// SyncConfigScope naming logging scope handler
+func SyncConfigScope() *Scope {
 	return syncScope
 }
 
