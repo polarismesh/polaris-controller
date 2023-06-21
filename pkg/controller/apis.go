@@ -65,14 +65,10 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 
 // addInstances 批量增加实例接口
 func (p *PolarisController) addInstances(service *v1.Service, addresses []address.Address) error {
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-
 	if len(addresses) == 0 {
-		log.Infof("No Instance need to add %s", serviceMsg)
 		return nil
 	}
-
-	log.Infof("This IP need add to %s %v", serviceMsg, addresses)
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	// 处理健康检查
 	var healthCheck polarisapi.HealthCheck
 	healthy := util.Bool(true)
@@ -124,14 +120,10 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 
 // deleteInstances 批量删除实例接口
 func (p *PolarisController) deleteInstances(service *v1.Service, addresses []address.Address) error {
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-
 	if len(addresses) == 0 {
-		log.Infof("No Instance need to delete %s", serviceMsg)
 		return nil
 	}
-	log.Infof("Start to delete all %s IP is %v", serviceMsg, addresses)
-
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
 		log.Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
@@ -154,16 +146,10 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 
 // updateInstances 批量更新实例接口
 func (p *PolarisController) updateInstances(service *v1.Service, addresses []address.Address) error {
-
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-
 	if len(addresses) == 0 {
-		log.Infof("No Instance need to update %s", serviceMsg)
 		return nil
 	}
-
-	log.Infof("Start to update all %s IP is %v", serviceMsg, addresses)
-
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
 		log.Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
@@ -294,27 +280,21 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	}
 
 	if cur.PolarisInstance.IsEnableHealthCheck() != *enableHealthCheck {
-		log.Infof("%s healthy check changed, old %v, new %v",
-			cur.PolarisInstance.GetHost(), cur.PolarisInstance.IsEnableHealthCheck(), *enableHealthCheck)
 		return true
 	}
 
 	// healthy update
 	if cur.PolarisInstance.IsHealthy() != spec.Healthy {
-		log.Infof("%s healthy check changed, old %v, new %v",
-			cur.PolarisInstance.GetHost(), cur.PolarisInstance.IsEnableHealthCheck(), *enableHealthCheck)
 		return true
 	}
 
 	// weight update
 	if cur.Weight != spec.Weight {
-		log.Infof("%s weight changed, old %v, new %v", cur.PolarisInstance.GetHost(), cur.Weight, spec.Weight)
 		return true
 	}
 
 	// protocol update
 	if cur.Protocol != spec.Protocol {
-		log.Infof("%s protocol changed, old %v, new %v", cur.PolarisInstance.GetHost(), cur.Protocol, spec.Protocol)
 		return true
 	}
 
@@ -322,7 +302,6 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	newMetadataStr := service.GetAnnotations()[util.PolarisMetadata]
 	oldMetadata := cur.PolarisInstance.GetMetadata()
 	if oldMetadata == nil {
-		log.Infof("%s old metadata is nil, new %s", cur.PolarisInstance.GetHost(), newMetadataStr)
 		return true
 	}
 
@@ -377,17 +356,8 @@ func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances
 		"serviceName":  service.GetName,
 	*/
 	for _, instance := range instances {
-		clusterName := instance.GetMetadata()[util.PolarisClusterName]
-		source := instance.GetMetadata()[util.PolarisSource]
-
-		// 存量使用 platform 字段，这里兼容存量字段
-		oldSource := instance.GetMetadata()[util.PolarisOldSource]
-
-		flag := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
-			(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
-
 		// 新增字段flag，或者使用原来判断条件
-		if flag {
+		if p.isSyncInstance(instance) {
 			ins = append(ins, address.Address{
 				IP:   instance.GetHost(),
 				Port: int(instance.GetPort()),
@@ -395,6 +365,18 @@ func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances
 		}
 	}
 	return ins
+}
+
+func (p *PolarisController) isSyncInstance(ins model.Instance) bool {
+	clusterName := ins.GetMetadata()[util.PolarisClusterName]
+	source := ins.GetMetadata()[util.PolarisSource]
+
+	// 存量使用 platform 字段，这里兼容存量字段
+	oldSource := ins.GetMetadata()[util.PolarisOldSource]
+
+	match := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
+		(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
+	return match
 }
 
 // getCustomWeight 将用户配置的权重

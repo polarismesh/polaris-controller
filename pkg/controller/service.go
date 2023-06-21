@@ -37,22 +37,20 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	curService, ok2 := current.(*v1.Service)
 
 	if !(ok1 && ok2) {
-		log.Errorf("Error get update services old %v, new %v", old, current)
+		log.SyncNamingScope().Errorf("Error get update services old %v, new %v", old, current)
 		return
 	}
 
 	key, err := util.GenServiceQueueKey(curService)
 	if err != nil {
-		log.Errorf("generate service queue key in onServiceUpdate error, %v", err)
+		log.SyncNamingScope().Errorf("generate service queue key in onServiceUpdate error, %v", err)
 		return
 	}
-
-	log.Infof("Service %s/%s is update", curService.GetNamespace(), curService.GetName())
 
 	// 如果是按需同步，则处理一下 sync 为 空 -> sync 为 false 的场景，需要删除。
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		if !util.IsServiceHasSyncAnnotation(oldService) && util.IsServiceSyncDisable(curService) {
-			log.Infof("Service %s is update because sync no to false", key)
+			log.SyncNamingScope().Infof("Service %s is update because sync no to false", key)
 			p.enqueueService(key, oldService, "Update")
 			p.resyncServiceCache.Delete(util.GenResourceResyncQueueKeyWithOrigin(key))
 			return
@@ -89,7 +87,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		log.Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
+		log.SyncNamingScope().Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 
@@ -104,7 +102,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 
 	key, err := util.GenServiceQueueKey(service)
 	if err != nil {
-		log.Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
+		log.SyncNamingScope().Errorf("generate queue key for service %s/%s error, %v", service.Namespace, service.Name, err)
 		return
 	}
 
@@ -112,7 +110,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
 		ns, err := p.namespaceLister.Get(service.Namespace)
 		if err != nil {
-			log.Errorf("get namespace for service %s/%s error, %v", service.Namespace, service.Name, err)
+			log.SyncNamingScope().Errorf("get namespace for service %s/%s error, %v", service.Namespace, service.Name, err)
 			return
 		}
 		if util.IsNamespaceSyncEnable(ns) {
@@ -129,21 +127,19 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 }
 
 func (p *PolarisController) enqueueService(key string, service *v1.Service, eventType string) {
-	log.Infof("Service %s is polaris type, in queue", key)
 	metrics.SyncTimes.WithLabelValues(eventType, "Service").Inc()
 	p.queue.Add(key)
 }
 
 func (p *PolarisController) syncService(key string) error {
-	log.Infof("Start sync service %s, queue deep %d", key, p.queue.Len())
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finished syncing service %q service. (%v)", key, time.Since(startTime))
+		log.SyncNamingScope().Infof("Finished syncing service %q service. (%v)", key, time.Since(startTime))
 	}()
 
 	realKey, namespaces, name, op, err := util.GetResourceRealKeyWithFlag(key)
 	if err != nil {
-		log.Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
+		log.SyncNamingScope().Errorf("GetResourceRealKeyWithFlag %s error, %v", key, err)
 		return err
 	}
 
@@ -154,10 +150,10 @@ func (p *PolarisController) syncService(key string) error {
 		cachedService, ok := p.serviceCache.Load(realKey)
 		if !ok {
 			// 如果之前的数据也已经不存在那么就跳过不在处理
-			log.Infof("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
+			//nolint: lll
+			log.SyncNamingScope().Infof("Service %s not in cache even though the watcher thought it was. Ignoring the deletion", realKey)
 			return nil
 		}
-		log.Infof("Service %s is in cache, cache info %v", realKey, cachedService.Name)
 		// 查询原svc是啥，删除对应实例
 		processError := p.processDeleteService(cachedService)
 		if processError != nil {
@@ -169,7 +165,7 @@ func (p *PolarisController) syncService(key string) error {
 		}
 		p.serviceCache.Delete(realKey)
 	case err != nil:
-		log.Errorf("Unable to retrieve service %v from store: %v", realKey, err)
+		log.SyncNamingScope().Errorf("Unable to retrieve service %v from store: %v", realKey, err)
 		p.enqueueService(key, nil, op)
 	default:
 		// 条件判断将会增加
@@ -177,7 +173,7 @@ func (p *PolarisController) syncService(key string) error {
 		// 2. 更新service
 		//    a. 北极星相关信息不变，更新了对应的metadata,ttl,权重信息
 		//    b. 北极星相关信息改变，相当于删除旧的北极星信息，注册新的北极星信息。
-		log.Infof("Begin to process service %s, operation is %s", realKey, op)
+		log.SyncNamingScope().Infof("Begin to process service %s, operation is %s", realKey, op)
 
 		operationService := service
 
@@ -190,28 +186,28 @@ func (p *PolarisController) syncService(key string) error {
 		cachedService, ok := p.serviceCache.Load(realKey)
 		if !ok {
 			// 1. cached中没有数据，为首次添加场景
-			log.Infof("Service %s not in cache, begin to add new polaris", realKey)
+			log.SyncNamingScope().Infof("Service %s not in cache, begin to add new polaris", realKey)
 
 			// 同步 k8s 的 namespace 和 service 到 polaris，失败投入队列重试
 			if processError := p.processSyncNamespaceAndService(operationService); processError != nil {
-				log.Errorf("ns/svc %s sync failed", realKey)
+				log.SyncNamingScope().Errorf("ns/svc %s sync failed", realKey)
 				return processError
 			}
 
 			if !util.IsPolarisService(operationService, p.config.PolarisController.SyncMode) {
 				// 不合法的 service ，只把 service 同步到北极星，不做后续的实例处理
-				log.Infof("service %s is not valid, do not process ", realKey)
+				log.SyncNamingScope().Infof("service %s is not valid, do not process ", realKey)
 				return nil
 			}
 
 			if processError := p.processSyncInstance(operationService); processError != nil {
-				log.Errorf("Service %s first add failed", realKey)
+				log.SyncNamingScope().Errorf("Service %s first add failed", realKey)
 				return processError
 			}
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
 			if processError := p.processUpdateService(cachedService, operationService); processError != nil {
-				log.Errorf("Service %s update add failed", realKey)
+				log.SyncNamingScope().Errorf("Service %s update add failed", realKey)
 				return processError
 			}
 		}
@@ -221,8 +217,7 @@ func (p *PolarisController) syncService(key string) error {
 }
 
 func (p *PolarisController) processDeleteService(service *v1.Service) (err error) {
-	log.Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
-
+	log.SyncNamingScope().Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
 	instances, err := p.getAllInstance(service)
 	if err != nil {
 		return err
@@ -232,7 +227,7 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 	// 通过查询北极星得到被注册的实例，直接删除，更加可靠。
 	polarisIPs := p.filterPolarisMetadata(service, instances)
 
-	log.Infof("deRegistered [%s/%s] IPs , FilterPolarisMetadata \n %v \n %v",
+	log.SyncNamingScope().Infof("deRegistered [%s/%s] IPs , FilterPolarisMetadata \n %v \n %v",
 		service.GetNamespace(), service.GetName(),
 		instances, polarisIPs)
 
@@ -244,7 +239,7 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 // polarisapi.Createxx 中做了兼容，创建时，若资源已经存在，不返回 error
 func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) (err error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-	log.Infof("Begin to sync namespaces and service, %s", serviceMsg)
+	log.SyncNamingScope().Infof("Begin to sync namespaces and service, %s", serviceMsg)
 
 	// demand 模式，service 不包含 sync 注解时，不需要创建 ns、service 和 alias
 	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
@@ -260,7 +255,7 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 
 	createNsResponse, err := polarisapi.CreateNamespaces(service.Namespace)
 	if err != nil {
-		log.Errorf("Failed create namespaces in processSyncNamespaceAndService %s, err %s, resp %v",
+		log.SyncNamingScope().Errorf("Failed create namespaces in processSyncNamespaceAndService %s, err %s, resp %v",
 			serviceMsg, err, createNsResponse)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed create namespaces %s, err %s, resp %v", serviceMsg, err, createNsResponse)
@@ -269,7 +264,7 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 
 	createSvcResponse, err := polarisapi.CreateService(service)
 	if err != nil {
-		log.Errorf("Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
+		log.SyncNamingScope().Errorf("Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed create service %s, err %s", serviceMsg, createSvcResponse.Info)
 		return err
@@ -279,7 +274,7 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		service.Annotations[util.PolarisAliasService] != "" {
 		createAliasResponse, err := polarisapi.CreateServiceAlias(service)
 		if err != nil {
-			log.Errorf("Failed create service alias in processSyncNamespaceAndService %s, err %s, resp %v",
+			log.SyncNamingScope().Errorf("Failed create service alias in processSyncNamespaceAndService %s, err %s, resp %v",
 				serviceMsg, err, createAliasResponse)
 			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
@@ -305,7 +300,7 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
 		if err != nil {
 			serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
-			log.Errorf("Failed create service alias in processUpdateService %s, err %s, resp %v",
+			log.SyncNamingScope().Errorf("Failed create service alias in processUpdateService %s, err %s, resp %v",
 				serviceMsg, err, createAliasResponse)
 			p.eventRecorder.Eventf(cur, v1.EventTypeWarning, polarisEvent,
 				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
@@ -316,17 +311,17 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 	if !reflect.DeepEqual(old.Labels, cur.Labels) {
 		// 同步 service 的标签变化情况
 		if err := p.updateService(cur); err != nil {
-			log.Error("process service update info", zap.String("service", k8sService), zap.Error(err))
+			log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(err))
 		}
 	}
 
 	changeType := util.CompareServiceChange(old, cur, p.config.PolarisController.SyncMode)
 	switch changeType {
 	case util.ServicePolarisDelete:
-		log.Infof("Service %s %s, need delete ", k8sService, util.ServicePolarisDelete)
+		log.SyncNamingScope().Infof("Service %s %s, need delete ", k8sService, util.ServicePolarisDelete)
 		return p.processDeleteService(old)
 	case util.WorkloadKind:
-		log.Infof("Service %s changed, need delete old and update", k8sService)
+		log.SyncNamingScope().Infof("Service %s changed, need delete old and update", k8sService)
 		syncErr := p.processSyncInstance(cur)
 		deleteErr := p.processDeleteService(old)
 		if syncErr != nil || deleteErr != nil {
@@ -336,13 +331,13 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) (err erro
 		return
 	case util.InstanceMetadataChanged, util.InstanceTTLChanged,
 		util.InstanceWeightChanged, util.InstanceCustomWeightChanged:
-		log.Infof("Service %s metadata,ttl,custom weight changed, need to update", k8sService)
+		log.SyncNamingScope().Infof("Service %s metadata,ttl,custom weight changed, need to update", k8sService)
 		return p.processSyncInstance(cur)
 	case util.InstanceEnableRegisterChanged:
-		log.Infof("Service %s enableRegister,service weight changed, do nothing", k8sService)
+		log.SyncNamingScope().Infof("Service %s enableRegister,service weight changed, do nothing", k8sService)
 		return
 	default:
-		log.Infof("Service %s endpoints or ports changed", k8sService)
+		log.SyncNamingScope().Infof("Service %s endpoints or ports changed", k8sService)
 		return p.processSyncInstance(cur)
 	}
 }

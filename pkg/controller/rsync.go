@@ -43,17 +43,20 @@ func (p *PolarisController) resyncWorker() {
 		return true
 	})
 
-	p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
-		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
-		if !ok {
-			p.enqueueConfigMap(key, value, "Add")
-			return true
-		}
+	// 只有开启了 SyncConfigMap 才会触发相关任务
+	if p.config.PolarisController.SyncConfigMap {
+		p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
+			v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+			if !ok {
+				p.enqueueConfigMap(key, value, "Add")
+				return true
+			}
 
-		// 强制更新
-		p.onConfigMapUpdate(v, value)
-		return true
-	})
+			// 强制更新
+			p.onConfigMapUpdate(v, value)
+			return true
+		})
+	}
 }
 
 // checkHealth 健康检查

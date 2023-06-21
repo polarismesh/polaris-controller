@@ -114,6 +114,7 @@ func IsServiceKey(key string) (string, bool) {
 	}
 	return key, false
 }
+
 func IsConfigMapKey(key string) (string, bool) {
 	if strings.HasPrefix(key, ConfigMapPrefix) {
 		return strings.TrimPrefix(key, ConfigMapPrefix), true

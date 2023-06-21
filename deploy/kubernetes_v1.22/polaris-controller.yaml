@@ -1,21 +1,20 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     qcloud-app: polaris-controller
   name: polaris-controller
   namespace: polaris-system
 spec:
-  progressDeadlineSeconds: 60
   replicas: 1
   revisionHistoryLimit: 10
+  serviceName: polaris-controller
   selector:
     matchLabels:
       k8s-app: polaris-controller
-  strategy:
+  updateStrategy:
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 1
+      partition: 0
     type: RollingUpdate
   template:
     metadata:
@@ -28,12 +27,9 @@ spec:
           image: polarismesh/polaris-controller:#CONTROLLER_VERSION#
           command: ["./polaris-controller"]
           args: ["--min-resync-period=60s",
-                 "--v=4",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
                  "--stderrthreshold=0",
-                 "--log-dir=/polaris-controller/log",
-                 "--log-file=/polaris-controller/log/test.log",
                  "--logtostderr=false",
                  "--log-file-max-size=1800",
                  "--leader-elect=true"
