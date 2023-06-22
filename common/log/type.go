@@ -50,12 +50,12 @@ func SyncScope() *Scope {
 
 // SyncNamingScope naming logging scope handler
 func SyncNamingScope() *Scope {
-	return syncScope
+	return syncNamingScope
 }
 
 // SyncConfigScope naming logging scope handler
 func SyncConfigScope() *Scope {
-	return syncScope
+	return syncConfigScope
 }
 
 // InjectScope

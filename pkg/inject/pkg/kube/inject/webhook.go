@@ -104,7 +104,7 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 	}
 	var meshConf Config
 	if err := gyaml.Unmarshal(meshData, &meshConf); err != nil {
-		log.Warnf("Failed to parse injectFile %s", string(meshData))
+		log.InjectScope().Warnf("Failed to parse injectFile %s", string(meshData))
 		return nil, nil, nil, "", err
 	}
 
@@ -115,7 +115,7 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 	}
 	var dnsConf Config
 	if err := gyaml.Unmarshal(dnsData, &dnsConf); err != nil {
-		log.Warnf("Failed to parse injectFile %s", string(dnsData))
+		log.InjectScope().Warnf("Failed to parse injectFile %s", string(dnsData))
 		return nil, nil, nil, "", err
 	}
 
@@ -129,17 +129,17 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 		return nil, nil, nil, "", err
 	}
 
-	log.Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
-	log.Infof("[MESH] Policy: %v", meshConf.Policy)
-	log.Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
-	log.Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
-	log.Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
+	log.InjectScope().Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
+	log.InjectScope().Infof("[MESH] Policy: %v", meshConf.Policy)
+	log.InjectScope().Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
+	log.InjectScope().Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
+	log.InjectScope().Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
 
-	log.Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
-	log.Infof("[DNS] Policy: %v", dnsConf.Policy)
-	log.Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
-	log.Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
-	log.Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
+	log.InjectScope().Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
+	log.InjectScope().Infof("[DNS] Policy: %v", dnsConf.Policy)
+	log.InjectScope().Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
+	log.InjectScope().Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
+	log.InjectScope().Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
 
 	return &meshConf, &dnsConf, meshConfig, string(valuesConfig), nil
 }
@@ -260,7 +260,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 	if wh.server != nil {
 		go func() {
 			if err := wh.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("admission webhook ListenAndServeTLS failed: %v", err)
+				log.InjectScope().Fatalf("admission webhook ListenAndServeTLS failed: %v", err)
 			}
 		}()
 		defer wh.server.Close()
@@ -281,13 +281,13 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			timerC = nil
 			sidecarMeshConfig, sidecarDnsConfig, meshConfig, valuesConfig, err := loadConfig(wh.meshConfigFile, wh.dnsConfigFile, wh.meshFile, wh.valuesFile)
 			if err != nil {
-				log.Errorf("update error: %v", err)
+				log.InjectScope().Errorf("update error: %v", err)
 				break
 			}
 
 			pair, err := tls.LoadX509KeyPair(wh.certFile, wh.keyFile)
 			if err != nil {
-				log.Errorf("reload cert error: %v", err)
+				log.InjectScope().Errorf("reload cert error: %v", err)
 				break
 			}
 			wh.mu.Lock()
@@ -301,17 +301,17 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			wh.cert = &pair
 			wh.mu.Unlock()
 		case event := <-wh.watcher.Event:
-			log.Infof("Injector watch update: %+v", event)
+			log.InjectScope().Infof("Injector watch update: %+v", event)
 			// use a timer to debounce configuration updates
 			if (event.IsModify() || event.IsCreate()) && timerC == nil {
 				timerC = time.After(watchDebounceDelay)
 			}
 		case err := <-wh.watcher.Error:
-			log.Errorf("Watcher error: %v", err)
+			log.InjectScope().Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
 			if err := ioutil.WriteFile(wh.healthCheckFile, content, 0o644); err != nil {
-				log.Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
+				log.InjectScope().Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
 			}
 		case <-stop:
 			return
@@ -410,22 +410,22 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 
 		// mesh condition || dns condition
 		if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
-			log.Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
+			log.InjectScope().Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
 				pod.Namespace, pod.Name)
 			if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
-				log.Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
+				log.InjectScope().Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
 					pod.Namespace, pod.Name, err)
 			}
 		}
 
 		if add.Name == "polaris-sidecar" {
-			log.Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
+			log.InjectScope().Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
 			if _, err := wh.handlePolarisSidecarEnvInject(sidecarMode, pod, &add); err != nil {
-				log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
+				log.InjectScope().Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			}
 
 			//if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
-			//	log.Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
+			//	log.InjectScope().Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 			//}
 			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
 			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
@@ -471,13 +471,13 @@ func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) err
 	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
 		Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
 	if err != nil {
-		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
 	}
 
 	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
 	if err != nil {
-		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
 	}
 	buf := new(bytes.Buffer)
@@ -485,7 +485,7 @@ func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) err
 		Name:          utils.PolarisGoConfigFile,
 		PolarisServer: common.PolarisServerGrpcAddress,
 	}); err != nil {
-		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
 	}
 
@@ -493,7 +493,7 @@ func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) err
 	configMap := corev1.ConfigMap{}
 	str := buf.String()
 	if err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(str), len(str)).Decode(&configMap); err != nil {
-		log.Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
+		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
 	}
 
@@ -531,7 +531,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	if enableMtls(pod) {
 		envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
 	}
-	log.Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
+	log.InjectScope().Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
 		pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode), envMap)
 	for k, v := range envMap {
 		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
@@ -817,10 +817,10 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		pod.ObjectMeta.Namespace = req.Namespace
 	}
 
-	log.Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
+	log.InjectScope().Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	log.Infof("Object: %v", string(req.Object.Raw))
-	log.Infof("OldObject: %v", string(req.OldObject.Raw))
+	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
+	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
 
 	config := wh.sidecarMeshConfig
 	tempVersion := wh.sidecarMeshTemplateVersion
@@ -830,7 +830,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		log.Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+		log.InjectScope().Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
 		return &v1beta1.AdmissionResponse{
 			Allowed: true,
 		}
@@ -891,7 +891,8 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		deployMeta.Name = pod.Name
 	}
 	proxyCfg := wh.meshConfig.DefaultConfig
-	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg, wh.meshConfig) // nolint: lll
+	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata,
+		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg, wh.meshConfig) // nolint: lll
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1beta1AdmissionResponse(err)
@@ -904,11 +905,12 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		return &reviewResponse
 	}
 
-	annotations := map[string]string{}
+	if len(annotations) == 0 {
+		annotations = map[string]string{}
+	}
 	if len(iStatus) != 0 {
 		annotations[annotation.SidecarStatus.Name] = iStatus
 	}
-
 	// Add all additional injected annotations
 	for k, v := range config.InjectedAnnotations {
 		annotations[k] = v
@@ -920,7 +922,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		return toV1beta1AdmissionResponse(err)
 	}
 
-	log.Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	log.InjectScope().Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
 
 	reviewResponse := v1beta1.AdmissionResponse{
 		Allowed: true,
@@ -951,10 +953,10 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		pod.ObjectMeta.Namespace = req.Namespace
 	}
 
-	log.Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
+	log.InjectScope().Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
 		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	log.Infof("[Webhook] object: %v", string(req.Object.Raw))
-	log.Infof("[Webhook] oldObject: %v", string(req.OldObject.Raw))
+	log.InjectScope().Infof("[Webhook] object: %v", string(req.Object.Raw))
+	log.InjectScope().Infof("[Webhook] oldObject: %v", string(req.OldObject.Raw))
 
 	config := wh.sidecarMeshConfig
 	tempVersion := wh.sidecarMeshTemplateVersion
@@ -964,7 +966,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		log.Infof("[Webhook] skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+		log.InjectScope().Infof("[Webhook] skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
 		return &v1.AdmissionResponse{
 			Allowed: true,
 		}
@@ -1025,8 +1027,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		deployMeta.Name = pod.Name
 	}
 
-	// nolint: lll
-	spec, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta,
+	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta,
 		&pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig)
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
@@ -1040,7 +1041,9 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		return &reviewResponse
 	}
 
-	annotations := map[string]string{}
+	if len(annotations) == 0 {
+		annotations = map[string]string{}
+	}
 	if len(iStatus) != 0 {
 		annotations[annotation.SidecarStatus.Name] = iStatus
 	}
@@ -1056,7 +1059,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		return toV1AdmissionResponse(err)
 	}
 
-	log.Infof("[Webhook] admissionResponse: patch=%v\n", string(patchBytes))
+	log.InjectScope().Infof("[Webhook] admissionResponse: patch=%v\n", string(patchBytes))
 
 	reviewResponse := v1.AdmissionResponse{
 		Allowed: true,
@@ -1076,7 +1079,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 			body = data
 		}
 	}
-	log.Infof("[Webhook] receive webhook request path %s, data %s", r.URL.RawPath, string(body))
+	log.InjectScope().Infof("[Webhook] receive webhook request path %s, data %s", r.URL.RawPath, string(body))
 	if len(body) == 0 {
 		handleError("no body found")
 		http.Error(w, "no body found", http.StatusBadRequest)
@@ -1105,7 +1108,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1beta1.AdmissionReview)
 		if !ok {
-			log.Errorf("[Webhook] expected v1beta1.AdmissionReview but got: %T", obj)
+			log.InjectScope().Errorf("[Webhook] expected v1beta1.AdmissionReview but got: %T", obj)
 			return
 		}
 		responseAdmissionReview := &v1beta1.AdmissionReview{}
@@ -1116,7 +1119,7 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1.AdmissionReview)
 		if !ok {
-			log.Errorf("[Webhook] expected v1.AdmissionReview but got: %T", obj)
+			log.InjectScope().Errorf("[Webhook] expected v1.AdmissionReview but got: %T", obj)
 			return
 		}
 		responseAdmissionReview := &v1.AdmissionReview{}
@@ -1126,21 +1129,21 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 		responseObj = responseAdmissionReview
 	default:
 		msg := fmt.Sprintf("[Webhook] unsupported group version kind: %v", gvk)
-		log.Error(msg)
+		log.InjectScope().Error(msg)
 		http.Error(w, msg, http.StatusBadRequest)
 	}
 
 	resp, err := json.Marshal(responseObj)
 	if err != nil {
-		log.Errorf("Could not encode response: %v", err)
+		log.InjectScope().Errorf("Could not encode response: %v", err)
 		http.Error(w, fmt.Sprintf("could not encode response: %v", err), http.StatusInternalServerError)
 	}
 	if _, err := w.Write(resp); err != nil {
-		log.Errorf("Could not write response: %v", err)
+		log.InjectScope().Errorf("Could not write response: %v", err)
 		http.Error(w, fmt.Sprintf("could not write response: %v", err), http.StatusInternalServerError)
 	}
 }
 
 func handleError(message string) {
-	log.Errorf(message)
+	log.InjectScope().Errorf(message)
 }
