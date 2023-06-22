@@ -281,7 +281,7 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用配置文件中的 Sidecar 的注入模式
-		log.Errorf("get pod namespace %q failed: %v", namespace, err)
+		log.InjectScope().Errorf("get pod namespace %q failed: %v", namespace, err)
 	} else {
 		if val, ok := ns.Labels[utils.PolarisSidecarModeLabel]; ok {
 			sidecarMode = val
@@ -292,7 +292,8 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	return wh.defaultSidecarMode
 }
 
-func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, metadata *metav1.ObjectMeta) bool { // nolint: lll
+func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, 
+	metadata *metav1.ObjectMeta) bool {
 	// Skip injection when host networking is enabled. The problem is
 	// that the iptable changes are assumed to be within the pod when,
 	// in fact, they are changing the routing at the host level. This
@@ -332,9 +333,10 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		for _, neverSelector := range config.NeverInjectSelector {
 			selector, err := metav1.LabelSelectorAsSelector(&neverSelector)
 			if err != nil {
-				log.Warnf("Invalid selector for NeverInjectSelector: %v (%v)", neverSelector, err)
+				log.InjectScope().Warnf("Invalid selector for NeverInjectSelector: %v (%v)", neverSelector, err)
 			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				log.Infof("Explicitly disabling injection for pod %s/%s due to pod labels matching NeverInjectSelector config map entry.",
+				log.InjectScope().Infof("Explicitly disabling injection for pod %s/%s due to pod labels "+
+					"matching NeverInjectSelector config map entry.",
 					metadata.Namespace, potentialPodName(metadata))
 				inject = false
 				useDefault = false
@@ -348,9 +350,10 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		for _, alwaysSelector := range config.AlwaysInjectSelector {
 			selector, err := metav1.LabelSelectorAsSelector(&alwaysSelector)
 			if err != nil {
-				log.Warnf("Invalid selector for AlwaysInjectSelector: %v (%v)", alwaysSelector, err)
+				log.InjectScope().Warnf("Invalid selector for AlwaysInjectSelector: %v (%v)", alwaysSelector, err)
 			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				log.Infof("Explicitly enabling injection for pod %s/%s due to pod labels matching AlwaysInjectSelector config map entry.",
+				log.InjectScope().Infof("Explicitly enabling injection for pod %s/%s due to pod labels "+
+					" matching AlwaysInjectSelector config map entry.",
 					metadata.Namespace, potentialPodName(metadata))
 				inject = true
 				useDefault = false
@@ -362,7 +365,7 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 	var required bool
 	switch config.Policy {
 	default: // InjectionPolicyOff
-		log.Errorf("Illegal value for autoInject:%s, must be one of [%s,%s]. Auto injection disabled!",
+		log.InjectScope().Errorf("Illegal value for autoInject:%s, must be one of [%s,%s]. Auto injection disabled!",
 			config.Policy, InjectionPolicyDisabled, InjectionPolicyEnabled)
 		required = false
 	case InjectionPolicyDisabled:
@@ -389,7 +392,7 @@ func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *cor
 		annotationStr += fmt.Sprintf("%s:%s ", name, value)
 	}
 
-	log.Infof("Sidecar injection policy for %v/%v: namespacePolicy:%v useDefault:%v inject:%v required:%v %s",
+	log.InjectScope().Infof("Sidecar injection for %v/%v: namespacePolicy:%v useDefault:%v inject:%v required:%v %s",
 		metadata.Namespace,
 		potentialPodName(metadata),
 		config.Policy,
@@ -437,51 +440,52 @@ func flippedContains(needle, haystack string) bool {
 }
 
 // InjectionData renders sidecarTemplate with valuesConfig.
-func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *metav1.TypeMeta, deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
+func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *metav1.TypeMeta,
+	deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
 	metadata *metav1.ObjectMeta, proxyConfig *meshconfig.ProxyConfig, meshConfig *meshconfig.MeshConfig) (
-	*SidecarInjectionSpec, string, error,
-) {
+	*SidecarInjectionSpec, map[string]string, string, error) {
 	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to polaris.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
 		podName := potentialPodName(metadata)
-		log.Errorf("[Webhook] %q's DNSPolicy is not %q. The Envoy sidecar may not able to connect to PolarisMesh Control Plane",
+		log.InjectScope().Errorf("[Webhook] %q's DNSPolicy is not %q. The Envoy sidecar may not able to "+
+			" connect to PolarisMesh Control Plane",
 			metadata.Namespace+"/"+podName, corev1.DNSClusterFirst)
-		return nil, "", nil
+		return nil, nil, "", nil
 	}
 
 	if err := validateAnnotations(metadata.GetAnnotations()); err != nil {
-		log.Errorf("[Webhook] injection failed due to invalid annotations: %v", err)
-		return nil, "", err
+		log.InjectScope().Errorf("[Webhook] injection failed due to invalid annotations: %v", err)
+		return nil, nil, "", err
 	}
 
 	values := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(valuesConfig), &values); err != nil {
-		log.Infof("[Webhook] failed to parse values config: %v [%v]\n", err, valuesConfig)
-		return nil, "", multierror.Prefix(err, "could not parse configuration values:")
+		log.InjectScope().Infof("[Webhook] failed to parse values config: %v [%v]\n", err, valuesConfig)
+		return nil, nil, "", multierror.Prefix(err, "could not parse configuration values:")
 	}
 
-	if metadata.Annotations == nil {
-		metadata.Annotations = map[string]string{}
-	}
+	injectAnnonations := map[string]string{}
 
-	tlsMode := util.MTLSModeNone
-	if mode, ok := metadata.Annotations[util.PolarisTLSMode]; ok {
-		mode = strings.ToLower(mode)
-		if mode == util.MTLSModeStrict || mode == util.MTLSModePermissive {
-			tlsMode = mode
+	// 这里负责将需要额外塞入的 annonation 数据进行返回
+	if len(metadata.Annotations) != 0 {
+		tlsMode := util.MTLSModeNone
+		if mode, ok := metadata.Annotations[util.PolarisTLSMode]; ok {
+			mode = strings.ToLower(mode)
+			if mode == util.MTLSModeStrict || mode == util.MTLSModePermissive {
+				tlsMode = mode
+			}
 		}
-	}
-	metadata.Annotations[util.PolarisTLSMode] = tlsMode
-
-	// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
-	// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
-	if _, ok := metadata.Annotations[utils.SidecarNamespaceName]; !ok {
-		metadata.Annotations[utils.SidecarNamespaceName] = metadata.Namespace
-	}
-	if _, ok := metadata.Annotations[utils.SidecarServiceName]; !ok {
-		// 如果官方注解没有查询到，那就默认按照 istio 的约定，从 labels 中读取 app 这个标签的 value 作为服务名
-		if val, ok := metadata.Labels["app"]; ok {
-			metadata.Annotations[utils.SidecarServiceName] = val
+		injectAnnonations[util.PolarisTLSMode] = tlsMode
+		// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
+		// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
+		if _, ok := metadata.Annotations[utils.SidecarNamespaceName]; !ok {
+			injectAnnonations[utils.SidecarNamespaceName] = metadata.Namespace
+		}
+		if _, ok := metadata.Annotations[utils.SidecarServiceName]; !ok {
+			// 如果官方注解没有查询到，那就默认按照 istio 的约定，从 labels 中读取 app 这个标签的 value 作为服务名
+			if val, ok := metadata.Labels["app"]; ok {
+				injectAnnonations[utils.SidecarServiceName] = val
+			}
 		}
 	}
 
@@ -540,15 +544,15 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 
 	bbuf, err := parseTemplate(sidecarTemplate, funcMap, data)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
 	var sic SidecarInjectionSpec
 	if err := yaml.Unmarshal(bbuf.Bytes(), &sic); err != nil {
 		// This usually means an invalid injector template; we can't check
 		// the template itself because it is merely a string.
-		log.Warnf("Failed to unmarshal template %v %s", err, bbuf.String())
-		return nil, "", multierror.Prefix(err, "failed parsing generated injected YAML (check sidecar injector configuration):")
+		log.InjectScope().Warnf("Failed to unmarshal template %v %s", err, bbuf.String())
+		return nil, nil, "", multierror.Prefix(err, "failed parsing injected YAML (check sidecar injector configuration):")
 	}
 
 	// set sidecar --concurrency
@@ -569,9 +573,9 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	}
 	statusAnnotationValue, err := json.Marshal(status)
 	if err != nil {
-		return nil, "", fmt.Errorf("error encoded injection status: %v", err)
+		return nil, nil, "", fmt.Errorf("error encoded injection status: %v", err)
 	}
-	return &sic, string(statusAnnotationValue), nil
+	return &sic, injectAnnonations, string(statusAnnotationValue), err
 }
 
 func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarTemplateData) (bytes.Buffer, error) {
@@ -579,11 +583,11 @@ func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarT
 	temp := template.New("inject")
 	t, err := temp.Funcs(funcMap).Parse(tmplStr)
 	if err != nil {
-		log.Infof("Failed to parse template: %v %v\n", err, tmplStr)
+		log.InjectScope().Infof("Failed to parse template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 	if err := t.Execute(&tmpl, &data); err != nil {
-		log.Infof("Invalid template: %v %v\n", err, tmplStr)
+		log.InjectScope().Infof("Invalid template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 
@@ -654,7 +658,7 @@ func structToJSON(v interface{}) string {
 
 	ba, err := json.Marshal(v)
 	if err != nil {
-		log.Warnf("Unable to marshal %v", v)
+		log.InjectScope().Warnf("Unable to marshal %v", v)
 		return "{}"
 	}
 
@@ -669,7 +673,7 @@ func protoToJSON(v proto.Message) string {
 	m := jsonpb.Marshaler{}
 	ba, err := m.MarshalToString(v)
 	if err != nil {
-		log.Warnf("Unable to marshal %v: %v", v, err)
+		log.InjectScope().Warnf("Unable to marshal %v: %v", v, err)
 		return "{}"
 	}
 
@@ -683,7 +687,7 @@ func toJSON(m map[string]string) string {
 
 	ba, err := json.Marshal(m)
 	if err != nil {
-		log.Warnf("Unable to marshal %v", m)
+		log.InjectScope().Warnf("Unable to marshal %v", m)
 		return "{}"
 	}
 
@@ -694,11 +698,11 @@ func fromJSON(j string) interface{} {
 	var m interface{}
 	err := json.Unmarshal([]byte(j), &m)
 	if err != nil {
-		log.Warnf("Unable to unmarshal %s", j)
+		log.InjectScope().Warnf("Unable to unmarshal %s", j)
 		return "{}"
 	}
 
-	log.Warnf("%v", m)
+	log.InjectScope().Warnf("%v", m)
 	return m
 }
 
@@ -715,7 +719,7 @@ func indent(spaces int, source string) string {
 func toYaml(value interface{}) string {
 	y, err := yaml.Marshal(value)
 	if err != nil {
-		log.Warnf("Unable to marshal %v", value)
+		log.InjectScope().Warnf("Unable to marshal %v", value)
 		return ""
 	}
 
