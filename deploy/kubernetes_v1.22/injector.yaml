@@ -115,7 +115,7 @@ data:
     template: |
       containers:
       - name: envoy
-        image: envoyproxy/envoy-contrib:#ENVOY_VERSION#
+        image: envoyproxy/envoy:#ENVOY_VERSION#
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
@@ -179,6 +179,12 @@ data:
         image: polarismesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
+        - name: METADATA
+          value: "{{index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata`}}"
+        {{if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
+        - name: TLS_MODE
+          value: "{{index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`}}"
+        {{end}}
         - name: NAMESPACE
           valueFrom:
             fieldRef:

@@ -42,7 +42,6 @@ const (
 // updateService 批量增加实例接口
 func (p *PolarisController) updateService(cur *v1.Service) error {
 	resp, err := polarisapi.GetService(cur)
-
 	if err != nil {
 		return err
 	}
@@ -52,13 +51,11 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 	// 合并服务的 labels 信息
 	newLabels := cur.Labels
 	curLabels := polarisSvc.Metadata
-
 	for k, v := range newLabels {
 		curLabels[k] = v
 	}
 
 	polarisSvc.Metadata = curLabels
-
 	_, _, err = polarisapi.UpdateService(cur, []polarisapi.Service{polarisSvc})
 	return err
 }
@@ -212,9 +209,9 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-		log.Errorf("Fail [%s/%s] sync GetAllInstances, err is %v",
+		log.Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
 			service.GetNamespace(), service.GetName(), err)
-		return nil, err
+		return []model.Instance{}, nil
 	}
 	metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Success", "200").
 		Observe(time.Since(startTime).Seconds())

@@ -16,7 +16,7 @@
 node:
   id: "ENVOY_NODE_ID"
   cluster: "CLUSTER_NAME"
-
+  metadata: METADATA
 dynamic_resources:
   lds_config:
     ads: {}

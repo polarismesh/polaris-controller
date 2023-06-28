@@ -27,7 +27,7 @@ Define the cmd args for the bootstrap init container.
 - istio-iptables
 - -p
 - "15001"
-- "-z"
+- -z
 - "15006"
 - -u
 - "1337"
@@ -36,7 +36,7 @@ Define the cmd args for the bootstrap init container.
 - -i
 - "10.4.4.4/32"
 - -b
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) {{ "}}" }}"
+- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) {{ "}}" }}"
 - -x
 - "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) {{ "}}" }}"
 - -d
@@ -51,6 +51,12 @@ Define the cmd args for the bootstrap init container.
 Define the cmd envs for the bootstrap init container.
 */}}
 {{- define "configmap-sidecar.bootstrap_envs" -}}
+- name: METADATA
+  value: "{{ "{{" }} index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata` {{ "}}" }}"
+{{ "{{" }}if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
+- name: TLS_MODE
+  value: "{{ "{{" }}index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`{{ "}}" }}"
+{{ "{{" }}end{{ "}}" }}
 - name: NAMESPACE
   valueFrom:
     fieldRef:

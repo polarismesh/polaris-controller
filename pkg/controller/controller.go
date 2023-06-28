@@ -16,7 +16,6 @@
 package controller
 
 import (
-	"strings"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -116,10 +115,10 @@ const (
 	noAllow                     = "false"
 	polarisEvent                = "PolarisRegister"
 
-	// ServiceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
+	// ResourceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
 	// 后续处理流程 syncService 方法中，通过这个字段判断是否要删除服务实例
-	ServiceKeyFlagAdd    = "add"
-	ServiceKeyFlagDelete = "delete"
+	ResourceKeyFlagAdd    = "add"
+	ResourceKeyFlagDelete = "delete"
 )
 
 // NewPolarisController
@@ -188,7 +187,7 @@ func NewPolarisController(
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
 	p.isPolarisServerHealthy.Store(true)
 
-	if p.config.PolarisController.SyncConfigMap {
+	if p.OpenSyncConfigMap() {
 		configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    p.onConfigMapAdd,
 			UpdateFunc: p.onConfigMapUpdate,
@@ -205,6 +204,10 @@ func NewPolarisController(
 	return p, nil
 }
 
+func (p *PolarisController) OpenSyncConfigMap() bool {
+	return p.config.PolarisController.SyncConfigMap
+}
+
 // Run will not return until stopCh is closed. workers determines how many
 // endpoints will be handled in parallel.
 func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
@@ -217,6 +220,11 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 
 	if !cache.WaitForCacheSync(stopCh, p.podsSynced, p.servicesSynced, p.endpointsSynced, p.namespaceSynced) {
 		return
+	}
+	if p.OpenSyncConfigMap() {
+		if !cache.WaitForCacheSync(stopCh, p.configMapSynced) {
+			return
+		}
 	}
 
 	p.CounterPolarisService()
@@ -246,61 +254,41 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 }
 
 func (p *PolarisController) worker() {
-	for p.processNextWorkItem() {
+	for {
+		if !p.handleTask(p.proces) {
+			return
+		}
 	}
 }
 
-func (p *PolarisController) processNextWorkItem() bool {
-	key, quit := p.queue.Get()
-	if quit {
-		return false
-	}
-	defer p.queue.Done(key)
-
+func (p *PolarisController) proces(t *Task) error {
 	var err error
-	if !strings.Contains(key.(string), "/") {
+	switch t.ObjectType {
+	case KubernetesNamespace:
 		// deal with namespace
-		err = p.syncNamespace(key.(string))
-	} else {
-		if v, isSvc := util.IsServiceKey(key.(string)); isSvc {
-			err = p.syncService(v)
-		}
-		if v, isConf := util.IsConfigMapKey(key.(string)); isConf {
-			err = p.syncConfigMap(v)
-		}
+		err = p.syncNamespace(t.Namespace)
+	case KubernetesService:
+		err = p.syncService(t)
+	case KubernetesConfigMap:
+		err = p.syncConfigMap(t)
 	}
-
-	p.handleErr(err, key)
-	return true
+	return err
 }
 
-func (p *PolarisController) handleErr(err error, key interface{}) {
-	if err == nil {
-		p.queue.Forget(key)
-		return
-	}
+func (p *PolarisController) handleErr(err error, task *Task) {
 
-	if p.queue.NumRequeues(key) < maxRetries {
-		log.Errorf("Error syncing service %q, retrying. Error: %v", key, err)
-		p.queue.AddRateLimited(key)
-		return
-	}
-
-	log.Warnf("Dropping service %q out of the queue: %v", key, err)
-	p.queue.Forget(key)
-	runtime.HandleError(err)
 }
 
 // CounterPolarisService
 func (p *PolarisController) CounterPolarisService() {
 	serviceList, err := p.serviceLister.List(labels.Everything())
 	if err != nil {
-		log.Errorf("Failed to get service list %v", serviceList)
+		log.Errorf("Failed to get service list %v", err)
 		return
 	}
 	metrics.PolarisCount.Reset()
 	for _, service := range serviceList {
-		if util.IsPolarisService(service, p.config.PolarisController.SyncMode) {
+		if p.IsPolarisService(service) {
 			polarisNamespace := service.Namespace
 			polarisService := service.Name
 			metrics.PolarisCount.
@@ -316,4 +304,105 @@ func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 		p.CounterPolarisService()
 	}
 	<-stopCh
+}
+
+// IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
+func (p *PolarisController) IsNamespaceSyncEnable(ns *v1.Namespace) bool {
+	sync, ok := ns.Annotations[util.PolarisSync]
+	switch p.SyncMode() {
+	case util.SyncModeDemand:
+		return sync == util.IsEnableSync
+	default:
+		if !ok {
+			return true
+		}
+		return sync == util.IsEnableSync
+	}
+}
+
+func (p *PolarisController) SyncMode() string {
+	return p.config.PolarisController.SyncMode
+}
+
+// IsPolarisService 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加
+func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
+	// 过滤一些不合法的 service
+	if util.IgnoreService(svc) {
+		return false
+	}
+
+	sync, ok := svc.Annotations[util.PolarisSync]
+	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
+	if ok {
+		return sync == util.IsEnableSync
+	}
+	ns, err := p.namespaceLister.Get(svc.Namespace)
+	if err != nil {
+		log.SyncNamingScope().Errorf("get namespace for service %s/%s error, %v", svc.Namespace, svc.Name, err)
+		return false
+	}
+	// 如果服务没有注解，则在看下命名空间是否有开启相关 sync 注解
+	return p.IsNamespaceSyncEnable(ns)
+}
+
+// CompareServiceChange 判断本次更新是什么类型的
+func (p *PolarisController) CompareServiceChange(old, new *v1.Service) util.ServiceChangeType {
+
+	log.Infof("CompareServiceChange new is %v", new.Annotations)
+
+	if !p.IsPolarisService(new) {
+		return util.ServicePolarisDelete
+	}
+	return util.CompareServiceAnnotationsChange(old.GetAnnotations(), new.GetAnnotations())
+}
+
+// IsPolarisConfigMap 用于判断是是否满足创建 PolarisConfigMap 的要求字段，这块逻辑应该在webhook中也增加
+func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
+
+	// 过滤一些不合法的 service
+	if util.IgnoreObject(svc) {
+		return false
+	}
+
+	sync, ok := svc.Annotations[util.PolarisSync]
+	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
+	if ok {
+		return sync == util.IsEnableSync
+	}
+	ns, err := p.namespaceLister.Get(svc.Namespace)
+	if err != nil {
+		log.SyncConfigScope().Errorf("get namespace for service %s/%s error, %v", svc.Namespace, svc.Name, err)
+		return false
+	}
+	// 如果服务没有注解，则在看下命名空间是否有开启相关 sync 注解
+	return p.IsNamespaceSyncEnable(ns)
+}
+
+func (p *PolarisController) insertTask(t *Task) {
+	p.queue.Add(t)
+}
+
+func (p *PolarisController) handleTask(f func(t *Task) error) bool {
+	val, shutdown := p.queue.Get()
+	if shutdown {
+		return shutdown
+	}
+	defer p.queue.Done(val)
+	task := val.(*Task)
+	err := f(task)
+	if err == nil {
+		p.queue.Forget(val)
+		return true
+	}
+
+	if p.queue.NumRequeues(val) < maxRetries {
+		log.Infof("syncing service %v, retrying. Error: %v", task, err)
+		p.queue.AddRateLimited(val)
+		return true
+	}
+
+	log.Errorf("Dropping service %v out of the queue: %v", task, err)
+	p.queue.Forget(val)
+	runtime.HandleError(err)
+	return true
 }

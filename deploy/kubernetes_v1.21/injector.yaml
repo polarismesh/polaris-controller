@@ -104,7 +104,7 @@ data:
         - name: polaris-log
           emptyDir: {}
 
-  mesh-config: |-
+  mesh-config: |+
     policy: enabled
     alwaysInjectSelector:
       []
@@ -112,13 +112,13 @@ data:
     neverInjectSelector:
       []
 
-    template: |
+    template: |+
       containers:
       - name: envoy
-        image: envoyproxy/envoy-contrib:v1.21.4
+        image: envoyproxy/envoy:#ENVOY_VERSION#
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
-        args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
+        args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log", "--log-level", "debug"]
         resources:
         {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPULimit`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemoryLimit`) }}
           {{- if or (isset .ObjectMeta.Annotations `polarismesh.cn/proxyCPU`) (isset .ObjectMeta.Annotations `polarismesh.cn/proxyMemory`) }}
@@ -181,9 +181,9 @@ data:
         image: polarismesh/polaris-envoy-bootstrap-generator:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         env:
-        {{if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
         - name: METADATA
-          value: {{ toJSON .ObjectMeta.Labels | printf "%q" }}
+          value: {{index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata`}}
+        {{if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
         - name: TLS_MODE
           value: "{{index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`}}"
         {{end}}
@@ -207,7 +207,7 @@ data:
           - istio-iptables
           - -p
           - "15001"
-          - "-z"
+          - -z
           - "15006"
           - -u
           - "1337"
@@ -215,13 +215,8 @@ data:
           - REDIRECT
           - -i
           - "10.4.4.4/32"
-          {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
-          - -b
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) }}"
-          {{else}}
           - -b
           - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) }}"
-          {{end}}
           - -x
           - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) }}"
           - -d

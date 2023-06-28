@@ -16,13 +16,17 @@ sidecar:
   mode: mesh
   image:
     repo: polarismesh/polaris-sidecar
-    tag: v1.4.0-beta.0
+    tag: v1.4.0
     pullPolicy: Always
   init:
     image:
-      repo: polarismesh/polaris-sidecar
-      tag: v1.4.0-beta.0
+      repo: polarismesh/polaris-sidecar-init
+      tag: v1.4.0
       pullPolicy: Always
+  envoy:
+    image:
+      repo: envoyproxy/envoy
+      tag: v1.21.6
 
 ## polaris server config
 polaris:

@@ -30,72 +30,58 @@ import (
 
 func (p *PolarisController) onEndpointAdd(obj interface{}) {
 	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
-	endpoint := obj.(*v1.Endpoints)
+	endpoints := obj.(*v1.Endpoints)
 
-	if !util.IgnoreEndpoint(endpoint) {
+	if util.IgnoreObject(endpoints) {
 		return
 	}
 
-	key, err := util.GenObjectQueueKey(endpoint)
+	sync, key, err := p.isPolarisEndpoints(endpoints)
 	if err != nil {
-		log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error %v", endpoint.Namespace, endpoint.Name, err)
+		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
+			endpoints.Namespace, endpoints.Name, err)
 		return
 	}
-
-	// 如果是 demand 模式，检查 endpoint 的 service 和 namespace 上是否有注解
-	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-		sync, k, err := p.isPolarisEndpoints(endpoint)
-		if err != nil {
-			log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v", endpoint.Namespace, endpoint.Name, err)
-			return
-		}
-		// 没有注解，不处理
-		if !sync {
-			return
-		}
-		key = k
+	// 没有注解，不处理
+	if !sync {
+		return
 	}
-
-	p.enqueueEndpoint(key, endpoint, "Add")
+	p.enqueueEndpoint(key, endpoints, "Add")
 }
 
 func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 	// 先确认service是否是Polaris的，后再做比较，会提高效率。
-	oldEndpoint, ok1 := old.(*v1.Endpoints)
-	curEndpoint, ok2 := cur.(*v1.Endpoints)
+	oldEndpoints, ok1 := old.(*v1.Endpoints)
+	curEndpoints, ok2 := cur.(*v1.Endpoints)
 
 	// 过滤非法的 endpoints
-	if !util.IgnoreEndpoint(curEndpoint) {
+	if util.IgnoreObject(curEndpoints) {
 		return
 	}
 
 	key, err := util.GenObjectQueueKey(old)
 	if err != nil {
 		log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error, %v",
-			oldEndpoint.Namespace, oldEndpoint.Name, err)
+			oldEndpoints.Namespace, oldEndpoints.Name, err)
 		return
 	}
 
-	// demand 模式下，检查 endpoint 的 service 和 namespace 上是否有注解
-	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-		sync, k, err := p.isPolarisEndpoints(curEndpoint)
-		if err != nil {
-			log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
-				curEndpoint.Namespace, curEndpoint.Name, err)
-			return
-		}
-		// 没有注解，不处理
-		if !sync {
-			return
-		}
-		key = k
+	sync, key, err := p.isPolarisEndpoints(curEndpoints)
+	if err != nil {
+		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
+			curEndpoints.Namespace, curEndpoints.Name, err)
+		return
+	}
+	// 没有注解，不处理
+	if !sync {
+		return
 	}
 
 	// 这里有不严谨的情况， endpoint update 时的service有从
 	// 1. polaris -> not polaris
 	// 2. not polaris -> polaris
 	// 3. 只变更 endpoint.subsets
-	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoint.Subsets, curEndpoint.Subsets) {
+	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoints.Subsets, curEndpoints.Subsets) {
 		metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
 		log.SyncNamingScope().Infof("Endpoints %s is updating, in queue", key)
 		p.queue.Add(key)
@@ -104,32 +90,23 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 
 func (p *PolarisController) onEndpointDelete(obj interface{}) {
 	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
-	endpoint := obj.(*v1.Endpoints)
-	if !util.IgnoreEndpoint(endpoint) {
+	endpoints := obj.(*v1.Endpoints)
+	if util.IgnoreObject(endpoints) {
 		return
 	}
 
-	key, err := util.GenObjectQueueKey(endpoint)
+	sync, key, err := p.isPolarisEndpoints(endpoints)
 	if err != nil {
-		log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error %v", endpoint.Namespace, endpoint.Name, err)
+		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
+			endpoints.Namespace, endpoints.Name, err)
+		return
+	}
+	// 没有注解，不处理
+	if !sync {
 		return
 	}
 
-	// 如果是 demand 模式，检查 endpoint 的 service 和 namespace 上是否有注解
-	if p.config.PolarisController.SyncMode == util.SyncModeDemand {
-		sync, k, err := p.isPolarisEndpoints(endpoint)
-		if err != nil {
-			log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v", endpoint.Namespace, endpoint.Name, err)
-			return
-		}
-		// 没有注解，不处理
-		if !sync {
-			return
-		}
-		key = k
-	}
-
-	p.enqueueEndpoint(key, endpoint, "Delete")
+	p.enqueueEndpoint(key, endpoints, "Delete")
 }
 
 // isPolarisEndpoints endpoints 的 service 和 namespace 是否带有 sync 注解。
@@ -139,18 +116,32 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 // 2. service sync 为 false， 不处理
 // 3. service sync 为空， namespace sync = true ，要处理
 // 4. service sync 为空， namespace sync 为空或者 false ，不处理
-func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, string, error) {
+func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, string, error) {
+	if p.SyncMode() == util.SyncModeAll {
+		key, err := util.GenObjectQueueKey(endpoints)
+		if err != nil {
+			log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error %v",
+				endpoints.Namespace, endpoints.Name, err)
+			return false, "", err
+		}
+		return true, key, nil
+	}
+
 	// 先检查 endpoints 的 service 上是否有注解
-	service, err := p.serviceLister.Services(endpoint.GetNamespace()).Get(endpoint.GetName())
+	service, err := p.serviceLister.Services(endpoints.GetNamespace()).Get(endpoints.GetName())
 	if err != nil {
 		log.SyncNamingScope().Errorf("Unable to find the service of the endpoint %s/%s, %v",
-			endpoint.Namespace, endpoint.Name, err)
+			endpoints.Namespace, endpoints.Name, err)
 		return false, "", err
 	}
 
-	if util.IsServiceSyncEnable(service) {
+	if isSync := p.IsPolarisService(service); !isSync {
+		return false, "", nil
+	}
+
+	if util.EnableSync(service) {
 		// 情况 1 ，要处理
-		key, err := util.GenServiceQueueKey(service)
+		key, err := util.GenResourceMapQueueKey(service)
 		if err != nil {
 			log.SyncNamingScope().Errorf("get service %s/%s key in enqueueEndpoint error, %v",
 				service.Namespace, service.Name, err)
@@ -158,21 +149,16 @@ func (p *PolarisController) isPolarisEndpoints(endpoint *v1.Endpoints) (bool, st
 		}
 		return true, key, nil
 	}
-	// 检查 service 是否有 false 注解
-	if util.IsServiceSyncDisable(service) {
-		// 情况 2 ，不处理
-		return false, "", nil
-	}
 	// 再检查 namespace 上是否有注解
 	namespace, err := p.namespaceLister.Get(service.Namespace)
 	if err != nil {
 		log.SyncNamingScope().Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
-			endpoint.Namespace, endpoint.Name, err)
+			endpoints.Namespace, endpoints.Name, err)
 		return false, "", err
 	}
-	if util.IsNamespaceSyncEnable(namespace) {
+	if util.EnableSync(namespace) {
 		// 情况 3 ，要处理
-		key, err := util.GenServiceQueueKeyWithFlag(service, ServiceKeyFlagAdd)
+		key, err := util.GenQueueKeyWithFlag(service, ResourceKeyFlagAdd)
 		if err != nil {
 			log.SyncNamingScope().Errorf("Unable to find the key of the service %s/%s, %v",
 				service.Namespace, service.Name, err)
@@ -192,7 +178,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	log.SyncNamingScope().Infof("Begin to sync instance %s", serviceMsg)
 
-	endpoint, err := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
+	endpoints, err := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
 	if err != nil {
 		log.SyncNamingScope().Errorf("Get endpoint of service %s error %v, ignore", serviceMsg, err)
 		return err
@@ -208,7 +194,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		return err
 	}
 	ipPortMap := getCustomWeight(service, serviceMsg)
-	specIPs := address.GetAddressMapFromEndpoints(service, endpoint, p.podLister, ipPortMap)
+	specIPs := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
 	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
 
