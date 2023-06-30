@@ -255,13 +255,13 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 
 func (p *PolarisController) worker() {
 	for {
-		if !p.handleTask(p.proces) {
+		if !p.handleTask(p.process) {
 			return
 		}
 	}
 }
 
-func (p *PolarisController) proces(t *Task) error {
+func (p *PolarisController) process(t *Task) error {
 	var err error
 	switch t.ObjectType {
 	case KubernetesNamespace:

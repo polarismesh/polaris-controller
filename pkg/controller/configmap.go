@@ -51,7 +51,6 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 		cachedConfigMap, ok := p.configFileCache.Load(task.Key())
 		if !ok {
 			// 如果之前的数据也已经不存在那么就跳过不在处理
-			//nolint: lll
 			log.SyncConfigScope().Infof("ConfigMap %s not in cache. Ignoring the deletion", task.Key())
 			return nil
 		}

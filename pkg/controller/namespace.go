@@ -149,7 +149,7 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 		}
 		// ConfigMap 确定有 sync=true 标签的，不需要在这里投入队列。由后续 ConfigMap 事件流程处理。
 		// namespace 当前有 sync ，且 ConfigMap sync 为 false 的场景，namespace 流程不处理， ConfigMap 流程来处理。
-		if p.IsPolarisConfigMap(configMap) || (operation == OperationAdd && !p.IsPolarisConfigMap(configMap) ) {
+		if p.IsPolarisConfigMap(configMap) || (operation == OperationAdd && !p.IsPolarisConfigMap(configMap)) {
 			continue
 		}
 

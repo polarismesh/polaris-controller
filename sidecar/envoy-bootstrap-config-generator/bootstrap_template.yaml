@@ -17,6 +17,22 @@ node:
   id: "ENVOY_NODE_ID"
   cluster: "CLUSTER_NAME"
   metadata: METADATA
+static_resources:
+  clusters:
+    - name: polaris_ratelimit
+      type: STRICT_DNS
+      connect_timeout: 1s
+      lb_policy: ROUND_ROBIN
+      protocol_selection: USE_CONFIGURED_PROTOCOL
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: polaris_ratelimit
+        endpoints:
+          - lbEndpoints:
+              - endpoint:
+                  address:
+                    pipe:
+                      path: /var/run/polaris/ratelimit/rls.sock
 dynamic_resources:
   lds_config:
     ads: {}
