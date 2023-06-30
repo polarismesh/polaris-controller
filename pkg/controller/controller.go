@@ -146,19 +146,19 @@ func NewPolarisController(
 		workerLoopPeriod: time.Second,
 	}
 
-	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onServiceAdd,
 		UpdateFunc: p.onServiceUpdate,
 		DeleteFunc: p.onServiceDelete,
 	})
 
-	endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onEndpointAdd,
 		UpdateFunc: p.onEndpointUpdate,
 		DeleteFunc: p.onEndpointDelete,
 	})
 
-	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onNamespaceAdd,
 		UpdateFunc: p.onNamespaceUpdate,
 	})
@@ -183,7 +183,7 @@ func NewPolarisController(
 	p.isPolarisServerHealthy.Store(true)
 
 	if p.OpenSyncConfigMap() {
-		configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, _ = configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    p.onConfigMapAdd,
 			UpdateFunc: p.onConfigMapUpdate,
 			DeleteFunc: p.onConfigMapDelete,
