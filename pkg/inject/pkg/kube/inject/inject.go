@@ -292,7 +292,7 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	return wh.defaultSidecarMode
 }
 
-func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec, 
+func (wh *Webhook) injectRequired(ignored []string, config *Config, podSpec *corev1.PodSpec,
 	metadata *metav1.ObjectMeta) bool {
 	// Skip injection when host networking is enabled. The problem is
 	// that the iptable changes are assumed to be within the pod when,
@@ -465,7 +465,8 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	}
 
 	injectAnnonations := map[string]string{}
-
+	// 设置需要注入到 envoy 的 metadata
+	envoyMetadata := map[string]string{}
 	// 这里负责将需要额外塞入的 annonation 数据进行返回
 	if len(metadata.Annotations) != 0 {
 		tlsMode := util.MTLSModeNone
@@ -476,23 +477,34 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 			}
 		}
 		injectAnnonations[util.PolarisTLSMode] = tlsMode
-		// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
-		// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
-		if _, ok := metadata.Annotations[utils.SidecarNamespaceName]; !ok {
-			injectAnnonations[utils.SidecarNamespaceName] = metadata.Namespace
+		envoyMetadata[util.PolarisTLSMode] = tlsMode
+	}
+	// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
+	// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
+	if _, ok := metadata.Annotations[utils.SidecarNamespaceName]; !ok {
+		injectAnnonations[utils.SidecarNamespaceName] = metadata.Namespace
+		envoyMetadata[utils.SidecarNamespaceName] = metadata.Namespace
+	}
+	if svcName, ok := metadata.Annotations[utils.SidecarServiceName]; !ok {
+		// 如果官方注解没有查询到，那就默认按照 istio 的约定，从 labels 中读取 app 这个标签的 value 作为服务名
+		if val, ok := metadata.Labels["app"]; ok {
+			injectAnnonations[utils.SidecarServiceName] = val
+			envoyMetadata[utils.SidecarServiceName] = val
 		}
-		if _, ok := metadata.Annotations[utils.SidecarServiceName]; !ok {
-			// 如果官方注解没有查询到，那就默认按照 istio 的约定，从 labels 中读取 app 这个标签的 value 作为服务名
-			if val, ok := metadata.Labels["app"]; ok {
-				injectAnnonations[utils.SidecarServiceName] = val
-			}
-		}
+	} else {
+		envoyMetadata[utils.SidecarServiceName] = svcName
 	}
 
+	for k, v := range metadata.Labels {
+		envoyMetadata[k] = v
+	}
+	injectAnnonations[utils.SidecarEnvoyMetadata] = fmt.Sprintf("%q", toJSON(envoyMetadata))
+	metadataCopy := metadata.DeepCopy()
+	metadataCopy.Annotations = injectAnnonations
 	data := SidecarTemplateData{
 		TypeMeta:       typeMetadata,
 		DeploymentMeta: deploymentMetadata,
-		ObjectMeta:     metadata,
+		ObjectMeta:     metadataCopy,
 		Spec:           spec,
 		ProxyConfig:    proxyConfig,
 		MeshConfig:     meshConfig,
@@ -551,7 +563,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	if err := yaml.Unmarshal(bbuf.Bytes(), &sic); err != nil {
 		// This usually means an invalid injector template; we can't check
 		// the template itself because it is merely a string.
-		log.InjectScope().Warnf("Failed to unmarshal template %v %s", err, bbuf.String())
+		log.InjectScope().Warnf("Failed to unmarshal template %v \n%s", err, bbuf.String())
 		return nil, nil, "", multierror.Prefix(err, "failed parsing injected YAML (check sidecar injector configuration):")
 	}
 

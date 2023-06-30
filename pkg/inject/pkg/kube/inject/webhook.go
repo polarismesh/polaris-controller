@@ -521,6 +521,7 @@ func (wh *Webhook) handlePolarisSidecarEnvInject(
 	} else {
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
+		envMap[EnvSidecarRLSEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
 	}

@@ -28,8 +28,6 @@ spec:
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
                  "--stderrthreshold=0",
-                 "--logtostderr=false",
-                 "--log-file-max-size=1800",
                  "--leader-elect=true"
           ]
           env:

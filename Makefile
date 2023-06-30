@@ -1,7 +1,8 @@
 REGISTRY = ""
-REPO = polarismesh/polaris-controller
-SIDECAR_INIT_REPO = polarismesh/polaris-sidecar-init
-ENVOY_SIDECAR_INIT_REPO = polarismesh/polaris-envoy-bootstrap-generator
+ORG = polarismesh
+REPO = polaris-controller
+SIDECAR_INIT_REPO = polaris-sidecar-init
+ENVOY_SIDECAR_INIT_REPO = polaris-envoy-bootstrap-generator
 IMAGE_TAG = v1.2.2
 PLATFORMS = linux/amd64,linux/arm64
 
@@ -28,17 +29,17 @@ build-multi-arch-image:
 	@echo "------------------"
 	@echo "--> Building multi-arch docker image for polaris-controller"
 	@echo "------------------"
-	@docker buildx build --platform $(PLATFORMS) --tag $(REPO):$(IMAGE_TAG) -f ./docker/Dockerfile --push ./
+	@docker buildx build --platform $(PLATFORMS) --tag $(ORG)/$(REPO):$(IMAGE_TAG) -f ./docker/Dockerfile --push ./
 
 .PHONY: build-sidecar-init
 build-sidecar-init:
-	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
+	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
 .PHONY: build-envoy-sidecar-init
 build-envoy-sidecar-init:
-	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
+	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
 
 .PHONY: push-image
 push-image:
-	docker push $(REGISTRY)$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
-	docker push $(REGISTRY)$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
+	docker push $(REGISTRY)$(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
+	docker push $(REGISTRY)$(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)

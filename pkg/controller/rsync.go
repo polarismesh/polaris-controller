@@ -34,7 +34,12 @@ func (p *PolarisController) resyncWorker() {
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
 		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
 		if !ok {
-			p.enqueueService(key, value, "Add")
+			task := &Task{
+				Namespace:  value.GetNamespace(),
+				Name:       value.GetName(),
+				ObjectType: KubernetesService,
+			}
+			p.enqueueService(task, value, "Add")
 			return true
 		}
 
@@ -44,11 +49,16 @@ func (p *PolarisController) resyncWorker() {
 	})
 
 	// 只有开启了 SyncConfigMap 才会触发相关任务
-	if p.config.PolarisController.SyncConfigMap {
+	if p.OpenSyncConfigMap() {
 		p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
 			v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
 			if !ok {
-				p.enqueueConfigMap(key, value, "Add")
+				task := &Task{
+					Namespace:  value.GetNamespace(),
+					Name:       value.GetName(),
+					ObjectType: KubernetesService,
+				}
+				p.enqueueConfigMap(task, value, "Add")
 				return true
 			}
 

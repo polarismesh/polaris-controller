@@ -42,6 +42,7 @@ const (
 	EnvPolarisAddress                  = "POLARIS_ADDRESS"
 	EnvSidecarMetricEnable             = "SIDECAR_METRIC_ENABLE"
 	EnvSidecarMetricListenPort         = "SIDECAR_METRIC_LISTEN_PORT"
+	EnvSidecarRLSEnable                = "SIDECAR_RLS_ENABLE"
 
 	ValueListenPort       = 15053
 	ValueMetricListenPort = 15985

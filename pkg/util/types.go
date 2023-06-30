@@ -41,6 +41,8 @@ const (
 	SidecarNamespaceName = "sidecar.polarismesh.cn/serviceNamespace"
 	// SidecarBindPort xds metadata key when node is run in sidecar mode
 	SidecarBindPort = "sidecar.polarismesh.cn/bindPorts"
+	// SidecarEnvoyMetadata
+	SidecarEnvoyMetadata = "sidecar.polarismesh.cn/envoyMetadata"
 
 	PolarisSidecarModeLabel = "polaris-sidecar-mode"
 )

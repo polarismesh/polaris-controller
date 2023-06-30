@@ -94,17 +94,6 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 	return ""
 }
 
-// CompareServiceChange 判断本次更新是什么类型的
-func CompareServiceChange(old, new *v1.Service, syncMode string) ServiceChangeType {
-
-	log.Infof("CompareServiceChange new is %v", new.Annotations)
-
-	if !IsPolarisService(new, syncMode) {
-		return ServicePolarisDelete
-	}
-	return CompareServiceAnnotationsChange(old.GetAnnotations(), new.GetAnnotations())
-}
-
 // IfNeedCreateServiceAlias Determine whether to create a service alias
 func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
 	if old.Annotations[PolarisAliasNamespace] != new.Annotations[PolarisAliasNamespace] ||
@@ -115,76 +104,6 @@ func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
 		return true
 	}
 	return false
-}
-
-// IsPolarisService 用于判断是是否满足创建PolarisService的要求字段，这块逻辑应该在webhook中也增加
-func IsPolarisService(svc *v1.Service, syncMode string) bool {
-
-	// 过滤一些不合法的 service
-	if IgnoreService(svc) {
-		return false
-	}
-
-	// 按需同步情况下需要判断 service 是否带有 sync 注解
-	if syncMode == SyncModeDemand {
-		if !IsServiceSyncEnable(svc) {
-			return false
-		}
-	}
-
-	// service 显示标注sync为false不进行同步
-	if IsServiceSyncDisable(svc) {
-		return false
-	}
-
-	return true
-}
-
-// IgnoreService 添加 service 时，忽略一些不需要处理的 service
-func IgnoreService(svc *v1.Service) bool {
-
-	// 默认忽略某些命名空间
-	for _, namespaces := range ignoredNamespaces {
-		if svc.GetNamespace() == namespaces {
-			return true
-		}
-	}
-
-	// Port是否合法 不能不设置port
-	if len(svc.Spec.Ports) < 1 {
-		log.Infof("forbidden sync to polaris: Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
-		return true
-	}
-
-	// 没有设置 selector，polaris controller 不处理
-	if svc.Spec.Selector == nil {
-		log.Infof("forbidden sync to polaris: Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
-		return true
-	}
-
-	return false
-}
-
-// IgnoreEndpoint 忽略一些命名空间下的 endpoints
-func IgnoreEndpoint(endpoint *v1.Endpoints) bool {
-	// 默认忽略某些命名空间
-	for _, ns := range ignoredNamespaces {
-		if endpoint.GetNamespace() == ns {
-			return false
-		}
-	}
-	return true
-}
-
-// IgnoreNamespace 忽略一些命名空间
-func IgnoreNamespace(namespace *v1.Namespace) bool {
-	// 默认忽略某些命名空间
-	for _, ns := range ignoredNamespaces {
-		if namespace.GetName() == ns {
-			return false
-		}
-	}
-	return true
 }
 
 // GetWeightFromService 从 k8s service 中获取 weight，如果 service 中没设置，则取默认值
@@ -201,93 +120,46 @@ func GetWeightFromService(svc *v1.Service) int {
 	return DefaultWeight
 }
 
-// IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
-func IsNamespaceSyncEnable(ns *v1.Namespace) bool {
-	sync, ok := ns.Annotations[PolarisSync]
+// EnableSync 是否启用了 sync 注解
+func EnableSync(obj metav1.Object) bool {
+	sync, ok := obj.GetAnnotations()[PolarisSync]
 	if ok && sync == IsEnableSync {
 		return true
 	}
 	return false
 }
 
-// IsServiceSyncEnable service 是否启用了 sync 注解
-func IsServiceSyncEnable(service *v1.Service) bool {
-	sync, ok := service.Annotations[PolarisSync]
-	if ok && sync == IsEnableSync {
-		return true
-	}
-	return false
-}
-
-// IsServiceSyncDisable service 是否关闭了 sync 注解
-func IsServiceSyncDisable(service *v1.Service) bool {
-	sync, ok := service.Annotations[PolarisSync]
-	if ok && sync == IsDisableSync {
-		return true
-	}
-	return false
-}
-
-// IsServiceHasSyncAnnotation service 是否设置了 sync 注解
-func IsServiceHasSyncAnnotation(service *v1.Service) bool {
-	_, ok := service.Annotations[PolarisSync]
-	return ok
-}
-
-// IsConfigMapHasSyncAnnotation service 是否设置了 sync 注解
-func IsConfigMapHasSyncAnnotation(configMap *v1.ConfigMap) bool {
-	_, ok := configMap.Annotations[PolarisSync]
-	return ok
-}
-
-// IgnoreConfigMap 添加 service 时，忽略一些不需要处理的 service
-func IgnoreConfigMap(svc *v1.ConfigMap) bool {
-
+// IgnoreObject 忽略一些命名空间
+func IgnoreObject(obj metav1.Object) bool {
 	// 默认忽略某些命名空间
-	for _, namespaces := range ignoredNamespaces {
-		if svc.GetNamespace() == namespaces {
+	for _, ns := range ignoredNamespaces {
+		if obj.GetName() == ns {
+			return true
+		}
+		if obj.GetNamespace() == ns {
 			return true
 		}
 	}
 	return false
 }
 
-// IsConfigMapSyncEnable ConfigMap 是否启用了 sync 注解
-func IsConfigMapSyncEnable(service *v1.ConfigMap) bool {
-	sync, ok := service.Annotations[PolarisSync]
-	if ok && sync == IsEnableSync {
+// IgnoreService 添加 service 时，忽略一些不需要处理的 service
+func IgnoreService(svc *v1.Service) bool {
+	// 默认忽略某些命名空间
+	if IgnoreObject(svc) {
 		return true
 	}
-	return false
-}
-
-// IsConfigMapSyncDisable ConfigMap 是否关闭了 sync 注解
-func IsConfigMapSyncDisable(service *v1.ConfigMap) bool {
-	sync, ok := service.Annotations[PolarisSync]
-	if ok && sync == IsDisableSync {
+	// Port是否合法 不能不设置port
+	if len(svc.Spec.Ports) < 1 {
+		log.Infof("forbidden sync to polaris: Service %s/%s has no ports", svc.GetNamespace(), svc.GetName())
 		return true
 	}
+
+	// 没有设置 selector，polaris controller 不处理
+	if svc.Spec.Selector == nil {
+		log.Infof("forbidden sync to polaris: Service %s/%s has no selectors", svc.GetNamespace(), svc.GetName())
+		return true
+	}
+
 	return false
-}
-
-// IsPolarisConfigMap 用于判断是是否满足创建 PolarisConfigMap 的要求字段，这块逻辑应该在webhook中也增加
-func IsPolarisConfigMap(svc *v1.ConfigMap, syncMode string) bool {
-
-	// 过滤一些不合法的 service
-	if IgnoreConfigMap(svc) {
-		return false
-	}
-
-	// 按需同步情况下需要判断 service 是否带有 sync 注解
-	if syncMode == SyncModeDemand {
-		if !IsConfigMapSyncEnable(svc) {
-			return false
-		}
-	}
-
-	// service 显示标注sync为false不进行同步
-	if IsConfigMapSyncDisable(svc) {
-		return false
-	}
-	return true
 }

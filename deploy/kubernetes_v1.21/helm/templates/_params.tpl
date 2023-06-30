@@ -40,7 +40,7 @@ Define the cmd args for the bootstrap init container.
 - istio-iptables
 - -p
 - "15001"
-- "-z"
+- -z
 - "15006"
 - -u
 - "1337"
@@ -48,13 +48,8 @@ Define the cmd args for the bootstrap init container.
 - REDIRECT
 - -i
 - "10.4.4.4/32"
-{{ "{{" }} if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
 - -b
 - "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) {{ "}}" }}"
-{{ "{{" }}else{{ "}}" }}
-- -b
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` ``) {{ "}}" }}"
-{{ "{{" }}end{{ "}}" }}
 - -x
 - "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) {{ "}}" }}"
 - -d
@@ -96,9 +91,9 @@ Define the volume for the bootstrap init container.
 Define the cmd envs for the bootstrap init container.
 */}}
 {{- define "configmap-sidecar.bootstrap_envs" -}}
-{{ "{{" }}if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
 - name: METADATA
-  value: {{ "{{" }} toJSON .ObjectMeta.Labels | printf "%q" {{ "}}" }}
+  value: "{{ "{{" }} index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata` {{ "}}" }}"
+{{ "{{" }}if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
 - name: TLS_MODE
   value: "{{ "{{" }}index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`{{ "}}" }}"
 {{ "{{" }}end{{ "}}" }}

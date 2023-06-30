@@ -95,7 +95,7 @@ data:
     template: |
       containers:
       - name: envoy
-        image: envoyproxy/envoy:v1.18.3
+        image: {{ .Values.sidecar.envoy.image.repo }}:{{ .Values.sidecar.envoy.image.tag }}
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
