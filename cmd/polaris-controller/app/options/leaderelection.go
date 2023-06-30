@@ -54,7 +54,7 @@ func BindFlags(l *componentbaseconfig.LeaderElectionConfiguration, fs *pflag.Fla
 	fs.DurationVar(&l.RetryPeriod.Duration, "leader-elect-retry-period", DefaultRetryPeriod, ""+
 		"The duration the clients should wait between attempting acquisition and renewal "+
 		"of a leadership. This is only applicable if leader election is enabled.")
-	fs.StringVar(&l.ResourceLock, "leader-elect-resource-lock", rl.EndpointsResourceLock, ""+
+	fs.StringVar(&l.ResourceLock, "leader-elect-resource-lock", rl.EndpointsLeasesResourceLock, ""+
 		"The type of resource object that is used for locking during "+
 		"leader election. Supported options are `endpoints` (default) and `configmaps`.")
 	fs.StringVar(&l.ResourceNamespace, "leader-elect-namespace", DefaultLeaseDurationNamespace, ""+

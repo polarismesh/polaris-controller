@@ -32,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app/options"
 	"github.com/polarismesh/polaris-controller/common/log"
@@ -137,10 +136,10 @@ func NewPolarisController(
 	broadcaster.StartLogging(log.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: polarisControllerName})
-	if client != nil && client.CoreV1().RESTClient().GetRateLimiter() != nil {
-		_ = ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-			metricPolarisControllerName, client.CoreV1().RESTClient().GetRateLimiter())
-	}
+	// if client != nil && client.CoreV1().RESTClient().GetRateLimiter() != nil {
+	// 	_ = ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
+	// 		metricPolarisControllerName, client.CoreV1().RESTClient().GetRateLimiter())
+	// }
 
 	metrics.RegisterMetrics()
 

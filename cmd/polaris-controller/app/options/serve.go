@@ -24,7 +24,7 @@ import (
 	"time"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
+	"k8s.io/apiserver/pkg/endpoints/filters"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -43,9 +43,9 @@ func BuildHandlerChain(apiHandler http.Handler) http.Handler {
 	requestInfoResolver := &apirequest.RequestInfoFactory{}
 	handler := apiHandler
 
-	handler = genericapifilters.WithRequestInfo(handler, requestInfoResolver)
-	handler = genericapifilters.WithCacheControl(handler)
-	handler = genericfilters.WithPanicRecovery(handler)
+	handler = filters.WithRequestInfo(handler, requestInfoResolver)
+	handler = filters.WithCacheControl(handler)
+	handler = genericfilters.WithPanicRecovery(handler, requestInfoResolver)
 
 	return handler
 }

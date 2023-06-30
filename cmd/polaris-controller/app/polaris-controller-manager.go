@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
-	"k8s.io/apiserver/pkg/util/term"
 	cacheddiscovery "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/metadata"
@@ -43,7 +42,6 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 
@@ -152,17 +150,17 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
-	usageFmt := "Usage:\n  %s\n"
-	cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
-	cmd.SetUsageFunc(func(cmd *cobra.Command) error {
-		fmt.Fprintf(cmd.OutOrStderr(), usageFmt, cmd.UseLine())
-		cliflag.PrintSections(cmd.OutOrStderr(), namedFlagSets, cols)
-		return nil
-	})
-	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s\n\n"+usageFmt, cmd.Long, cmd.UseLine())
-		cliflag.PrintSections(cmd.OutOrStdout(), namedFlagSets, cols)
-	})
+	// usageFmt := "Usage:\n  %s\n"
+	// cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
+	// cmd.SetUsageFunc(func(cmd *cobra.Command) error {
+	// 	fmt.Fprintf(cmd.OutOrStderr(), usageFmt, cmd.UseLine())
+	// 	cliflag.PrintSections(cmd.OutOrStderr(), namedFlagSets, cols)
+	// 	return nil
+	// })
+	// cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+	// 	fmt.Fprintf(cmd.OutOrStdout(), "%s\n\n"+usageFmt, cmd.Long, cmd.UseLine())
+	// 	cliflag.PrintSections(cmd.OutOrStdout(), namedFlagSets, cols)
+	// })
 	return cmd
 }
 
@@ -328,7 +326,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	id := hostname() + "_" + string(uuid.NewUUID())
 
 	rl, err := resourcelock.New(
-		resourcelock.EndpointsResourceLock,
+		resourcelock.EndpointsLeasesResourceLock,
 		c.ComponentConfig.Generic.LeaderElection.ResourceNamespace,
 		DefaultLockObjectName,
 		c.LeaderElectionClient.CoreV1(),

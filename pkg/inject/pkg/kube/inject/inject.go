@@ -16,6 +16,7 @@ package inject
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -278,7 +279,7 @@ func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.Sidec
 	}
 
 	// 2. namespace.labels
-	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
+	ns, err := wh.k8sClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
 	if err != nil {
 		// 如果出现异常，则就采用配置文件中的 Sidecar 的注入模式
 		log.InjectScope().Errorf("get pod namespace %q failed: %v", namespace, err)

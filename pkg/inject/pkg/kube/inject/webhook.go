@@ -16,6 +16,7 @@ package inject
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
@@ -469,7 +470,7 @@ func enableMtls(pod *corev1.Pod) bool {
 // addPolarisConfigToInitContainerEnv 将polaris-sidecar 的配置注入到init container中
 func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) error {
 	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
-		Get(utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
+		Get(context.TODO(), utils.PolarisGoConfigFileTpl, metav1.GetOptions{})
 	if err != nil {
 		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
@@ -559,14 +560,14 @@ func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 		return nil
 	}
 	ns := pod.Namespace
-	_, err := wh.k8sClient.CoreV1().Secrets(ns).Get(utils.PolarisSidecarRootCert, metav1.GetOptions{})
+	_, err := wh.k8sClient.CoreV1().Secrets(ns).Get(context.TODO(), utils.PolarisSidecarRootCert, metav1.GetOptions{})
 	if err == nil {
 		return nil
 	}
 	if !errors.IsNotFound(err) {
 		return err
 	}
-	secret, err := wh.k8sClient.CoreV1().Secrets(rootNamespace).Get(utils.PolarisSidecarRootCert, metav1.GetOptions{})
+	secret, err := wh.k8sClient.CoreV1().Secrets(rootNamespace).Get(context.TODO(), utils.PolarisSidecarRootCert, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -576,7 +577,7 @@ func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 	s.Data = secret.Data
 	s.StringData = secret.StringData
 	s.Name = utils.PolarisSidecarRootCert
-	_, err = wh.k8sClient.CoreV1().Secrets(ns).Create(s)
+	_, err = wh.k8sClient.CoreV1().Secrets(ns).Create(context.TODO(), s, metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) || errors.IsConflict(err) {
 		return nil
 	}
