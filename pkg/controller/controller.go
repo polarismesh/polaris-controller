@@ -136,10 +136,6 @@ func NewPolarisController(
 	broadcaster.StartLogging(log.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: polarisControllerName})
-	// if client != nil && client.CoreV1().RESTClient().GetRateLimiter() != nil {
-	// 	_ = ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-	// 		metricPolarisControllerName, client.CoreV1().RESTClient().GetRateLimiter())
-	// }
 
 	metrics.RegisterMetrics()
 
@@ -150,19 +146,19 @@ func NewPolarisController(
 		workerLoopPeriod: time.Second,
 	}
 
-	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onServiceAdd,
 		UpdateFunc: p.onServiceUpdate,
 		DeleteFunc: p.onServiceDelete,
 	})
 
-	endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onEndpointAdd,
 		UpdateFunc: p.onEndpointUpdate,
 		DeleteFunc: p.onEndpointDelete,
 	})
 
-	namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    p.onNamespaceAdd,
 		UpdateFunc: p.onNamespaceUpdate,
 	})
@@ -187,7 +183,7 @@ func NewPolarisController(
 	p.isPolarisServerHealthy.Store(true)
 
 	if p.OpenSyncConfigMap() {
-		configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, _ = configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    p.onConfigMapAdd,
 			UpdateFunc: p.onConfigMapUpdate,
 			DeleteFunc: p.onConfigMapDelete,
