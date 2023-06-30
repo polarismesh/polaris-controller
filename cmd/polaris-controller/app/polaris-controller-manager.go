@@ -42,7 +42,6 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/version/verflag"
 
@@ -327,7 +326,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	id := hostname() + "_" + string(uuid.NewUUID())
 
 	rl, err := resourcelock.New(
-		resourcelock.EndpointsResourceLock,
+		resourcelock.EndpointsLeasesResourceLock,
 		c.ComponentConfig.Generic.LeaderElection.ResourceNamespace,
 		DefaultLockObjectName,
 		c.LeaderElectionClient.CoreV1(),
