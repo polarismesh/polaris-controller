@@ -136,10 +136,6 @@ func NewPolarisController(
 	broadcaster.StartLogging(log.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: polarisControllerName})
-	// if client != nil && client.CoreV1().RESTClient().GetRateLimiter() != nil {
-	// 	_ = ratelimiter.RegisterMetricAndTrackRateLimiterUsage(
-	// 		metricPolarisControllerName, client.CoreV1().RESTClient().GetRateLimiter())
-	// }
 
 	metrics.RegisterMetrics()
 

@@ -27,7 +27,6 @@ spec:
           args: ["--min-resync-period=60s",
                  "--leader-elect-namespace=polaris-system",
                  "--concurrency-polaris-size=100",
-                 "--stderrthreshold=0",
                  "--leader-elect=true"
           ]
           env:

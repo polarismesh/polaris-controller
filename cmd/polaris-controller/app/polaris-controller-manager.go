@@ -210,6 +210,8 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 
 	// 4. 配置 polaris-sidecar 注入模式的
 	s.PolarisController.SidecarMode = config.SidecarInject.Mode
+	// 设置是否开启同步 ConfigMap
+	s.PolarisController.SyncConfigMap = config.ServiceSync.EnableSyncConfigMap
 
 	// 5.设置健康检查时间以及定时对账时间
 	s.PolarisController.HealthCheckDuration, _ = time.ParseDuration(config.ServiceSync.HealthCheckDuration)
@@ -551,8 +553,8 @@ type DefaultConfig struct {
 	ProxyMetadata ProxyMetadata `yaml:"serviceSync"`
 }
 
-// ServiceSync 服务同步相关配置
-type ServiceSync struct {
+// ResourceSync 服务同步相关配置
+type ResourceSync struct {
 	Mode          string `yaml:"mode"`
 	ServerAddress string `yaml:"serverAddress"`
 	// 健康探测时间间隔
@@ -562,8 +564,10 @@ type ServiceSync struct {
 	// 以下配置仅 polaris-server 开启 console auth
 	// 调用 polaris-server OpenAPI 的凭据
 	PolarisAccessToken string `yaml:"accessToken"`
-	// 用于数据同步的帐户ID
+	// Operator 用于数据同步的帐户ID
 	Operator string `yaml:"operator"`
+	// EnableSyncConfigMap 开启同步 ConfigMap
+	EnableSyncConfigMap bool `yaml:"enableSyncConfigMap"`
 }
 
 // SidecarInject sidecar 注入相关
@@ -574,7 +578,7 @@ type SidecarInject struct {
 type controllerConfig struct {
 	Logger        map[string]*log.Options `yaml:"logger"`
 	ClusterName   string                  `yaml:"clusterName"`
-	ServiceSync   ServiceSync             `yaml:"serviceSync"`
+	ServiceSync   *ResourceSync           `yaml:"serviceSync"`
 	SidecarInject SidecarInject           `yaml:"sidecarInject"`
 }
 
