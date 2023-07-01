@@ -3,7 +3,6 @@ kind: ServiceAccount
 metadata:
   name: polaris-controller
   namespace: polaris-system
-
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1beta1
@@ -11,15 +10,37 @@ kind: ClusterRole
 metadata:
   name: polaris-controller
 rules:
-  - apiGroups: [""]
-    resources: ["endpoints"]
-    verbs: ["create", "update", "get", "list", "watch"]
-  - apiGroups:  [""]
-    resources: ["pods", "services", "namespaces"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups:  [""]
-    resources: ["configmaps"]
-    verbs: ["get"]
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - namespaces
+  - configmaps
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - update
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1beta1

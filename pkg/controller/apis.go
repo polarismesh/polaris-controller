@@ -46,6 +46,9 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 		return err
 	}
 
+	if len(resp.Services) == 0 {
+		return fmt.Errorf("not found service:%s", cur.GetNamespace()+"/"+cur.GetName())
+	}
 	polarisSvc := resp.Services[0]
 
 	// 合并服务的 labels 信息

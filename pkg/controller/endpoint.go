@@ -59,14 +59,7 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 		return
 	}
 
-	key, err := util.GenObjectQueueKey(old)
-	if err != nil {
-		log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error, %v",
-			oldEndpoints.Namespace, oldEndpoints.Name, err)
-		return
-	}
-
-	sync, key, err := p.isPolarisEndpoints(curEndpoints)
+	sync, task, err := p.isPolarisEndpoints(curEndpoints)
 	if err != nil {
 		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
 			curEndpoints.Namespace, curEndpoints.Name, err)
@@ -83,8 +76,8 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 	// 3. 只变更 endpoint.subsets
 	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoints.Subsets, curEndpoints.Subsets) {
 		metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
-		log.SyncNamingScope().Infof("Endpoints %s is updating, in queue", key)
-		p.queue.Add(key)
+		log.SyncNamingScope().Infof("Endpoints %s is updating, in queue", task.Key())
+		p.queue.Add(task)
 	}
 }
 
@@ -95,7 +88,7 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 		return
 	}
 
-	sync, key, err := p.isPolarisEndpoints(endpoints)
+	sync, task, err := p.isPolarisEndpoints(endpoints)
 	if err != nil {
 		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
 			endpoints.Namespace, endpoints.Name, err)
@@ -106,7 +99,7 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 		return
 	}
 
-	p.enqueueEndpoint(key, endpoints, "Delete")
+	p.enqueueEndpoint(task, endpoints, "Delete")
 }
 
 // isPolarisEndpoints endpoints 的 service 和 namespace 是否带有 sync 注解。
@@ -116,15 +109,13 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 // 2. service sync 为 false， 不处理
 // 3. service sync 为空， namespace sync = true ，要处理
 // 4. service sync 为空， namespace sync 为空或者 false ，不处理
-func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, string, error) {
+func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, *Task, error) {
 	if p.SyncMode() == util.SyncModeAll {
-		key, err := util.GenObjectQueueKey(endpoints)
-		if err != nil {
-			log.SyncNamingScope().Errorf("get object key for endpoint %s/%s error %v",
-				endpoints.Namespace, endpoints.Name, err)
-			return false, "", err
-		}
-		return true, key, nil
+		return true, &Task{
+			Namespace:  endpoints.GetNamespace(),
+			Name:       endpoints.GetName(),
+			ObjectType: KubernetesService,
+		}, nil
 	}
 
 	// 先检查 endpoints 的 service 上是否有注解
@@ -132,45 +123,42 @@ func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, s
 	if err != nil {
 		log.SyncNamingScope().Errorf("Unable to find the service of the endpoint %s/%s, %v",
 			endpoints.Namespace, endpoints.Name, err)
-		return false, "", err
+		return false, nil, err
 	}
 
 	if isSync := p.IsPolarisService(service); !isSync {
-		return false, "", nil
+		return false, nil, nil
 	}
 
 	if util.EnableSync(service) {
-		// 情况 1 ，要处理
-		key, err := util.GenResourceMapQueueKey(service)
-		if err != nil {
-			log.SyncNamingScope().Errorf("get service %s/%s key in enqueueEndpoint error, %v",
-				service.Namespace, service.Name, err)
-			return false, "", err
-		}
-		return true, key, nil
+		return true, &Task{
+			Namespace:  service.GetNamespace(),
+			Name:       service.GetName(),
+			ObjectType: KubernetesService,
+		}, nil
 	}
 	// 再检查 namespace 上是否有注解
 	namespace, err := p.namespaceLister.Get(service.Namespace)
 	if err != nil {
 		log.SyncNamingScope().Errorf("Unable to find the namespace of the endpoint %s/%s, %v",
 			endpoints.Namespace, endpoints.Name, err)
-		return false, "", err
+		return false, nil, err
 	}
 	if util.EnableSync(namespace) {
 		// 情况 3 ，要处理
-		key, err := util.GenQueueKeyWithFlag(service, ResourceKeyFlagAdd)
-		if err != nil {
-			log.SyncNamingScope().Errorf("Unable to find the key of the service %s/%s, %v",
-				service.Namespace, service.Name, err)
-		}
-		return true, key, nil
+		return true, &Task{
+			Namespace:  service.GetNamespace(),
+			Name:       service.GetName(),
+			ObjectType: KubernetesService,
+			Operation:  OperationAdd,
+		}, nil
 	}
-	return false, "", nil
+	return false, nil, nil
 }
 
-func (p *PolarisController) enqueueEndpoint(key string, endpoint *v1.Endpoints, eventType string) {
+func (p *PolarisController) enqueueEndpoint(task *Task, endpoint *v1.Endpoints, eventType string) {
 	metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
-	p.queue.Add(key)
+	p.queue.Add(task)
 }
 
 // processSyncInstance 同步实例, 获取Endpoint和北极星数据做同步

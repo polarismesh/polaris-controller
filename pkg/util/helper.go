@@ -134,10 +134,10 @@ func EnableSync(obj metav1.Object) bool {
 func IgnoreObject(obj metav1.Object) bool {
 	// 默认忽略某些命名空间
 	for _, ns := range ignoredNamespaces {
-		if obj.GetName() == ns {
+		if obj.GetNamespace() == ns {
 			return true
 		}
-		if obj.GetNamespace() == ns {
+		if obj.GetName() == ns {
 			return true
 		}
 	}

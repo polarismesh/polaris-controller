@@ -74,16 +74,17 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 		operationConfigMap := configMap
 
 		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 ConfigMap 打上 sync 标签
-		if op == ResourceKeyFlagAdd && p.IsPolarisConfigMap(operationConfigMap) {
+		if op == OperationAdd && p.IsPolarisConfigMap(operationConfigMap) {
 			operationConfigMap = configMap.DeepCopy()
 			metav1.SetMetaDataAnnotation(&operationConfigMap.ObjectMeta, util.PolarisSync, util.IsEnableSync)
+		}
+		if _, ok := operationConfigMap.Annotations[util.PolarisConfigGroup]; !ok {
+			metav1.SetMetaDataAnnotation(&operationConfigMap.ObjectMeta, util.PolarisConfigGroup,
+				p.config.PolarisController.ClusterName)
 		}
 
 		cachedConfigMap, ok := p.configFileCache.Load(task.Key())
 		if !ok {
-			if !p.IsPolarisConfigMap(operationConfigMap) {
-				return nil
-			}
 			// 1. cached中没有数据，为首次添加场景
 			log.SyncConfigScope().Infof("ConfigMap %s not in cache, begin to add new polaris", task.Key())
 			// 同步 k8s 的 namespace 和 configmap 到 polaris，失败投入队列重试
@@ -94,7 +95,7 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
 			if processError := p.processUpdateConfigMap(cachedConfigMap, operationConfigMap); processError != nil {
-				log.SyncConfigScope().Errorf("ConfigMap %s update add failed", task.Key())
+				log.SyncConfigScope().Errorf("ConfigMap %s update failed", task.Key())
 				return processError
 			}
 		}
@@ -151,6 +152,9 @@ func (p *PolarisController) processDeleteConfigMap(configmap *v1.ConfigMap) erro
 }
 
 func (p *PolarisController) onConfigMapAdd(cur interface{}) {
+	if !p.OpenSyncConfigMap() {
+		return
+	}
 	configMap, ok := cur.(*v1.ConfigMap)
 	if !ok {
 		return
@@ -164,6 +168,7 @@ func (p *PolarisController) onConfigMapAdd(cur interface{}) {
 		Namespace:  configMap.GetNamespace(),
 		Name:       configMap.GetName(),
 		ObjectType: KubernetesConfigMap,
+		Operation:  OperationAdd,
 	}
 
 	p.enqueueConfigMap(task, configMap, "Add")
@@ -171,6 +176,10 @@ func (p *PolarisController) onConfigMapAdd(cur interface{}) {
 }
 
 func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
+	if !p.OpenSyncConfigMap() {
+		return
+	}
+
 	oldCm, ok1 := old.(*v1.ConfigMap)
 	curCm, ok2 := cur.(*v1.ConfigMap)
 
@@ -185,7 +194,7 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 		ObjectType: KubernetesConfigMap,
 	}
 
-	// 这里需要确认是否加入svc进行更新
+	// 这里需要确认是否加入 ConfigMap 进行更新
 	// 1. 必须是polaris类型的才需要进行更新
 	// 2. 如果: [old/polaris -> new/polaris] 需要更新
 	// 3. 如果: [old/polaris -> new/not polaris] 需要更新，相当与删除
@@ -196,6 +205,7 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 
 	// 现在已经不是需要同步的北极星配置
 	if !curIsPolaris {
+		task.Operation = OperationUpdate
 		p.enqueueConfigMap(task, oldCm, "Update")
 		p.resyncConfigFileCache.Delete(task.Key())
 		return
@@ -203,18 +213,28 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 
 	if oldIsPolaris {
 		// 原来就是北极星类型的，增加cache
+		task.Operation = OperationUpdate
 		p.enqueueConfigMap(task, oldCm, "Update")
 		p.configFileCache.Store(task.Key(), oldCm)
 	} else if curIsPolaris {
+		task.Operation = OperationAdd
 		// 原来不是北极星的，新增是北极星的，入队列
-		p.enqueueConfigMap(task, curCm, "Update")
+		p.enqueueConfigMap(task, curCm, "Add")
 	}
 	p.resyncConfigFileCache.Store(task.Key(), curCm)
 }
 
 func (p *PolarisController) onConfigMapDelete(cur interface{}) {
+	if !p.OpenSyncConfigMap() {
+		return
+	}
+
 	configmap, ok := cur.(*v1.ConfigMap)
 	if !ok {
+		return
+	}
+
+	if !p.IsPolarisConfigMap(configmap) {
 		return
 	}
 
@@ -222,10 +242,7 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 		Namespace:  configmap.GetNamespace(),
 		Name:       configmap.GetName(),
 		ObjectType: KubernetesConfigMap,
-	}
-
-	if !p.IsPolarisConfigMap(configmap) {
-		return
+		Operation:  OperationDelete,
 	}
 
 	p.enqueueConfigMap(task, configmap, "Delete")

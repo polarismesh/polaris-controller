@@ -31,8 +31,9 @@ type Operation string
 
 const (
 	OperationEmpty  Operation = ""
-	OperationAdd    Operation = "add"
-	OperationDelete Operation = "delete"
+	OperationAdd    Operation = "Add"
+	OperationUpdate Operation = "Update"
+	OperationDelete Operation = "Delete"
 )
 
 type Task struct {
