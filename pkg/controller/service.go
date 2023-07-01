@@ -46,7 +46,7 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 		ObjectType: KubernetesService,
 	}
 
-	// 这里需要确认是否加入svc进行更新
+	// 这里需要确认是否加入 Service 进行更新
 	// 1. 必须是polaris类型的才需要进行更新
 	// 2. 如果: [old/polaris -> new/polaris] 需要更新
 	// 3. 如果: [old/polaris -> new/not polaris] 需要更新，相当与删除
@@ -57,6 +57,7 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 	// 现在已经不是需要同步的北极星服务
 	if !curIsPolaris {
+		task.Operation = OperationUpdate
 		p.enqueueService(task, oldService, "Update")
 		p.resyncServiceCache.Delete(task.Key())
 		return
@@ -64,11 +65,13 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 	if oldIsPolaris {
 		// 原来就是北极星类型的，增加cache
+		task.Operation = OperationUpdate
 		p.enqueueService(task, oldService, "Update")
 		p.serviceCache.Store(task.Key(), oldService)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
-		p.enqueueService(task, curService, "Update")
+		task.Operation = OperationAdd
+		p.enqueueService(task, curService, "Add")
 	}
 	p.resyncServiceCache.Store(task.Key(), curService)
 }
@@ -88,6 +91,7 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 		Namespace:  service.GetNamespace(),
 		Name:       service.GetName(),
 		ObjectType: KubernetesService,
+		Operation:  OperationAdd,
 	}
 
 	p.enqueueService(task, service, "Add")
@@ -110,6 +114,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 		Namespace:  service.GetNamespace(),
 		Name:       service.GetName(),
 		ObjectType: KubernetesService,
+		Operation:  OperationDelete,
 	}
 
 	p.enqueueService(task, service, "Delete")
@@ -127,9 +132,9 @@ func (p *PolarisController) syncService(task *Task) error {
 		log.SyncNamingScope().Infof("finished syncing service %q. (%v)", task.String(), time.Since(startTime))
 	}()
 
-	namespaces := ""
-	name := ""
-	op := ""
+	namespaces := task.Namespace
+	name := task.Name
+	op := task.Operation
 
 	service, err := p.serviceLister.Services(namespaces).Get(name)
 	switch {
@@ -147,13 +152,13 @@ func (p *PolarisController) syncService(task *Task) error {
 			// 如果处理有失败的，那就入队列重新处理
 			p.eventRecorder.Eventf(cachedService, v1.EventTypeWarning, polarisEvent, "Delete polaris instances failed %v",
 				processError)
-			p.enqueueService(task, cachedService, op)
+			p.enqueueService(task, cachedService, string(op))
 			return processError
 		}
 		p.serviceCache.Delete(task.Key())
 	case err != nil:
 		log.SyncNamingScope().Errorf("Unable to retrieve service %v from store: %v", task.Key(), err)
-		p.enqueueService(task, nil, op)
+		p.enqueueService(task, nil, string(op))
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建service

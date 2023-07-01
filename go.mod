@@ -28,7 +28,6 @@ require (
 	k8s.io/apiserver v0.27.3
 	k8s.io/client-go v0.27.3
 	k8s.io/component-base v0.27.3
-	k8s.io/klog v1.0.0
 )
 
 require (

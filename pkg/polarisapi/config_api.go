@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 
@@ -33,14 +34,14 @@ const (
 	addConfigFiles    = "/config/v1/configfiles"
 	deleteConfigFiles = "/config/v1/configfiles"
 	updateConfigFile  = "/config/v1/configfiles"
-	releaseConfigFile = "/config/v1/release"
+	releaseConfigFile = "/config/v1/configfiles/release"
 )
 
 func CreateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
 
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, updateConfigFile)
-	req := paeseConfigFileRequest(configMap)
+	req := parseConfigFileRequest(configMap)
 	resp, err := polarisConfigRequest(req, serviceMsg, url, http.MethodPost)
 	if err != nil {
 		return ConfigResponse{}, err
@@ -56,7 +57,7 @@ func UpdateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
 
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, updateConfigFile)
-	req := paeseConfigFileRequest(configMap)
+	req := parseConfigFileRequest(configMap)
 	resp, err := polarisConfigRequest(req, serviceMsg, url, http.MethodPut)
 	if err != nil {
 		return ConfigResponse{}, err
@@ -70,18 +71,18 @@ func UpdateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 // DeleteConfigMap 平台删除配置文件接口
 func DeleteConfigMap(configMap *v1.ConfigMap) error {
 	key := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
-	req := paeseConfigFileRequest(configMap)
+	req := parseConfigFileRequest(configMap)
 	opdesc := "delete"
-	log.Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
+	log.SyncConfigScope().Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
+		log.SyncConfigScope().Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
 	}()
 
 	var response ConfigResponse
 	requestByte, err := json.Marshal(req)
 	if err != nil {
-		log.Errorf("Failed to marsh request %s %v", key, err)
+		log.SyncConfigScope().Errorf("Failed to marsh request %s %v", key, err)
 		return err
 	}
 
@@ -91,18 +92,19 @@ func DeleteConfigMap(configMap *v1.ConfigMap) error {
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodDelete, url, requestByte)
 
 	if err != nil {
-		log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
+		log.SyncConfigScope().Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
 		return err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
+			log.SyncConfigScope().Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return err
 		}
-		if response.Code != ExistedResource {
-			log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, response.Info)
+		if response.Code != uint32(ExistedResource) {
+			log.SyncConfigScope().Error(fmt.Sprintf("Failed to %s ConfigMap %s", opdesc, key), zap.String("url", url),
+				zap.Int32("code", int32(response.Code)), zap.String("info", response.Info))
 			return fmt.Errorf("%s ConfigMap failed: "+response.Info, opdesc)
 		}
 	}
@@ -123,16 +125,16 @@ func releaseConfigMap(file *ConfigFile) error {
 		Comment:   "release by kubernetes",
 	}
 
-	log.Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
+	log.SyncConfigScope().Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
+		log.SyncConfigScope().Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
 	}()
 
 	var response ConfigResponse
 	requestByte, err := json.Marshal(req)
 	if err != nil {
-		log.Errorf("Failed to marsh request %s %v", key, err)
+		log.SyncConfigScope().Errorf("Failed to marsh request %s %v", key, err)
 		return err
 	}
 
@@ -141,18 +143,19 @@ func releaseConfigMap(file *ConfigFile) error {
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 	if err != nil {
-		log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
+		log.SyncConfigScope().Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
 		return err
 	}
 
 	if statusCode != http.StatusOK {
 		err = json.Unmarshal(body, &response)
 		if err != nil {
-			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
+			log.SyncConfigScope().Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return err
 		}
-		if response.Code != ExistedResource {
-			log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, response.Info)
+		if response.Code != uint32(ExistedResource) {
+			log.SyncConfigScope().Error(fmt.Sprintf("Failed to %s ConfigMap %s", opdesc, key), zap.String("url", url),
+				zap.Int32("code", int32(response.Code)), zap.String("info", response.Info))
 			return fmt.Errorf("%s ConfigMap failed: "+response.Info, opdesc)
 		}
 	}
@@ -169,16 +172,16 @@ var (
 
 func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigResponse, error) {
 	opdesc := configOperation[method]
-	log.Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
+	log.SyncConfigScope().Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
+		log.SyncConfigScope().Infof("Finish to %s %s (%v)", opdesc, key, time.Since(startTime))
 	}()
 
 	var response ConfigResponse
 	requestByte, err := json.Marshal(req)
 	if err != nil {
-		log.Errorf("Failed to marsh request %s %v", key, err)
+		log.SyncConfigScope().Errorf("Failed to marsh request %s %v", key, err)
 		return response, err
 	}
 
@@ -186,18 +189,19 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 	statusCode, body, _, err := polarisHttpRequest(requestID, method, url, requestByte)
 
 	if err != nil {
-		log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
+		log.SyncConfigScope().Errorf("Failed to %s ConfigMap %s %v %q %v", opdesc, key, url, string(requestByte), err)
 		return response, err
 	}
 
 	if statusCode != http.StatusOK {
-		err = json.Unmarshal(body, &response)
-		if err != nil {
-			log.Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
+		if err = json.Unmarshal(body, &response); err != nil {
+			log.SyncConfigScope().Errorf("Failed to unmarshal result %s %s, %v, %s", opdesc, key, err, string(body))
 			return ConfigResponse{}, err
 		}
-		if response.Code != ExistedResource {
-			log.Errorf("Failed to %s ConfigMap %s %v", opdesc, key, response.Info)
+		if response.Code != uint32(ExistedResource) {
+			log.SyncConfigScope().Error(fmt.Sprintf("Failed to %s ConfigMap %s", opdesc, key), zap.String("url", url),
+				zap.String("req-body", string(requestByte)), zap.Int32("code", int32(response.Code)),
+				zap.String("info", response.Info))
 			return response, fmt.Errorf("%s ConfigMap failed: "+response.Info, opdesc)
 		}
 	}
@@ -205,7 +209,7 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 	return response, nil
 }
 
-func paeseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
+func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 	content, _ := yaml.Marshal(configMap.Data)
 	createRequest := ConfigFile{
 		Name:      configMap.Name,
@@ -227,6 +231,12 @@ func paeseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 			createRequest.Group = v
 			continue
 		}
+		createRequest.Tags = append(createRequest.Tags, &ConfigFileTag{
+			Key:   k,
+			Value: v,
+		})
+	}
+	for k, v := range configMap.Labels {
 		createRequest.Tags = append(createRequest.Tags, &ConfigFileTag{
 			Key:   k,
 			Value: v,

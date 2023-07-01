@@ -16,11 +16,8 @@
 package controller
 
 import (
-	"fmt"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/runtime"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -39,12 +36,11 @@ func (p *PolarisController) onNamespaceAdd(obj interface{}) {
 		}
 	}
 
-	key, err := util.GenObjectQueueKey(namespace)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", namespace, err))
-		return
-	}
-	p.enqueueNamespace(key, namespace)
+	p.enqueueNamespace(&Task{
+		Namespace:  namespace.GetName(),
+		Name:       namespace.GetName(),
+		ObjectType: KubernetesNamespace,
+	}, namespace)
 }
 
 func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
@@ -55,17 +51,15 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 		return
 	}
 
-	nsKey, err := util.GenObjectQueueKey(curNs)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", curNs, err))
-		return
-	}
-
 	isOldSync := p.IsNamespaceSyncEnable(oldNs)
 	isCurSync := p.IsNamespaceSyncEnable(curNs)
 
 	if !isOldSync && isCurSync {
-		p.enqueueNamespace(nsKey, curNs)
+		p.enqueueNamespace(&Task{
+			Namespace:  curNs.GetName(),
+			Name:       curNs.GetName(),
+			ObjectType: KubernetesNamespace,
+		}, curNs)
 	}
 
 	// 有几种情况：
@@ -109,7 +103,6 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 	}
 
 	log.SyncNamingScope().Infof("namespace %s operation is %s", curNs.Name, operation)
-
 	for _, service := range services {
 		// 非法的 service 不处理
 		if util.IgnoreService(service) {
@@ -143,6 +136,7 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 		return
 	}
 
+	log.SyncConfigScope().Infof("namespace %s operation is %s", curNs.Name, operation)
 	for _, configMap := range configMaps {
 		if util.IgnoreObject(configMap) {
 			continue
@@ -163,6 +157,6 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 	}
 }
 
-func (p *PolarisController) enqueueNamespace(key string, namespace *v1.Namespace) {
+func (p *PolarisController) enqueueNamespace(key *Task, namespace *v1.Namespace) {
 	p.queue.Add(key)
 }

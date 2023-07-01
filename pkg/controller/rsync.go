@@ -38,6 +38,7 @@ func (p *PolarisController) resyncWorker() {
 				Namespace:  value.GetNamespace(),
 				Name:       value.GetName(),
 				ObjectType: KubernetesService,
+				Rsync:      true,
 			}
 			p.enqueueService(task, value, "Add")
 			return true
@@ -57,6 +58,7 @@ func (p *PolarisController) resyncWorker() {
 					Namespace:  value.GetNamespace(),
 					Name:       value.GetName(),
 					ObjectType: KubernetesService,
+					Rsync:      true,
 				}
 				p.enqueueConfigMap(task, value, "Add")
 				return true

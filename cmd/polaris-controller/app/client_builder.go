@@ -17,11 +17,12 @@ limitations under the License.
 package app
 
 import (
+	"github.com/polarismesh/polaris-controller/common/log"
+	"go.uber.org/zap"
 	clientset "k8s.io/client-go/kubernetes"
 	v1authentication "k8s.io/client-go/kubernetes/typed/authentication/v1"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/klog"
 )
 
 // ControllerClientBuilder allows you to get clients and configs for controllers
@@ -50,7 +51,7 @@ func (b SimpleControllerClientBuilder) Config(name string) (*restclient.Config, 
 func (b SimpleControllerClientBuilder) ConfigOrDie(name string) *restclient.Config {
 	clientConfig, err := b.Config(name)
 	if err != nil {
-		klog.Fatal(err)
+		log.Fatal("ConfigOrDie", zap.Error(err))
 	}
 	return clientConfig
 }
@@ -68,7 +69,7 @@ func (b SimpleControllerClientBuilder) Client(name string) (clientset.Interface,
 func (b SimpleControllerClientBuilder) ClientOrDie(name string) clientset.Interface {
 	client, err := b.Client(name)
 	if err != nil {
-		klog.Fatal(err)
+		log.Fatal("ClientOrDie", zap.Error(err))
 	}
 	return client
 }

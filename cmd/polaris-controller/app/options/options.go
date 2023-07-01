@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
-	"k8s.io/klog"
 
+	"github.com/polarismesh/polaris-controller/common/log"
 	utilfeature "github.com/polarismesh/polaris-controller/pkg/util/feature"
 )
 
@@ -137,7 +137,7 @@ func (s *KubeControllerManagerOptions) ApplyTo(c *Config) error {
 // createRecorder
 func createRecorder(kubeClient clientset.Interface, userAgent string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(klog.Infof)
+	eventBroadcaster.StartLogging(log.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	return eventBroadcaster.NewRecorder(clientgokubescheme.Scheme, v1.EventSource{Component: userAgent})
 }

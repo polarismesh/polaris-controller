@@ -175,22 +175,22 @@ func NewPolarisController(
 	p.namespaceLister = namespaceInformer.Lister()
 	p.namespaceSynced = namespaceInformer.Informer().HasSynced
 
+	_, _ = configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    p.onConfigMapAdd,
+		UpdateFunc: p.onConfigMapUpdate,
+		DeleteFunc: p.onConfigMapDelete,
+	})
+	p.configMapLister = configmapInformer.Lister()
+	p.configMapSynced = configmapInformer.Informer().HasSynced
+
 	p.eventBroadcaster = broadcaster
 	p.eventRecorder = recorder
 
 	p.serviceCache = localCache.NewCachedServiceMap()
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
+	p.configFileCache = localCache.NewCachedConfigFileMap()
+	p.resyncConfigFileCache = localCache.NewCachedConfigFileMap()
 	p.isPolarisServerHealthy.Store(true)
-
-	if p.OpenSyncConfigMap() {
-		_, _ = configmapInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    p.onConfigMapAdd,
-			UpdateFunc: p.onConfigMapUpdate,
-			DeleteFunc: p.onConfigMapDelete,
-		})
-		p.configMapLister = configmapInformer.Lister()
-		p.configMapSynced = configmapInformer.Informer().HasSynced
-	}
 
 	p.consumer = consumerAPI
 	p.provider = providerAPI
@@ -213,13 +213,9 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 
 	defer log.Infof("Shutting down polaris controller")
 
-	if !cache.WaitForCacheSync(stopCh, p.podsSynced, p.servicesSynced, p.endpointsSynced, p.namespaceSynced) {
+	if !cache.WaitForCacheSync(stopCh, p.podsSynced, p.servicesSynced, p.endpointsSynced,
+		p.namespaceSynced, p.configMapSynced) {
 		return
-	}
-	if p.OpenSyncConfigMap() {
-		if !cache.WaitForCacheSync(stopCh, p.configMapSynced) {
-			return
-		}
 	}
 
 	p.CounterPolarisService()
@@ -262,7 +258,7 @@ func (p *PolarisController) process(t *Task) error {
 	case KubernetesNamespace:
 		// deal with namespace
 		err = p.syncNamespace(t.Namespace)
-	case KubernetesService:
+	case KubernetesService, KubernetesEndpoints:
 		err = p.syncService(t)
 	case KubernetesConfigMap:
 		err = p.syncConfigMap(t)
@@ -364,9 +360,9 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 	if ok {
 		return sync == util.IsEnableSync
 	}
-	ns, err := p.namespaceLister.Get(svc.Namespace)
+	ns, err := p.namespaceLister.Get(svc.GetNamespace())
 	if err != nil {
-		log.SyncConfigScope().Errorf("get namespace for service %s/%s error, %v", svc.Namespace, svc.Name, err)
+		log.SyncConfigScope().Errorf("get namespace for ConfigMap %s/%s error, %v", svc.Namespace, svc.Name, err)
 		return false
 	}
 	// 如果服务没有注解，则在看下命名空间是否有开启相关 sync 注解
@@ -374,6 +370,14 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 }
 
 func (p *PolarisController) insertTask(t *Task) {
+	switch t.ObjectType {
+	case KubernetesConfigMap:
+		log.SyncConfigScope().Infof("insert task: %s", t.String())
+	case KubernetesService, KubernetesEndpoints:
+		log.SyncNamingScope().Infof("insert task: %s", t.String())
+	case KubernetesNamespace:
+		log.Infof("insert task: %s", t.String())
+	}
 	p.queue.Add(t)
 }
 

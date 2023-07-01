@@ -251,16 +251,16 @@ type ConfigFile struct {
 	Comment     string           `json:"comment,omitempty"`
 	Status      string           `json:"status,omitempty"`
 	Tags        []*ConfigFileTag `json:"tags,omitempty"`
-	CreateTime  string           `json:"create_time,omitempty"`
-	CreateBy    string           `json:"create_by,omitempty"`
-	ModifyTime  string           `json:"modify_time,omitempty"`
-	ModifyBy    string           `json:"modify_by,omitempty"`
-	ReleaseTime string           `json:"release_time,omitempty"`
-	ReleaseBy   string           `json:"release_by,omitempty"`
+	CreateTime  string           `json:"createTime,omitempty"`
+	CreateBy    string           `json:"createBy,omitempty"`
+	ModifyTime  string           `json:"modifyTime,omitempty"`
+	ModifyBy    string           `json:"modifyBy,omitempty"`
+	ReleaseTime string           `json:"releaseTime,omitempty"`
+	ReleaseBy   string           `json:"releaseBy,omitempty"`
 	// 是否为加密配置文件
 	Encrypted bool `json:"encrypted,omitempty"`
 	// 加密算法
-	EncryptAlgo string `json:"encrypt_algo,omitempty"`
+	EncryptAlgo string `json:"encryptAlgo,omitempty"`
 }
 
 type ConfigFileRelease struct {
