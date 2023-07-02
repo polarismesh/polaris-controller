@@ -22,7 +22,7 @@ readonly BOOTSTRAP_INSTANCE="${PACKAGE_DIRECTORY}/bootstrap_instance.yaml"
 function prepare_envoy() {
   # Generate Envoy bootstrap.
   # namespace/$uuidgen~$tlsmode~$hostname
-  envoy_node_id="${NAMESPACE}/$(uuidgen)~$(hostname -i)"
+  envoy_node_id="sidecar~${NAMESPACE}/${POD_NAME}~${INSTANCE_IP}"
   if [[ -v TLS_MODE ]]
   then
     BOOTSTRAP_TEMPLATE="${PACKAGE_DIRECTORY}/bootstrap_template_tls.yaml"

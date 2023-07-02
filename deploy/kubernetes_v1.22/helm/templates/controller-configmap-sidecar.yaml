@@ -54,6 +54,9 @@ data:
         image: {{ include "polaris-controller.sidecar.init.image" . }}
         imagePullPolicy: {{ .Values.sidecar.init.image.pullPolicy }}
         command: ["./start.sh"]
+        env:
+        - name: RUN_MODE
+          value: DNS
         resources:
           limits:
             cpu: 100m
@@ -143,7 +146,7 @@ data:
           - mountPath: /data/polaris-client-config
             name: polaris-client-config
       - name: istio-init
-        image: istio/proxyv2:1.11.4
+        image: istio/proxyv2:1.18.0-debug
         imagePullPolicy: IfNotPresent
         args:
         {{ include "configmap-sidecar.bootstrap_args" . | nindent 10 }}
