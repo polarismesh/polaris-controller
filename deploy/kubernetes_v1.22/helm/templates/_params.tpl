@@ -61,6 +61,14 @@ Define the cmd envs for the bootstrap init container.
   valueFrom:
     fieldRef:
       fieldPath: metadata.namespace
+- name: POD_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.name
+- name: INSTANCE_IP
+  valueFrom:
+    fieldRef:
+      fieldPath: status.podIP
 - name: POLARIS_SERVER_URL
   value: {{ "{{" }}.ProxyConfig.ProxyMetadata.serverAddress{{ "}}" }}:15010
 - name: CLUSTER_NAME
