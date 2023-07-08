@@ -79,7 +79,7 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 		// ttl 默认是5s
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil {
-			log.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
+			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
 		} else {
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Heartbeat.TTL = ttl
@@ -126,7 +126,7 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
+		log.SyncNamingScope().Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	var instances []polarisapi.Instance
@@ -152,7 +152,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
-		log.Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
+		log.SyncNamingScope().Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	// 处理健康检查
@@ -164,7 +164,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 		// ttl 默认是5s
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil {
-			log.Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
+			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
 		} else {
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Type = util.IntPtr(0)
@@ -212,7 +212,7 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-		log.Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
+			log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
 			service.GetNamespace(), service.GetName(), err)
 		return []model.Instance{}, nil
 	}
@@ -231,7 +231,7 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 		if cur[index] != nil {
 			// 如果存在，判断是否要更新
 			if p.compareInstanceUpdate(service, instance, cur[index]) {
-				log.Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
+				log.SyncNamingScope().Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
 				updateIns = append(updateIns, *instance)
 			}
 		} else {
@@ -243,7 +243,7 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 	// 对比当前北极星的跟预期列表，删除没有用的。
 	for i, ins := range cur {
 		if spec[i] == nil {
-			log.Warnf("%s %s need delete %v-%v", service.Namespace, service.Name, ins.IP, ins.Port)
+			log.SyncNamingScope().Warnf("%s %s need delete %v-%v", service.Namespace, service.Name, ins.IP, ins.Port)
 			deleteIns = append(deleteIns, *ins)
 		}
 	}
@@ -314,7 +314,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	newMetaMap := make(map[string]string)
 	err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
 	if err != nil {
-		log.Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
+		log.SyncNamingScope().Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
 		return false
 	}
 
@@ -387,7 +387,7 @@ func getCustomWeight(service *v1.Service, serviceMsg string) (indexPortMap util.
 	}
 	err := json.Unmarshal([]byte(customWeightStr), &indexPortMap)
 	if err != nil {
-		log.Errorf("Failed %s unmarshal user %s,err %v", serviceMsg, util.PolarisCustomWeight, err)
+		log.SyncNamingScope().Errorf("Failed %s unmarshal user %s,err %v", serviceMsg, util.PolarisCustomWeight, err)
 	}
 	return
 }
