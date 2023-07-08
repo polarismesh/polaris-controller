@@ -888,7 +888,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 		}
 	}
 
-	if deployMeta.Name == "" {
+	if deployMeta.Name == "" {          
 		// if we haven't been able to extract a deployment name, then just give it the pod name
 		deployMeta.Name = pod.Name
 	}
