@@ -3,12 +3,34 @@ kind: ClusterRole
 metadata:
   name: {{ include "polaris-controller.controller.fullname" . }}
 rules:
-  - apiGroups: [""]
-    resources: ["endpoints"]
-    verbs: ["create", "update", "get", "list", "watch"]
-  - apiGroups:  [""]
-    resources: ["pods", "services", "namespaces"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups:  [""]
-    resources: ["configmaps"]
-    verbs: ["get"]
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - namespaces
+  - configmaps
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  - endpoints
+  verbs:
+  - create
+  - update
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
