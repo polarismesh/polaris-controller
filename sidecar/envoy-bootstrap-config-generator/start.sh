@@ -31,6 +31,8 @@ function prepare_envoy() {
       | sed -e "s|ENVOY_NODE_ID|${envoy_node_id}|g" \
       | sed -e "s|CLUSTER_NAME|${CLUSTER_NAME}|g" \
       | sed -e "s|POLARIS_SERVER_URL|${POLARIS_SERVER_URL}|g" \
+      | sed -e "s|POLARIS_SERVER_HOST|${POLARIS_SERVER_HOST}|g" \
+      | sed -e "s|POLARIS_SERVER_PORT|${POLARIS_SERVER_PORT}|g" \
       | sed -e "s|METADATA|${METADATA}|g" \
       > "${BOOTSTRAP_INSTANCE}"
 }

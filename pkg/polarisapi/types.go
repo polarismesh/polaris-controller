@@ -50,21 +50,11 @@ type Instance struct {
 }
 
 type SimpleInstance struct {
-	ID           string            `json:"id,omitempty"`
-	ServiceToken string            `json:"service_token,omitempty"`
-	Service      string            `json:"service,omitempty"`
-	Namespace    string            `json:"namespace,omitempty"`
-	VpcID        string            `json:"vpc_id,omitempty"`
-	Host         string            `json:"host,omitempty"`
-	Port         *int              `json:"port,omitempty"`
-	Protocol     string            `json:"protocol,omitempty"`
-	Version      string            `json:"version,omitempty"`
-	Priority     int               `json:"priority,omitempty"`
-	Weight       *int              `json:"weight,omitempty"`
-	Healthy      *bool             `json:"healthy,omitempty"`
-	Isolate      *bool             `json:"isolate,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-	Revision     string            `json:"revision,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Service   string `json:"service,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Host      string `json:"host,omitempty"`
+	Port      int    `json:"port,omitempty"`
 }
 
 // HealthCheck

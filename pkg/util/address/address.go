@@ -115,6 +115,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
+			// TODO 后续可以考虑支持只注册某些端口到对应的服务上，而不是默认全部的端口都进行注册
 			addresses := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap)
 			for k, v := range addresses {
 				instanceSet[k] = v

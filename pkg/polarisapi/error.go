@@ -36,8 +36,7 @@ type PErrors struct {
 type PError struct {
 	ID      string  `json:"id,omitempty"`
 	PodName string  `json:"podName,omitempty"`
-	Weight  *int    `json:"weight,omitempty"`
-	Port    *int    `json:"port,omitempty"`
+	Port    int     `json:"port,omitempty"`
 	IP      string  `json:"ip,omitempty"`
 	Code    *uint32 `json:"code,omitempty"`
 	Info    string  `json:"info,omitempty"`

@@ -126,7 +126,7 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
-		log.SyncNamingScope().Infof("Finish to delete all %s (%v)", serviceMsg, time.Since(startTime))
+		log.SyncNamingScope().Infof("Finish to delete all instance %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
 	var instances []polarisapi.Instance
@@ -169,7 +169,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Type = util.IntPtr(0)
 				healthCheck.Heartbeat.TTL = ttl
-				*enableHealthCheck = true
+				enableHealthCheck = util.Bool(true)
 			}
 		}
 	}

@@ -33,6 +33,21 @@ static_resources:
                   address:
                     pipe:
                       path: /var/run/polaris/ratelimit/rls.sock
+    - name: polaris_xds_cluster
+      type: STRICT_DNS
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      protocol_selection: USE_CONFIGURED_PROTOCOL
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: polaris_xds_cluster
+        endpoints:
+          - lbEndpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: POLARIS_SERVER_HOST
+                      port_value: POLARIS_SERVER_PORT
 dynamic_resources:
   lds_config:
     ads: {}
@@ -44,17 +59,8 @@ dynamic_resources:
     api_type: DELTA_GRPC
     transport_api_version: V3
     grpc_services:
-      - google_grpc:
-          target_uri: POLARIS_SERVER_URL
-          stat_prefix: polarismesh
-          channel_args:
-            args:
-              grpc.http2.max_ping_strikes:
-                int_value: 0
-              grpc.keepalive_time_ms:
-                int_value: 10000
-              grpc.keepalive_timeout_ms:
-                int_value: 20000
+      - envoy_grpc:
+          cluster_name: polaris_xds_cluster
 
 admin:
   access_log_path: /dev/stdout

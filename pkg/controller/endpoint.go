@@ -219,11 +219,5 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed DeleteInstances %s, err %s", serviceMsg, deleteInsErr.Error())
 	}
-
-	if addInsErr != nil || deleteInsErr != nil || updateInsErr != nil {
-		return fmt.Errorf("failed AddInstances %v DeleteInstances %v UpdateInstances %v", addInsErr, deleteInsErr,
-			updateInsErr)
-	}
-
 	return nil
 }
