@@ -338,9 +338,6 @@ func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
 
 // CompareServiceChange 判断本次更新是什么类型的
 func (p *PolarisController) CompareServiceChange(old, new *v1.Service) util.ServiceChangeType {
-
-	log.Infof("CompareServiceChange new is %v", new.Annotations)
-
 	if !p.IsPolarisService(new) {
 		return util.ServicePolarisDelete
 	}

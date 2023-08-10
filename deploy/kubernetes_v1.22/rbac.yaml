@@ -16,7 +16,6 @@ rules:
   - services
   - namespaces
   - configmaps
-  - endpoints
   - pods
   verbs:
   - get
@@ -26,6 +25,7 @@ rules:
   - ""
   resources:
   - events
+  - endpoints
   verbs:
   - create
   - update
@@ -33,7 +33,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - ""
+  - "coordination.k8s.io"
   resources:
   - leases
   verbs:

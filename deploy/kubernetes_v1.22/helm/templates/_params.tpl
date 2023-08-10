@@ -71,6 +71,10 @@ Define the cmd envs for the bootstrap init container.
       fieldPath: status.podIP
 - name: POLARIS_SERVER_URL
   value: {{ "{{" }}.ProxyConfig.ProxyMetadata.serverAddress{{ "}}" }}:15010
+- name: POLARIS_SERVER_HOST
+  value: {{ "{{" }}.ProxyConfig.ProxyMetadata.serverAddress{{ "}}" }}
+- name: POLARIS_SERVER_PORT
+  value: 15010
 - name: CLUSTER_NAME
   value: {{ "{{" }}.ProxyConfig.ProxyMetadata.clusterName{{ "}}" }}
 {{- end -}}

@@ -159,7 +159,6 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 				polarisErrors.Append(PError{
 					IP:     ins.Instance.Host,
 					Port:   ins.Instance.Port,
-					Weight: ins.Instance.Weight,
 					Code:   util.Uint32Ptr(ins.Code),
 					Info:   ins.Info,
 				})
@@ -278,7 +277,6 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 				polarisErrors.Append(PError{
 					IP:     ins.Instance.Host,
 					Port:   ins.Instance.Port,
-					Weight: ins.Instance.Weight,
 					Code:   util.Uint32Ptr(ins.Code),
 					Info:   ins.Info,
 				})
@@ -385,7 +383,6 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 				polarisErrors.Append(PError{
 					IP:     ins.Instance.Host,
 					Port:   ins.Instance.Port,
-					Weight: ins.Instance.Weight,
 					Code:   util.Uint32Ptr(ins.Code),
 					Info:   ins.Info,
 				})
