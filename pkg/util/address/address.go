@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/polarismesh/polaris-go/pkg/model"
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -28,6 +27,7 @@ import (
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
+	"github.com/polarismesh/polaris-go/pkg/model"
 )
 
 // Address 记录IP端口信息
