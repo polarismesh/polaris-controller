@@ -109,6 +109,7 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,
+			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
 		}
@@ -191,6 +192,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,
+			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
 		}
@@ -212,7 +214,7 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-			log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
+		log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
 			service.GetNamespace(), service.GetName(), err)
 		return []model.Instance{}, nil
 	}
@@ -285,6 +287,11 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 
 	// healthy update
 	if cur.PolarisInstance.IsHealthy() != spec.Healthy {
+		return true
+	}
+
+	// isolate update
+	if cur.PolarisInstance.IsIsolated() != spec.Isolate {
 		return true
 	}
 

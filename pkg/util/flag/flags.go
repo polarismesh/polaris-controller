@@ -21,9 +21,10 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/spf13/pflag"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 )
 
 // PrintFlags logs the flags in the flagset
