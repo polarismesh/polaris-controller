@@ -180,10 +180,10 @@ data:
         imagePullPolicy: Always
         env:
         - name: METADATA
-          value: "{{index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata`}}"
+          value: {{index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata`}}
         {{if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
         - name: TLS_MODE
-          value: "{{index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`}}"
+          value: {{index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`}}
         {{end}}
         - name: NAMESPACE
           valueFrom:

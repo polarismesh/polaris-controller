@@ -38,6 +38,7 @@ type Address struct {
 	Index           string // stsp,sts才存在有序Pod
 	Weight          int
 	Healthy         bool
+	Isolate         bool
 	Metadata        map[string]string
 	Protocol        string
 	PolarisInstance model.Instance
@@ -57,7 +58,7 @@ type InstanceSet map[string]*Address
 //	}]
 
 func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, hasIndex bool,
-	podLister corelisters.PodLister, defaultWeight int, indexPortMap util.IndexPortMap) InstanceSet {
+	podLister corelisters.PodLister, defaultWeight int, indexPortMap util.IndexPortMap, isolate bool) InstanceSet {
 	tmpReadyIndex := ""
 	if hasIndex {
 		tmpIndexArray := strings.Split(endpoint.TargetRef.Name, "-")
@@ -86,6 +87,7 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 			Index:    tmpReadyIndex,
 			Weight:   tmpWeight,
 			Healthy:  true,
+			Isolate:  isolate,
 			Protocol: port.Name + "/" + string(port.Protocol),
 		}
 
@@ -116,7 +118,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
 			// TODO 后续可以考虑支持只注册某些端口到对应的服务上，而不是默认全部的端口都进行注册
-			addresses := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap)
+			addresses := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap, false)
 			for k, v := range addresses {
 				instanceSet[k] = v
 			}
@@ -124,7 +126,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 
 		// 如果不需要优雅同步，就不把notReadyAddress加入的同步列表里面。
 		for _, notReadyAds := range subset.NotReadyAddresses {
-			addresses := buildAddresses(&notReadyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap)
+			addresses := buildAddresses(&notReadyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap, true)
 			for k, v := range addresses {
 				instanceSet[k] = v
 			}
@@ -171,6 +173,7 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 				Protocol:        instance.GetProtocol(),
 				PolarisInstance: instance,
 				Healthy:         instance.IsHealthy(),
+				Isolate:         instance.IsIsolated(),
 			}
 		}
 	}

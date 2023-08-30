@@ -157,10 +157,10 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 				log.SyncNamingScope().Errorf("Failed add %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 				polarisErrors.Append(PError{
-					IP:     ins.Instance.Host,
-					Port:   ins.Instance.Port,
-					Code:   util.Uint32Ptr(ins.Code),
-					Info:   ins.Info,
+					IP:   ins.Instance.Host,
+					Port: ins.Instance.Port,
+					Code: util.Uint32Ptr(ins.Code),
+					Info: ins.Info,
 				})
 			} else {
 				log.SyncNamingScope().Infof("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
@@ -275,10 +275,10 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 				log.SyncNamingScope().Errorf("Failed delete %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 				polarisErrors.Append(PError{
-					IP:     ins.Instance.Host,
-					Port:   ins.Instance.Port,
-					Code:   util.Uint32Ptr(ins.Code),
-					Info:   ins.Info,
+					IP:   ins.Instance.Host,
+					Port: ins.Instance.Port,
+					Code: util.Uint32Ptr(ins.Code),
+					Info: ins.Info,
 				})
 			} else {
 				log.SyncNamingScope().Infof("Success delete %s [%s:%d] [%d/%d], info %s. (%s)",
@@ -381,10 +381,10 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 					msg, ins.Instance.Namespace, ins.Instance.Service,
 					ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info)
 				polarisErrors.Append(PError{
-					IP:     ins.Instance.Host,
-					Port:   ins.Instance.Port,
-					Code:   util.Uint32Ptr(ins.Code),
-					Info:   ins.Info,
+					IP:   ins.Instance.Host,
+					Port: ins.Instance.Port,
+					Code: util.Uint32Ptr(ins.Code),
+					Info: ins.Info,
 				})
 			} else {
 				log.SyncNamingScope().Infof("Success add %s [%s/%s] [%s:%d] [%d/%d], info %s.",

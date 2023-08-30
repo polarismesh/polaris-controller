@@ -17,12 +17,13 @@ limitations under the License.
 package app
 
 import (
-	"github.com/polarismesh/polaris-controller/common/log"
 	"go.uber.org/zap"
 	clientset "k8s.io/client-go/kubernetes"
 	v1authentication "k8s.io/client-go/kubernetes/typed/authentication/v1"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 )
 
 // ControllerClientBuilder allows you to get clients and configs for controllers
