@@ -11,7 +11,7 @@ require (
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/openshift/api v3.9.1-0.20191008181517-e4fd21196097+incompatible
-	github.com/polarismesh/polaris-go v1.5.1
+	github.com/polarismesh/polaris-go v1.5.3
 	github.com/prometheus/client_golang v1.16.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/spf13/cobra v1.6.0

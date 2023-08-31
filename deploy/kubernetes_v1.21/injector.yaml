@@ -118,6 +118,9 @@ data:
     template: |+
       containers:
       - name: envoy
+        securityContext:
+          runAsUser: 1337
+          runAsGroup: 1337
         image: envoyproxy/envoy:#ENVOY_VERSION#
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
