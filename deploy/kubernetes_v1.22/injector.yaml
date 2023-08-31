@@ -116,6 +116,9 @@ data:
       containers:
       - name: envoy
         image: envoyproxy/envoy:#ENVOY_VERSION#
+        securityContext:
+          runAsUser: 1337
+          runAsGroup: 1337
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
