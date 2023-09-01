@@ -17,12 +17,12 @@
 set -e
 
 if [ $# -gt 0 ]; then
-    version="$1"
+  version="$1"
 else
-    current=$(date "+%Y-%m-%d %H:%M:%S")
-    timeStamp=$(date -d "$current" +%s)
-    currentTimeStamp=$(((timeStamp * 1000 + 10#$(date "+%N") / 1000000) / 1000))
-    version="$currentTimeStamp"
+  current=$(date "+%Y-%m-%d %H:%M:%S")
+  timeStamp=$(date -d "$current" +%s)
+  currentTimeStamp=$(((timeStamp * 1000 + 10#$(date "+%N") / 1000000) / 1000))
+  version="$currentTimeStamp"
 fi
 workdir=$(dirname $(realpath $0))
 
@@ -32,6 +32,22 @@ cat "$workdir"/deploy/variables.txt
 folder_name="polaris-controller-release_${version}.k8s1.21"
 pkg_name="${folder_name}.zip"
 
+function replaceVar() {
+  for file in $(ls *.yaml); do
+    key="#$1#"
+    echo "process replace file $file, key $key, value $2"
+    if [ "$(uname)" == "Darwin" ]; then
+      sed -i "" "s?$key?$2?g" $file
+    else
+      sed -i "s?$key?$2?g" $file
+    fi
+  done
+}
+
+cd $workdir
+
+export -f replaceVar
+
 cd $workdir
 
 # 清理环境
@@ -40,15 +56,26 @@ rm -f "${pkg_name}"
 
 # 打包
 mkdir -p ${folder_name}
+
 cp -r deploy/kubernetes_v1.21/* ${folder_name}
 cp deploy/variables.txt ${folder_name}
+
+cd ${folder_name}/helm
+varFile="../variables.txt"
+if [ ! -f "$varFile" ]; then
+  echo "variables.txt not exists"
+  exit 1
+fi
+cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
+
+cd $workdir
 zip -r "${pkg_name}" ${folder_name}
 #md5sum ${pkg_name} > "${pkg_name}.md5sum"
 
 if [[ $(uname -a | grep "Darwin" | wc -l) -eq 1 ]]; then
-    md5 ${pkg_name} >"${pkg_name}.md5sum"
+  md5 ${pkg_name} >"${pkg_name}.md5sum"
 else
-    md5sum ${pkg_name} >"${pkg_name}.md5sum"
+  md5sum ${pkg_name} >"${pkg_name}.md5sum"
 fi
 
 folder_name="polaris-controller-release_${version}.k8s1.22"
@@ -62,13 +89,23 @@ rm -f "${pkg_name}"
 
 # 打包
 mkdir -p ${folder_name}
+
 cp -r deploy/kubernetes_v1.22/* ${folder_name}
 cp deploy/variables.txt ${folder_name}
+
+cd ${folder_name}/helm
+varFile="../variables.txt"
+if [ ! -f "$varFile" ]; then
+  echo "variables.txt not exists"
+  exit 1
+fi
+cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
+cd $workdir
 zip -r "${pkg_name}" ${folder_name}
 #md5sum ${pkg_name} > "${pkg_name}.md5sum"
 
 if [[ $(uname -a | grep "Darwin" | wc -l) -eq 1 ]]; then
-    md5 ${pkg_name} >"${pkg_name}.md5sum"
+  md5 ${pkg_name} >"${pkg_name}.md5sum"
 else
-    md5sum ${pkg_name} >"${pkg_name}.md5sum"
+  md5sum ${pkg_name} >"${pkg_name}.md5sum"
 fi

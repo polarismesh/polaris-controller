@@ -69,6 +69,9 @@ data:
         image: polarismesh/polaris-sidecar-init:#CONTROLLER_VERSION#
         imagePullPolicy: Always
         command: ["./start.sh"]
+        env:
+        - name: RUN_MODE
+          value: DNS
         resources:
           limits:
             cpu: 100m
@@ -116,9 +119,6 @@ data:
       containers:
       - name: envoy
         image: envoyproxy/envoy:#ENVOY_VERSION#
-        securityContext:
-          runAsUser: 1337
-          runAsGroup: 1337
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
@@ -213,30 +213,13 @@ data:
             name: envoy-bootstrap
           - mountPath: /data/polaris-client-config
             name: polaris-client-config
-      - name: istio-init
-        image: istio/proxyv2:1.18.0-debug
-        imagePullPolicy: IfNotPresent
-        args:
-          - istio-iptables
-          - -p
-          - "15001"
-          - -z
-          - "15006"
-          - -u
-          - "1337"
-          - -m
-          - REDIRECT
-          - -i
-          - "10.4.4.4/32"
-          - -b
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) }}"
-          - -x
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) }}"
-          - -d
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` ``) }}"
-          - -o
-          - "{{ (annotation .ObjectMeta `polarismesh.cn/excludeOutboundPorts` ``) }}"
-          - --redirect-dns=true
+      - name: polaris-sidecar-init
+        image: polarismesh/polaris-sidecar-init:#CONTROLLER_VERSION#
+        imagePullPolicy: Always
+        command: ["./start.sh"]
+        env:
+        - name: RUN_MODE
+          value: MESH
         resources:
           limits:
             cpu: 100m
@@ -257,6 +240,9 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
+        volumeMounts:
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       volumes:
         - name: polaris-client-config
           emptyDir: {}

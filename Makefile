@@ -43,3 +43,9 @@ build-envoy-sidecar-init:
 push-image:
 	docker push $(REGISTRY)$(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
 	docker push $(REGISTRY)$(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
+
+.PHONY: clean
+clean:
+	rm -rf bin
+	rm -rf polaris-controller-release*
+

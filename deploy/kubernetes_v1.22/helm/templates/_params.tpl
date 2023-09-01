@@ -40,7 +40,7 @@ Define the cmd args for the bootstrap init container.
 - -x
 - "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) {{ "}}" }}"
 - -d
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` ``) {{ "}}" }}"
+- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` `15985,50000,15053`) {{ "}}" }}"
 - -o
 - "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundPorts` ``) {{ "}}" }}"
 - --redirect-dns=true

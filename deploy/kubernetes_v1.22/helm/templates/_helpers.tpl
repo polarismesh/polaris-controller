@@ -41,6 +41,28 @@ Get specific image for sidecar init container
 {{- printf "%s:%s" .Values.sidecar.init.image.repo .Values.sidecar.init.image.tag -}}
 {{- end -}}
 
+{{/*
+Get specific image for sidecar init container
+*/}}
+{{- define "polaris-controller.sidecar.envoy.image" -}}
+{{- printf "%s:%s" .Values.sidecar.envoy.image.repo .Values.sidecar.envoy.image.tag -}}
+{{- end -}}
+
+
+{{/*
+Get specific image for sidecar init container
+*/}}
+{{- define "polaris-controller.sidecar.envoy_init.image" -}}
+{{- printf "%s:%s" .Values.sidecar.envoy_builder.image.repo .Values.sidecar.envoy_builder.image.tag -}}
+{{- end -}}
+
+{{/*
+Get specific image for sidecar init container
+*/}}
+{{- define "polaris-controller.sidecar.istio.image" -}}
+{{- printf "%s:%s" .Values.sidecar.istio.image.repo .Values.sidecar.istio.image.tag -}}
+{{- end -}}
+
 
 {{/*
 Create a default fully qualified controller name.
