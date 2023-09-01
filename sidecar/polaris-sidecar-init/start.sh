@@ -24,11 +24,16 @@ if [[ "${RUN_MODE}" == "MESH" ]]; then
     iptables -t nat -N POLARIS_IN_REDIRECT
     iptables -t nat -N POLARIS_OUTPUT
     iptables -t nat -N POLARIS_REDIRECT
+    iptables -t nat -A PREROUTING -p tcp -j POLARIS_INBOUND
     iptables -t nat -A OUTPUT -p tcp -j POLARIS_OUTPUT
     iptables -t nat -A OUTPUT -p udp -m udp --dport 53 -m owner --uid-owner 1337 -j RETURN
     iptables -t nat -A OUTPUT -p udp -m udp --dport 53 -m owner --gid-owner 1337 -j RETURN
     iptables -t nat -A OUTPUT -p udp -m udp --dport 53 -j REDIRECT --to-ports 15053
     iptables -t nat -A POLARIS_INBOUND -p tcp -m tcp --dport 15008 -j RETURN
+    iptables -t nat -A POLARIS_INBOUND -p tcp -m tcp --dport 15985 -j RETURN
+    iptables -t nat -A POLARIS_INBOUND -p tcp -m tcp --dport 50000 -j RETURN
+    iptables -t nat -A POLARIS_INBOUND -p tcp -m tcp --dport 15053 -j RETURN
+    iptables -t nat -A POLARIS_INBOUND -p tcp -j POLARIS_IN_REDIRECT
     iptables -t nat -A POLARIS_IN_REDIRECT -p tcp -j REDIRECT --to-ports 15006
     iptables -t nat -A POLARIS_OUTPUT -s 127.0.0.6/32 -o lo -j RETURN
     iptables -t nat -A POLARIS_OUTPUT ! -d 127.0.0.1/32 -o lo -p tcp -m tcp ! --dport 53 -m owner --uid-owner 1337 -j POLARIS_IN_REDIRECT

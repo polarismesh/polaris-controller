@@ -32,34 +32,6 @@ Define the volume mounts for the sidecar container.
 {{ "{{" }} end {{ "}}" }}
 {{- end -}}
 
-
-{{/*
-Define the cmd args for the bootstrap init container.
-*/}}
-{{- define "configmap-sidecar.bootstrap_args" -}}
-- istio-iptables
-- -p
-- "15001"
-- -z
-- "15006"
-- -u
-- "1337"
-- -m
-- REDIRECT
-- -i
-- "10.4.4.4/32"
-- -b
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/includeInboundPorts` `*`) {{ "}}" }}"
-- -x
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundCIDRs` ``) {{ "}}" }}"
-- -d
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeInboundPorts` ``) {{ "}}" }}"
-- -o
-- "{{ "{{" }} (annotation .ObjectMeta `polarismesh.cn/excludeOutboundPorts` ``) {{ "}}" }}"
-- --redirect-dns=true
-{{- end -}}
-
-
 {{/*
 Define the volume for the bootstrap init container.
 */}}

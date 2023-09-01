@@ -16,23 +16,27 @@ sidecar:
   mode: mesh
   image:
     repo: polarismesh/polaris-sidecar
-    tag: v1.4.0
+    tag: #SIDECAR_VERSION#
     pullPolicy: Always
   init:
     image:
       repo: polarismesh/polaris-sidecar-init
-      tag: v1.4.0
+      tag: #CONTROLLER_VERSION#
       pullPolicy: Always
   envoy:
     image:
       repo: envoyproxy/envoy
-      tag: v1.21.6
+      tag: #ENVOY_VERSION#
+  envoy_builder:
+    image:
+      repo: polarismesh/polaris-envoy-bootstrap-generator
+      tag: #CONTROLLER_VERSION#
 
 ## polaris server config
 polaris:
   server:
-    address: localhost
-    token: nu/0WRA4EqSR1FagrjRj0fZwPXuGlMpX+zCuWu4uMqy8xr1vRjisSbA25aAC3mtU8MeeRsKhQiDAynUR09I=
+    address: #POLARIS_HOST#
+    token: #POLARIS_TOKEN#
 
 ## polaris controller config
 controller:
@@ -42,7 +46,7 @@ controller:
     service: polaris-sidecar-injector
   image:
     repo: polarismesh/polaris-controller
-    tag: v1.4.0-beta.0
+    tag: #CONTROLLER_VERSION#
     pullPolicy: IfNotPresent
   metrics:
     port: 80

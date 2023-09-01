@@ -47,4 +47,5 @@ jobs:
         env:
           DOCKER_TAG: ${{ steps.get_version.outputs.VERSION }}
         run: |
+          go mod tidy
           make all ORG=polarismesh REPO=polaris-controller IMAGE_TAG=${DOCKER_TAG}

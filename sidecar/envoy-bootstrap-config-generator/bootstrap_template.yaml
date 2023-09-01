@@ -45,7 +45,7 @@ dynamic_resources:
     transport_api_version: V3
     grpc_services:
       - google_grpc:
-          target_uri: POLARIS_SERVER_HOST:POLARIS_SERVER_PORT
+          target_uri: POLARIS_SERVER_URL
           stat_prefix: polarismesh
           channel_args:
             args:

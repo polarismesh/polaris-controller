@@ -98,10 +98,7 @@ data:
     template: |
       containers:
       - name: envoy
-        securityContext:
-          runAsUser: 1337
-          runAsGroup: 1337
-        image: {{ .Values.sidecar.envoy.image.repo }}:{{ .Values.sidecar.envoy.image.tag }}
+        image: {{ include "polaris-controller.sidecar.envoy.image" . }}
         imagePullPolicy: Always
         command: ["/usr/local/bin/envoy"]
         args: ["-c", "/etc/envoy/envoy.yaml", "--log-path", "/etc/envoy_logs/envoy.log"]
@@ -139,7 +136,7 @@ data:
             name: polaris-log
       initContainers:
       - name: polaris-bootstrap-writer
-        image: polarismesh/polaris-envoy-bootstrap-generator:v1.3.0-beta.1
+        image: {{ include "polaris-controller.sidecar.envoy_init.image" . }}
         imagePullPolicy: Always
         env:
         {{ include "configmap-sidecar.bootstrap_envs" . | nindent 10 }}
@@ -148,11 +145,13 @@ data:
             name: envoy-bootstrap
           - mountPath: /data/polaris-client-config
             name: polaris-client-config
-      - name: istio-init
-        image: istio/proxyv2:1.18.0-debug
-        imagePullPolicy: IfNotPresent
-        args:
-        {{ include "configmap-sidecar.bootstrap_args" . | nindent 10 }}
+      - name: polaris-sidecar-init
+        image: {{ include "polaris-controller.sidecar.init.image" . }}
+        imagePullPolicy: Always
+        command: ["./start.sh"]
+        env:
+        - name: RUN_MODE
+          value: MESH
         resources:
           limits:
             cpu: 100m
@@ -173,6 +172,9 @@ data:
           runAsGroup: 0
           runAsNonRoot: false
           runAsUser: 0
+        volumeMounts:
+          - mountPath: /data/polaris-client-config
+            name: polaris-client-config
       volumes:
         - name: polaris-client-config
           emptyDir: {}
