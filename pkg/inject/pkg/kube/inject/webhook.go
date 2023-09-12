@@ -401,6 +401,10 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 	}
 	first := len(target) == 0
 	var value interface{}
+
+	proxy_location := "/-"
+	proxy_move_first := pod.Annotations[utils.HoldApplicationUntilProxyStart]
+
 	for _, add := range added {
 		if add.Name == ProxyContainerName && saJwtSecretMountName != "" {
 			// add service account secret volume mount(/var/run/secrets/kubernetes.io/serviceaccount,
@@ -434,6 +438,22 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 				SubPath:   "polaris.yaml",
 				MountPath: "/data/polaris.yaml",
 			})
+			if proxy_move_first == "true" {
+				proxy_location = "/1"
+				add.Lifecycle = &corev1.Lifecycle{
+					PostStart: &corev1.LifecycleHandler{
+						Exec: &corev1.ExecAction{
+							Command: []string{"/bin/bash", "-c", "while (($(curl -s -o /dev/null -w ''%{http_code}'' 127.0.0.1:15000/ready) !=\"200\")); do echo Waiting for Sidecar;sleep 1; done;"},
+						},
+					},
+				}
+			}
+
+		}
+
+		if add.Name == "envoy" && proxy_move_first == "true" {
+			log.InjectScope().Infof("begin deal envoy-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
+			proxy_location = "/0"
 		}
 
 		value = add
@@ -442,7 +462,7 @@ func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, 
 			first = false
 			value = []corev1.Container{add}
 		} else {
-			path += "/-"
+			path += proxy_location
 		}
 		patch = append(patch, rfc6902PatchOperation{
 			Op:    "add",
