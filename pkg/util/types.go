@@ -45,6 +45,9 @@ const (
 	SidecarEnvoyMetadata = "sidecar.polarismesh.cn/envoyMetadata"
 
 	PolarisSidecarModeLabel = "polaris-sidecar-mode"
+
+	HoldApplicationUntilProxyStart = "polarismesh.cn/hold-until-proxy"
+
 )
 
 const (
