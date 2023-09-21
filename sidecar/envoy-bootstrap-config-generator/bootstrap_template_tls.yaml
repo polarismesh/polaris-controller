@@ -72,6 +72,8 @@ dynamic_resources:
                 int_value: 10000
               grpc.keepalive_timeout_ms:
                 int_value: 20000
+              grpc.max_receive_message_length:
+                int_value: -1
 
 admin:
   access_log_path: /dev/stdout
