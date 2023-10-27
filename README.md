@@ -26,79 +26,9 @@ The operating mode of *sidecar* in the Polaris-Controller provides two optional 
 
 This document describes how to install and use polaris-controller in a K8s cluster.
 
-## Kubernetes's Version
-
-- To use with **kubernetes** >= 1.22 use the deploy profile at ./deploy/kubernetes_v1.22
-- To user with **kubernetes** <= 1.21 use the deploy profile at ./deploy/kubernetes_v1.21
-
 ## Installation
 
-**Preconditions**
-
-Before installing polaris-controller, please install the Polaris server first. For the installation method, please refer to [Polaris Server Installation Documentation](https://polarismesh.cn/zh/doc/%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/%E5%AE%89%E8%A3%85%E6%9C%8D%E5%8A%A1%E7%AB%AF/%E5%AE%89%E8%A3%85%E5%8D%95%E6%9C%BA%E7%89%88.html)。
-
-**Download the installation package**
-
-From [Releases](https://github.com/polarismesh/polaris-controller/releases) download the latest version of the installation package。
-
-**Modify the configuration file**
-
-Modify the configuration file configmap.yaml to configure the K8s Service synchronization mode and the Polaris server address. The configuration example is as follows：
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: injector-mesh
-  namespace: polaris-system
-data:
-  mesh: |-
-    # k8s cluster name
-    clusterName: "default"
-    # polaris-sidecar inject run mode
-    sidecarInject:
-      mode: "mesh"
-    # service sync
-    serviceSync:
-      mode: "all"
-      # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
-      serverAddress: "polaris-server ip or domain"
-      # When Polaris enables service authentication, the token corresponding to the user/user group needs to be configured here.
-      accessToken: ""
-    defaultConfig:
-      proxyMetadata:
-        # Please make sure that the HTTP port listened by the Arctic Star is 8090 and the GRPC port for service registration & governance is 8091
-        serverAddress: "polaris-server ip or domain"
-```
-
-Two K8s Service synchronization modes are supported:
-
-- all: Full synchronization service. Sync all K8s Service to Polaris.
-- demand: Sync service on demand. By default, the K8s Service will not be synchronized to Polaris, you need to add the Polaris annotation on the Namespace or Service.
-
-Polaris supports service discovery and governance across K8s clusters. Services of multiple K8s clusters can be synchronized to a Polaris cluster. The synchronization rules are as follows:
-
-- K8s Namespace and Service name as North Star's namespace name
-- If the same Namespace and Service exist in multiple K8s clusters, all Pods are synchronized to one Polaris service
-- polaris-controller adds clusterName label on Polaris service instances to distinguish service instances from different K8s clusters
-- If there are multiple K8s Services synchronized to a Polaris service, the polaris-controller of each K8s cluster needs to be configured with a different clusterName
-
-**Run the installation script**
-
-Run the installation script on the machine where kubectl is installed：
-
-```shell
-bash ./install.sh 
-```
-
-Check if polaris-controller is working：
-
-```shell
-kubectl get pod -n polaris-system
-
-NAME                                  READY   STATUS    RESTARTS   AGE
-polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
-```
+[Official documentation](https://polarismesh.cn/docs/%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97/k8s%E5%92%8C%E7%BD%91%E6%A0%BC%E4%BB%A3%E7%90%86/%E5%AE%89%E8%A3%85polaris-controller/)
 
 ## Annotations
 
