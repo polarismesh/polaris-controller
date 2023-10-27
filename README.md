@@ -28,8 +28,8 @@ This document describes how to install and use polaris-controller in a K8s clust
 
 ## Kubernetes's Version
 
-- To use with **kubernetes** [1.22 ,) use the deploy profile at ./deploy/kubernetes_v1.22
-- To user with **kubernetes** (, 1.21] use the deploy profile at ./deploy/kubernetes_v1.21
+- To use with **kubernetes** >= 1.22 use the deploy profile at ./deploy/kubernetes_v1.22
+- To user with **kubernetes** <= 1.21 use the deploy profile at ./deploy/kubernetes_v1.21
 
 ## Installation
 
