@@ -218,6 +218,7 @@ func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 		Tags:      []*ConfigFileTag{},
 	}
 
+	existSourceKey := false
 	for k, v := range configMap.Annotations {
 		if k == util.PolarisConfigEncrypt && v == "true" {
 			createRequest.Encrypted = true
@@ -231,6 +232,9 @@ func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 			createRequest.Group = v
 			continue
 		}
+		if k == util.InternalConfigFileSyncSourceKey {
+			existSourceKey = true
+		}
 		createRequest.Tags = append(createRequest.Tags, &ConfigFileTag{
 			Key:   k,
 			Value: v,
@@ -242,9 +246,11 @@ func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 			Value: v,
 		})
 	}
-	createRequest.Tags = append(createRequest.Tags, &ConfigFileTag{
-		Key:   "internal-sync-source",
-		Value: "kubernetes",
-	})
+	if !existSourceKey {
+		createRequest.Tags = append(createRequest.Tags, &ConfigFileTag{
+			Key:   util.InternalConfigFileSyncSourceKey,
+			Value: util.SourceFromKubernetes,
+		})
+	}
 	return &createRequest
 }

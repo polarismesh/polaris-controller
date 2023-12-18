@@ -50,8 +50,6 @@ spec:
               mountPath: /etc/polaris-inject/config
               readOnly: true
       dnsPolicy: ClusterFirst
-      imagePullSecrets:
-        - name: qcloudregistrykey
       restartPolicy: Always
       schedulerName: default-scheduler
       terminationGracePeriodSeconds: 30

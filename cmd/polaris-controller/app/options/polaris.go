@@ -27,6 +27,45 @@ type PolarisControllerOptions struct {
 	*PolarisControllerConfiguration
 }
 
+// ServiceSync 服务同步相关配置
+type ServiceSync struct {
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
+	// 以下配置仅 polaris-server 开启 console auth
+	// 调用 polaris-server OpenAPI 的凭据
+	PolarisAccessToken string `yaml:"accessToken"`
+	// Operator 用于数据同步的帐户ID
+	Operator string `yaml:"operator"`
+	// Enable 开启同步
+	Enable bool `yaml:"enable"`
+}
+
+// ConfigSync 服务同步相关配置
+type ConfigSync struct {
+	Mode          string `yaml:"mode"`
+	ServerAddress string `yaml:"serverAddress"`
+	// 以下配置仅 polaris-server 开启 console auth
+	// 调用 polaris-server OpenAPI 的凭据
+	PolarisAccessToken string `yaml:"accessToken"`
+	// Operator 用于数据同步的帐户ID
+	Operator string `yaml:"operator"`
+	// AllowDelete 允许向 Polaris 发起删除操作
+	AllowDelete bool `yaml:"allowDelete"`
+	// SyncDirection 配置同步方向, kubernetesToPolaris/polarisToKubernetes/both
+	// kubernetesToPolaris: 配置数据只能从 kubernetes 同步到 polaris
+	// polarisToKubernetes: 配置数据只能从 polaris 同步到 kubernetes
+	// both: 配置数据能从 kubernetes 同步到 polaris, 也能从 polaris 同步到 kubernetes, 但是不会出现循环同步
+	SyncDirection string `yaml:"syncDirection"`
+	// ConflictMode 同步冲突策略
+	ConflictMode string `yaml:"conflictMode"`
+	// Enable 开启同步
+	Enable bool `yaml:"enable"`
+	// IgnoreNamespaces 忽略同步的命名空间，默认不忽略
+	IgnoreNamespaces []string `yaml:"ignoreNamespaces"`
+	// DefaultGroup 配置分组同步默认分组名称
+	DefaultGroup string `yaml:"defaultGroup"`
+}
+
 // PolarisControllerConfiguration holds configuration for a polaris controller
 type PolarisControllerConfiguration struct {
 	// port is the port that the controller-manager's http service runs on.
@@ -45,8 +84,8 @@ type PolarisControllerConfiguration struct {
 	HealthCheckDuration time.Duration
 	// ResyncDuration 对账任务执行时间
 	ResyncDuration time.Duration
-	// SyncConfigMap 是否开启 ConfigMap 同步
-	SyncConfigMap bool
+	// ConfigSync 配置中心同步配置
+	ConfigSync *ConfigSync
 }
 
 // AddFlags adds flags related to generic for controller manager to the specified FlagSet.
@@ -66,7 +105,6 @@ func (o *PolarisControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&o.HealthCheckDuration, "healthcheck-duration", time.Second,
 		"The health checking duration of the polaris server (eg. 5h30m2s).")
 	fs.DurationVar(&o.ResyncDuration, "resync-duration", time.Second*30, "The resync duration (eg. 5h30m2s).")
-	fs.BoolVar(&o.SyncConfigMap, "sync-configmap", false, "is open sync configmap to polaris (eg. true/false, default is false).")
 }
 
 // ApplyTo fills up generic config with options.
@@ -86,6 +124,5 @@ func (o *PolarisControllerOptions) ApplyTo(cfg *PolarisControllerConfiguration) 
 	cfg.SidecarMode = o.SidecarMode
 	cfg.HealthCheckDuration = o.HealthCheckDuration
 	cfg.ResyncDuration = o.ResyncDuration
-	cfg.SyncConfigMap = o.SyncConfigMap
 	return nil
 }

@@ -25,6 +25,10 @@ const (
 	SyncNamingLoggerName = "syncnaming"
 	// SyncConfigLoggerName config sync logger name, can use FindScope function to get the logger
 	SyncConfigLoggerName = "syncconfig"
+	// SyncConfigLoggerName config map sync logger name, can use FindScope function to get the logger
+	SyncConfigMapLoggerName = "synccm"
+	// TraceLoggerName trace logger name, can use FindScope function to get the logger
+	TraceLoggerName = "trace"
 )
 
 var (
@@ -32,10 +36,13 @@ var (
 	injectScope     = RegisterScope(InjectLoggerName, "pod inject logging messages.", 0)
 	syncNamingScope = RegisterScope(SyncNamingLoggerName, "naming sync logging messages.", 0)
 	syncConfigScope = RegisterScope(SyncConfigLoggerName, "config sync logging messages.", 0)
+	syncCmScope     = RegisterScope(SyncConfigMapLoggerName, "configmap sync logging messages.", 0)
+	traceScope      = RegisterScope(TraceLoggerName, "trace logging messages.", 0)
 )
 
 func allLoggerTypes() []string {
-	return []string{SyncLoggerName, InjectLoggerName, DefaultLoggerName}
+	return []string{SyncLoggerName, SyncNamingLoggerName, SyncConfigLoggerName,
+		SyncConfigMapLoggerName, InjectLoggerName, DefaultLoggerName}
 }
 
 // DefaultScope default logging scope handler
@@ -58,7 +65,17 @@ func SyncConfigScope() *Scope {
 	return syncConfigScope
 }
 
+// SyncConfigMapScope naming logging scope handler
+func SyncConfigMapScope() *Scope {
+	return syncCmScope
+}
+
 // InjectScope
 func InjectScope() *Scope {
 	return injectScope
+}
+
+// TraceScope
+func TraceScope() *Scope {
+	return traceScope
 }

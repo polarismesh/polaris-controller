@@ -35,6 +35,10 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          resources:
+            limits:
+              cpu: {{ .Values.controller.limit.cpu }}
+              memory: {{ .Values.controller.limit.memory }}
           volumeMounts:
             - mountPath: /polaris-controller/log
               name: log
@@ -48,8 +52,6 @@ spec:
               mountPath: /etc/polaris-inject/config
               readOnly: true
       dnsPolicy: ClusterFirst
-      imagePullSecrets:
-        - name: qcloudregistrykey
       restartPolicy: Always
       schedulerName: default-scheduler
       terminationGracePeriodSeconds: 30
