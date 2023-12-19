@@ -18,11 +18,17 @@ package controller
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/polarismesh/polaris-go/api"
+	"github.com/polarismesh/polaris-go/pkg/model"
 	"github.com/polarismesh/specification/source/go/api/v1/config_manage"
 	apimodel "github.com/polarismesh/specification/source/go/api/v1/model"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -289,6 +295,7 @@ func (p *PolarisController) watchPolarisConfig() error {
 		k8sClient:      p.client,
 		config:         p.config,
 		conn:           conn,
+		configAPI:      api.NewConfigFileAPIBySDKContext(p.consumer.SDKContext()),
 		discoverClient: discoverClient,
 		namespaces:     util.NewSyncSet[string](),
 		needSyncFiles:  util.NewSyncMap[string, *util.SyncMap[string, *util.SyncMap[string, *configFileRefrence]]](),
@@ -316,6 +323,8 @@ type PolarisConfigWatcher struct {
 	nsWatcher watch.Interface
 	// k8sClient
 	k8sClient clientset.Interface
+	// configAPI
+	configAPI api.ConfigFileAPI
 	// conn
 	conn *grpc.ClientConn
 	// discoverClient
@@ -332,9 +341,12 @@ type PolarisConfigWatcher struct {
 	groupRevisions *util.SyncMap[string, string]
 	//
 	cancel context.CancelFunc
+	//
+	executor *util.TaskExecutor
 }
 
 func (p *PolarisConfigWatcher) Start(ctx context.Context) error {
+	p.executor = util.NewExecutor(runtime.NumCPU())
 	nsList, err := p.k8sClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -384,7 +396,7 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 			case config_manage.ConfigDiscoverResponse_CONFIG_FILE_Names:
 				p.receiveConfigFiles(msg)
 			case config_manage.ConfigDiscoverResponse_CONFIG_FILE:
-				p.receiveConfigFile(msg)
+				//
 			}
 		}
 	}
@@ -485,6 +497,14 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 	if len(files) == 0 {
 		return
 	}
+
+	var (
+		start   = time.Now()
+		wait    = &sync.WaitGroup{}
+		syncCnt = &atomic.Int32{}
+		delCnt  = &atomic.Int32{}
+	)
+
 	for i := range files {
 		item := files[i]
 		nsName := item.GetNamespace().GetValue()
@@ -499,44 +519,63 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 				}
 			})
 			if isOld && val.Revision <= item.GetVersion().GetValue() {
-				p.fetchConfigFile(val.Data)
+				val.Revision = item.GetVersion().Value
+				groupBucket.Store(fileName, val)
+				wait.Add(1)
+				log.SyncConfigMapScope().Info("begin fetch config file", zap.String("namespace", nsName),
+					zap.String("group", groupName), zap.String("file", fileName), zap.Uint64("cur-version", val.Revision))
+				// 异步任务进行任务处理
+				p.executor.Execute(func() {
+					defer wait.Done()
+					p.fetchConfigFile(val.Data)
+					syncCnt.Add(1)
+				})
 			}
 		} else {
+			delCnt.Add(1)
 			groupBucket.Delete(fileName)
-			err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(), fmt.Sprintf("%s/%s", groupName, fileName), metav1.DeleteOptions{})
+			err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(),
+				fmt.Sprintf("%s/%s", groupName, fileName), metav1.DeleteOptions{})
 			if err != nil {
 				log.SyncConfigMapScope().Errorf("delete config map failed, %v", err)
 			}
 		}
 	}
+
+	wait.Wait()
+	log.SyncConfigMapScope().Info("finish config map sync", zap.Duration("cost", time.Since(start)),
+		zap.Int32("add", syncCnt.Load()), zap.Int32("del", delCnt.Load()))
 }
 
 func (p *PolarisConfigWatcher) fetchConfigFile(req *config_manage.ClientConfigFileInfo) {
-	discoverClient := p.discoverClient
-	if err := discoverClient.Send(&config_manage.ConfigDiscoverRequest{
-		Type:       config_manage.ConfigDiscoverRequest_CONFIG_FILE,
-		ConfigFile: req,
-	}); err != nil {
-		log.SyncConfigMapScope().Errorf("fetch config file failed, %v", err)
-	}
-}
 
-func (p *PolarisConfigWatcher) receiveConfigFile(resp *config_manage.ConfigDiscoverResponse) {
-	file := resp.ConfigFile
-	namespace := file.GetNamespace().GetValue()
+	file, err := p.configAPI.FetchConfigFile(&api.GetConfigFileRequest{
+		GetConfigFileRequest: &model.GetConfigFileRequest{
+			Namespace: req.GetNamespace().GetValue(),
+			FileGroup: req.GetGroup().GetValue(),
+			FileName:  req.GetFileName().GetValue(),
+		},
+	})
+	if err != nil {
+		log.SyncConfigMapScope().Errorf("fetch config file failed, %v", err)
+		return
+	}
+	log.SyncConfigMapScope().Info("finish fetch config file", zap.String("namespace", file.GetNamespace()),
+		zap.String("group", file.GetFileGroup()), zap.String("file", file.GetFileName()))
+	namespace := file.GetNamespace()
 
 	cm := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s/%s", file.GetGroup().GetValue(), file.GetFileName().GetValue()),
+			Name:      fmt.Sprintf("%s/%s", file.GetFileGroup(), file.GetFileName()),
 			Namespace: namespace,
-			Labels:    ToTagMap(file),
+			Labels:    file.GetLabels(),
 		},
 		Data: map[string]string{
-			file.GetFileName().GetValue(): file.GetContent().GetValue(),
+			file.GetFileName(): file.GetContent(),
 		},
 	}
 
-	_, err := p.k8sClient.CoreV1().ConfigMaps(namespace).Create(context.Background(), cm, metav1.CreateOptions{})
+	_, err = p.k8sClient.CoreV1().ConfigMaps(namespace).Create(context.Background(), cm, metav1.CreateOptions{})
 	if err == nil {
 		return
 	}

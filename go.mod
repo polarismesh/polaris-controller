@@ -1,6 +1,6 @@
 module github.com/polarismesh/polaris-controller
 
-go 1.20
+go 1.21
 
 require (
 	github.com/ghodss/yaml v1.0.0
@@ -11,7 +11,7 @@ require (
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/openshift/api v3.9.1-0.20191008181517-e4fd21196097+incompatible
-	github.com/polarismesh/polaris-go v1.5.6
+	github.com/polarismesh/polaris-go v1.6.0-beta.2
 	github.com/prometheus/client_golang v1.17.0 // indirect
 	github.com/prometheus/common v0.45.0 // indirect
 	github.com/spf13/cobra v1.6.0
@@ -20,8 +20,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	google.golang.org/grpc v1.56.3
+	golang.org/x/sys v0.14.0 // indirect
+	google.golang.org/grpc v1.59.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.27.3
 	k8s.io/apimachinery v0.27.3
@@ -80,17 +80,11 @@ require (
 	go.opentelemetry.io/otel/sdk v1.10.0 // indirect
 	go.opentelemetry.io/otel/trace v1.10.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
-<<<<<<< HEAD
-	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sync v0.2.0 // indirect
-	golang.org/x/term v0.13.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
-=======
+	go.uber.org/automaxprocs v1.5.3
 	golang.org/x/oauth2 v0.12.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/term v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
->>>>>>> 53041f5... feat:support sync polaris config to k8s configmap
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20231106174013-bbf56f31fb17 // indirect
