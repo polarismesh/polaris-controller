@@ -103,7 +103,8 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 			metav1.SetMetaDataAnnotation(&operationConfigMap.ObjectMeta, util.PolarisConfigGroup, groupName)
 		}
 		// 记录ConfigMap 的 sync 来源 kubernetes 集群
-		metav1.SetMetaDataLabel(&operationConfigMap.ObjectMeta, util.InternalConfigFileSyncSourceClusterKey, p.config.PolarisController.ClusterName)
+		metav1.SetMetaDataLabel(&operationConfigMap.ObjectMeta, util.InternalConfigFileSyncSourceClusterKey,
+			p.config.PolarisController.ClusterName)
 
 		cachedConfigMap, ok := p.configFileCache.Load(task.Key())
 		if !ok {
@@ -161,7 +162,8 @@ func (p *PolarisController) processSyncNamespaceAndConfigMap(configmap *v1.Confi
 func (p *PolarisController) processUpdateConfigMap(old, cur *v1.ConfigMap) error {
 	log.SyncConfigScope().Infof("Update ConfigMap %s/%s", cur.GetNamespace(), cur.GetName())
 	if !p.IsPolarisConfigMap(cur) {
-		log.SyncConfigScope().Infof("user cancel sync ConfigMap %s/%s, delete(%v)", cur.GetNamespace(), cur.GetName(), p.allowDeleteConfig())
+		log.SyncConfigScope().Infof("user cancel sync ConfigMap %s/%s, delete(%v)", cur.GetNamespace(),
+			cur.GetName(), p.allowDeleteConfig())
 		return p.processDeleteConfigMap(cur)
 	}
 	_, err := polarisapi.UpdateConfigMap(cur)
