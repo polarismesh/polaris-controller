@@ -50,9 +50,9 @@ func (p *PolarisController) resyncWorker() {
 	})
 
 	// 只有开启了 SyncConfigMap 才会触发相关任务
-	if p.OpenSyncConfigMap() {
+	if p.AllowSyncFromConfigMap() {
 		p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
-			v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+			v, ok := p.configFileCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
 			if !ok {
 				task := &Task{
 					Namespace:  value.GetNamespace(),

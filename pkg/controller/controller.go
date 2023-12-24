@@ -105,6 +105,9 @@ type PolarisController struct {
 
 	// polarisServerFailedTimes record the failed time of polaris server which is used to trigger full resync
 	polarisServerFailedTimes int
+
+	// polarisConfigWatcher 负责将北极星上的配置同步到 kubernetes ConfigMap
+	polarisConfigWatcher *PolarisConfigWatcher
 }
 
 const (
@@ -199,8 +202,18 @@ func NewPolarisController(
 	return p, nil
 }
 
-func (p *PolarisController) OpenSyncConfigMap() bool {
-	return p.config.PolarisController.SyncConfigMap
+// AllowSyncFromConfigMap 是否开启配置同步从 ConfigMap 到 Polaris
+func (p *PolarisController) AllowSyncFromConfigMap() bool {
+	return p.config.PolarisController.ConfigSync.Enable && p.config.PolarisController.ConfigSync.SyncDirection != util.SyncDirectionPolarisKubernetes
+}
+
+// AllowSyncToConfigMap 是否开启配置同步从 Polaris 到 Kubernetes
+func (p *PolarisController) AllowSyncToConfigMap() bool {
+	return p.config.PolarisController.ConfigSync.Enable && p.config.PolarisController.ConfigSync.SyncDirection != util.SyncDirectionKubernetesToPolaris
+}
+
+func (p *PolarisController) allowDeleteConfig() bool {
+	return p.config.PolarisController.ConfigSync.AllowDelete
 }
 
 // Run will not return until stopCh is closed. workers determines how many
@@ -347,13 +360,19 @@ func (p *PolarisController) CompareServiceChange(old, new *v1.Service) util.Serv
 // IsPolarisConfigMap 用于判断是是否满足创建 PolarisConfigMap 的要求字段，这块逻辑应该在webhook中也增加
 func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 
-	// 过滤一些不合法的 service
+	// 过滤一些不合法的对象
 	if util.IgnoreObject(svc) {
 		return false
 	}
+	if val, ok := svc.Annotations[util.InternalConfigFileSyncSourceKey]; ok {
+		// 如果同步来源是 polaris, 则不能在认为是需要同步回 polaris 的 ConfigMap
+		if val == util.SourceFromPolaris {
+			return false
+		}
+	}
 
 	sync, ok := svc.Annotations[util.PolarisSync]
-	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
+	// 优先看 ConfigMap 的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
 		return sync == util.IsEnableSync
 	}
@@ -375,6 +394,7 @@ func (p *PolarisController) insertTask(t *Task) {
 	case KubernetesNamespace:
 		log.Infof("insert task: %s", t.String())
 	}
+	log.TraceScope().Info("INSERT-TASK|" + t.String())
 	p.queue.Add(t)
 }
 
@@ -385,19 +405,23 @@ func (p *PolarisController) handleTask(f func(t *Task) error) bool {
 	}
 	defer p.queue.Done(val)
 	task := val.(*Task)
+	log.TraceScope().Info("HANDLE-TASK|" + task.String())
 	err := f(task)
 	if err == nil {
+		log.TraceScope().Info("REMOVE-TASK|" + task.String())
 		p.queue.Forget(val)
 		return true
 	}
 
 	if p.queue.NumRequeues(val) < maxRetries {
+		log.TraceScope().Warn("RETRY-TASK|" + task.String())
 		log.Infof("syncing service %v, retrying. Error: %v", task, err)
 		p.queue.AddRateLimited(val)
 		return true
 	}
 
 	log.Errorf("Dropping service %v out of the queue: %v", task, err)
+	log.TraceScope().Error("DROP-TASK|" + task.String())
 	p.queue.Forget(val)
 	runtime.HandleError(err)
 	return true

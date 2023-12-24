@@ -68,7 +68,13 @@ data:
       mode: "mesh"
     # service sync
     serviceSync:
+      enable: true
       mode: "all"
+      serverAddress: #POLARIS_HOST#
+      # 北极星开启鉴权时需要配置
+      accessToken: #POLARIS_TOKEN#
+    configSync:
+      enable: true
       serverAddress: #POLARIS_HOST#
       # 北极星开启鉴权时需要配置
       accessToken: #POLARIS_TOKEN#

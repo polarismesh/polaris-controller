@@ -30,7 +30,6 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/grpclog"
-	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -211,11 +210,11 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	// 4. 配置 polaris-sidecar 注入模式的
 	s.PolarisController.SidecarMode = config.SidecarInject.Mode
 	// 设置是否开启同步 ConfigMap
-	s.PolarisController.SyncConfigMap = config.ServiceSync.EnableSyncConfigMap
+	s.PolarisController.ConfigSync = config.ConfigSync
 
 	// 5.设置健康检查时间以及定时对账时间
-	s.PolarisController.HealthCheckDuration, _ = time.ParseDuration(config.ServiceSync.HealthCheckDuration)
-	s.PolarisController.ResyncDuration, _ = time.ParseDuration(config.ServiceSync.ResyncDuration)
+	s.PolarisController.HealthCheckDuration, _ = time.ParseDuration(config.Server.HealthCheckDuration)
+	s.PolarisController.ResyncDuration, _ = time.ParseDuration(config.Server.ResyncDuration)
 
 	common.PolarisServerAddress = polarisServerAddress
 	common.PolarisServerGrpcAddress = polarisapi.PolarisGrpc
@@ -539,64 +538,6 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 	}()
 
 	return nil, nil
-}
-
-// ServiceSync controller 用到的配置
-type ProxyMetadata struct {
-	ServerAddress string `yaml:"serverAddress"`
-	ClusterName   string `yaml:"clusterName"`
-	CAAddress     string `yaml:"caAddress"`
-}
-
-// DefaultConfig controller 用到的配置
-type DefaultConfig struct {
-	ProxyMetadata ProxyMetadata `yaml:"serviceSync"`
-}
-
-// ResourceSync 服务同步相关配置
-type ResourceSync struct {
-	Mode          string `yaml:"mode"`
-	ServerAddress string `yaml:"serverAddress"`
-	// 健康探测时间间隔
-	HealthCheckDuration string `yaml:"healthCheckDuration"`
-	// 定时对账时间间隔
-	ResyncDuration string `yaml:"resyncDuration"`
-	// 以下配置仅 polaris-server 开启 console auth
-	// 调用 polaris-server OpenAPI 的凭据
-	PolarisAccessToken string `yaml:"accessToken"`
-	// Operator 用于数据同步的帐户ID
-	Operator string `yaml:"operator"`
-	// EnableSyncConfigMap 开启同步 ConfigMap
-	EnableSyncConfigMap bool `yaml:"enableSyncConfigMap"`
-}
-
-// SidecarInject sidecar 注入相关
-type SidecarInject struct {
-	Mode string `yaml:"mode"`
-}
-
-type controllerConfig struct {
-	Logger        map[string]*log.Options `yaml:"logger"`
-	ClusterName   string                  `yaml:"clusterName"`
-	ServiceSync   *ResourceSync           `yaml:"serviceSync"`
-	SidecarInject SidecarInject           `yaml:"sidecarInject"`
-}
-
-func readConfFromFile() (*controllerConfig, error) {
-	buf, err := ioutil.ReadFile(MeshFile)
-	if err != nil {
-		log.Errorf("read file error, %v", err)
-		return nil, err
-	}
-
-	c := &controllerConfig{}
-	err = yaml.Unmarshal(buf, c)
-	if err != nil {
-		log.Errorf("unmarshal config error, %v", err)
-		return nil, err
-	}
-
-	return c, nil
 }
 
 // startPolarisAccountController 启用反对账逻辑，定时从北极星侧拉取通过TKEx注册的服务，对比一下是否在集群中还存在

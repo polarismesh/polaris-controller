@@ -126,7 +126,7 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 }
 
 func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Namespace, operation Operation) {
-	if !p.OpenSyncConfigMap() {
+	if !p.AllowSyncFromConfigMap() {
 		return
 	}
 

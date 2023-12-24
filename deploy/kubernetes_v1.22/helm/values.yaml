@@ -48,6 +48,9 @@ controller:
     repo: polarismesh/polaris-controller
     tag: #CONTROLLER_VERSION#
     pullPolicy: IfNotPresent
+  limit:
+    cpu: 2
+    memory: 2Gi
   metrics:
     port: 80
     type: ClusterIP

@@ -66,9 +66,30 @@ const (
 )
 
 const (
+	SyncDirectionKubernetesToPolaris = "kubernetesToPolaris"
+	SyncDirectionPolarisKubernetes   = "polarisToKubernetes"
+	SyncDirectionBoth                = "both"
+)
+
+const (
+	SourceFromKubernetes = "kubernetes"
+	SourceFromPolaris    = "polaris"
+)
+
+const (
+	ConflictModeIgnore  = "ignore"
+	ConflictModeReplace = "replace"
+)
+
+const (
 	MTLSModeNone       = "none"
 	MTLSModeStrict     = "strict"
 	MTLSModePermissive = "permissive"
+)
+
+const (
+	InternalConfigFileSyncSourceKey        = "internal-sync-source"
+	InternalConfigFileSyncSourceClusterKey = "internal-sync-sourcecluster"
 )
 
 // PolarisSystemMetaSet 由 polaris controller 决定的 meta，用户如果在 custom meta 中设置了，不会生效
