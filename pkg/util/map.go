@@ -126,7 +126,8 @@ func (set *SyncSet[K]) Contains(val K) bool {
 
 func (set *SyncSet[K]) String() string {
 	ret := set.ToSlice()
-	data, _ := json.Marshal(ret)
+	data, err := json.Marshal(ret)
+	_ = err
 	return string(data)
 }
 
