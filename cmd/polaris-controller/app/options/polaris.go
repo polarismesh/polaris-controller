@@ -124,5 +124,6 @@ func (o *PolarisControllerOptions) ApplyTo(cfg *PolarisControllerConfiguration) 
 	cfg.SidecarMode = o.SidecarMode
 	cfg.HealthCheckDuration = o.HealthCheckDuration
 	cfg.ResyncDuration = o.ResyncDuration
+	cfg.ConfigSync = o.ConfigSync
 	return nil
 }
