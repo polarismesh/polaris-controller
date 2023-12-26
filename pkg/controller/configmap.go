@@ -387,11 +387,11 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 		default:
 			msg, err := discoverClient.Recv()
 			if err != nil {
-				log.SyncConfigMapScope().Info("receive fetch config resource fail", zap.Error(err))
+				log.SyncConfigMapScope().Error("receive fetch config resource fail", zap.Error(err))
 				continue
 			}
 
-			log.SyncConfigMapScope().Infof("receive fetch config resource for type(%v) code(%d)",
+			log.SyncConfigMapScope().Debugf("receive fetch config resource for type(%v) code(%d)",
 				msg.GetType().String(), msg.GetCode())
 			if msg.Code != uint32(apimodel.Code_ExecuteSuccess) {
 				continue
@@ -471,7 +471,8 @@ func (p *PolarisConfigWatcher) receiveGroups(resp *config_manage.ConfigDiscoverR
 		return
 	}
 
-	p.groupRevisions.Store(resp.GetConfigFile().GetNamespace().GetValue(), resp.GetRevision())
+	nsVal := resp.GetConfigFile().GetNamespace().GetValue()
+	p.groupRevisions.Store(nsVal, resp.GetRevision())
 	for i := range groups {
 		item := groups[i]
 		nsName := item.GetNamespace().GetValue()
@@ -482,6 +483,12 @@ func (p *PolarisConfigWatcher) receiveGroups(resp *config_manage.ConfigDiscoverR
 		nsBucket, _ := p.needSyncFiles.Load(nsName)
 		nsBucket.ComputeIfAbsent(groupName, func(k string) *util.SyncMap[string, *configFileRefrence] {
 			return util.NewSyncMap[string, *configFileRefrence]()
+		})
+	}
+
+	if nsBucket, ok := p.groups.Load(nsVal); ok {
+		nsBucket.Range(func(groupName string) {
+			p.fetchConfigFiles(nsVal, groupName)
 		})
 	}
 }
@@ -510,6 +517,8 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 		return
 	}
 
+	log.SyncConfigMapScope().Debugf("begin fetch config files, count %d", len(resp.GetConfigFileNames()))
+
 	var (
 		start   = time.Now()
 		wait    = &sync.WaitGroup{}
@@ -525,6 +534,9 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 		nsBucket, _ := p.needSyncFiles.Load(nsName)
 		groupBucket, _ := nsBucket.Load(groupName)
 		if p.allowSyncToConfigMap(item) {
+			log.SyncConfigMapScope().Info("fetch config file", zap.String("namespace", nsName),
+				zap.String("group", groupName), zap.String("file", fileName),
+				zap.Uint64("version", item.GetVersion().Value))
 			val, isNew := groupBucket.ComputeIfAbsent(fileName, func(k string) *configFileRefrence {
 				return &configFileRefrence{
 					Revision: 0,
@@ -534,8 +546,6 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 				val.Revision = item.GetVersion().Value
 				groupBucket.Store(fileName, val)
 				wait.Add(1)
-				log.SyncConfigMapScope().Info("begin fetch config file", zap.String("namespace", nsName),
-					zap.String("group", groupName), zap.String("file", fileName), zap.Uint64("cur-version", val.Revision))
 				// 异步任务进行任务处理
 				p.executor.Execute(func() {
 					defer wait.Done()
@@ -544,6 +554,8 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 				})
 			}
 		} else {
+			log.SyncConfigMapScope().Info("remove config file", zap.String("namespace", nsName),
+				zap.String("group", groupName), zap.String("file", fileName))
 			delCnt.Add(1)
 			groupBucket.Delete(fileName)
 			err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(),
