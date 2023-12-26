@@ -39,6 +39,7 @@ import (
 var (
 	PolarisHttpURL     = "http://127.0.0.1:8090"
 	PolarisGrpc        = "127.0.0.1:8091"
+	PolarisConfigGrpc  = "127.0.0.1:8093"
 	PolarisAccessToken = ""
 	PolarisOperator    = ""
 )

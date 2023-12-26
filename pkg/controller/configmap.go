@@ -282,7 +282,7 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 }
 
 func (p *PolarisController) watchPolarisConfig() error {
-	conn, err := grpc.Dial(polarisapi.PolarisGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(polarisapi.PolarisConfigGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
 	}
