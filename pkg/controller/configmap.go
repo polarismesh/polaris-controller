@@ -231,6 +231,9 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 	// 5. 如果: [old/not polaris -> new/not polaris] 舍弃
 	oldIsPolaris := p.IsPolarisConfigMap(oldCm)
 	curIsPolaris := p.IsPolarisConfigMap(curCm)
+	if !oldIsPolaris && !curIsPolaris {
+		return
+	}
 
 	// 现在已经不是需要同步的北极星配置
 	if !curIsPolaris {
