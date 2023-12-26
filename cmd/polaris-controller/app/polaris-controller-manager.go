@@ -190,7 +190,9 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
 	polarisapi.PolarisHttpURL = "http://" + polarisServerAddress + ":" + strconv.Itoa(flags.httpPort)
 	polarisapi.PolarisGrpc = polarisServerAddress + ":" + strconv.Itoa(flags.grpcPort)
-	log.Infof("[Manager] polaris http address %s, grpc address %s", polarisapi.PolarisHttpURL, polarisapi.PolarisGrpc)
+	polarisapi.PolarisConfigGrpc = polarisServerAddress + ":8093"
+	log.Infof("[Manager] polaris http address %s, discover grpc address %s, config grpc address %s",
+		polarisapi.PolarisHttpURL, polarisapi.PolarisGrpc, polarisapi.PolarisConfigGrpc)
 	// 设置北极星开启鉴权之后，需要使用的访问token
 	polarisapi.PolarisAccessToken = config.ServiceSync.PolarisAccessToken
 	polarisapi.PolarisOperator = config.ServiceSync.Operator

@@ -199,7 +199,6 @@ func NewPolarisController(
 	p.provider = providerAPI
 
 	p.config = config
-
 	return p, p.watchPolarisConfig()
 }
 
