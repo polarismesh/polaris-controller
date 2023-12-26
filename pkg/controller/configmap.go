@@ -413,6 +413,9 @@ func (p *PolarisConfigWatcher) watchNamespaces(ctx context.Context) {
 	for {
 		select {
 		case e := <-p.nsWatcher.ResultChan():
+			if e.Object == nil {
+				continue
+			}
 			event := e.Object.(*v1.Namespace)
 			switch e.Type {
 			case watch.Added, watch.Modified:
