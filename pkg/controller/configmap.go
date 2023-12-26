@@ -444,7 +444,7 @@ func (p *PolarisConfigWatcher) fetchResources(ctx context.Context) {
 }
 
 func (p *PolarisConfigWatcher) fetchGroups(ns string) {
-	log.SyncConfigMapScope().Infof("begin fetch config groups for namespace(%v)", ns)
+	log.SyncConfigMapScope().Debugf("begin fetch config groups for namespace(%v)", ns)
 	p.groups.ComputeIfAbsent(ns, func(k string) *util.SyncSet[string] {
 		return util.NewSyncSet[string]()
 	})
@@ -487,7 +487,7 @@ func (p *PolarisConfigWatcher) receiveGroups(resp *config_manage.ConfigDiscoverR
 }
 
 func (p *PolarisConfigWatcher) fetchConfigFiles(namespace, group string) {
-	log.SyncConfigMapScope().Infof("begin fetch config files for namespace(%v) group(%s)", namespace, group)
+	log.SyncConfigMapScope().Debugf("begin fetch config files for namespace(%v) group(%s)", namespace, group)
 	key := namespace + "/" + group
 	preRevision, _ := p.filesRevisions.Load(key)
 	discoverClient := p.discoverClient
@@ -525,12 +525,12 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 		nsBucket, _ := p.needSyncFiles.Load(nsName)
 		groupBucket, _ := nsBucket.Load(groupName)
 		if p.allowSyncToConfigMap(item) {
-			val, isOld := groupBucket.ComputeIfAbsent(fileName, func(k string) *configFileRefrence {
+			val, isNew := groupBucket.ComputeIfAbsent(fileName, func(k string) *configFileRefrence {
 				return &configFileRefrence{
 					Revision: 0,
 				}
 			})
-			if isOld && val.Revision <= item.GetVersion().GetValue() {
+			if isNew || val.Revision <= item.GetVersion().GetValue() {
 				val.Revision = item.GetVersion().Value
 				groupBucket.Store(fileName, val)
 				wait.Add(1)
@@ -555,7 +555,7 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 	}
 
 	wait.Wait()
-	log.SyncConfigMapScope().Info("finish config map sync", zap.Duration("cost", time.Since(start)),
+	log.SyncConfigMapScope().Debugf("finish config map sync", zap.Duration("cost", time.Since(start)),
 		zap.Int32("add", syncCnt.Load()), zap.Int32("del", delCnt.Load()))
 }
 
