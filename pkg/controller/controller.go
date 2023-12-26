@@ -20,6 +20,7 @@ import (
 
 	"github.com/polarismesh/polaris-go/api"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -199,6 +200,7 @@ func NewPolarisController(
 	p.provider = providerAPI
 
 	p.config = config
+	log.Info("controller config", zap.Any("info", p.config.PolarisController))
 	return p, p.watchPolarisConfig()
 }
 
