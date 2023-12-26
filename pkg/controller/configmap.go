@@ -294,7 +294,6 @@ func (p *PolarisController) watchPolarisConfig() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	//
 	watcher := &PolarisConfigWatcher{
 		controller:     p,
 		k8sClient:      p.client,
@@ -388,10 +387,13 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 		default:
 			msg, err := discoverClient.Recv()
 			if err != nil {
+				log.SyncConfigMapScope().Info("receive fetch config resource fail", zap.Error(err))
 				continue
 			}
 
-			if msg.Code == uint32(apimodel.Code_DataNoChange) {
+			log.SyncConfigMapScope().Infof("receive fetch config resource for type(%v) code(%d)",
+				msg.GetType().String(), msg.GetCode())
+			if msg.Code != uint32(apimodel.Code_ExecuteSuccess) {
 				continue
 			}
 
@@ -439,6 +441,7 @@ func (p *PolarisConfigWatcher) fetchResources(ctx context.Context) {
 }
 
 func (p *PolarisConfigWatcher) fetchGroups(ns string) {
+	log.SyncConfigMapScope().Infof("begin fetch config groups for namespace(%v)", ns)
 	p.groups.ComputeIfAbsent(ns, func(k string) *util.SyncSet[string] {
 		return util.NewSyncSet[string]()
 	})
@@ -481,6 +484,7 @@ func (p *PolarisConfigWatcher) receiveGroups(resp *config_manage.ConfigDiscoverR
 }
 
 func (p *PolarisConfigWatcher) fetchConfigFiles(namespace, group string) {
+	log.SyncConfigMapScope().Infof("begin fetch config files for namespace(%v) group(%s)", namespace, group)
 	key := namespace + "/" + group
 	preRevision, _ := p.filesRevisions.Load(key)
 	discoverClient := p.discoverClient
@@ -597,10 +601,6 @@ const (
 )
 
 func (p *PolarisConfigWatcher) allowSyncToConfigMap(file *config_manage.ClientConfigFileInfo) bool {
-	// 如果是加密配置，目前不支持，跳过同步
-	if file.GetEncrypted().GetValue() {
-		return false
-	}
 	var (
 		allowSync       bool
 		isSourceFromK8s bool
