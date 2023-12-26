@@ -54,6 +54,9 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	// 5. 如果: [old/not polaris -> new/not polaris] 舍弃
 	oldIsPolaris := p.IsPolarisService(oldService)
 	curIsPolaris := p.IsPolarisService(curService)
+	if !oldIsPolaris && !curIsPolaris {
+		return
+	}
 
 	// 现在已经不是需要同步的北极星服务
 	if !curIsPolaris {

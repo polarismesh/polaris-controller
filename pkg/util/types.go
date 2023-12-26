@@ -67,7 +67,7 @@ const (
 
 const (
 	SyncDirectionKubernetesToPolaris = "kubernetesToPolaris"
-	SyncDirectionPolarisKubernetes   = "polarisToKubernetes"
+	SyncDirectionPolarisToKubernetes = "polarisToKubernetes"
 	SyncDirectionBoth                = "both"
 )
 

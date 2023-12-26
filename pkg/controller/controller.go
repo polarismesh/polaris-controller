@@ -204,14 +204,14 @@ func NewPolarisController(
 
 // AllowSyncFromConfigMap 是否开启配置同步从 ConfigMap 到 Polaris
 func (p *PolarisController) AllowSyncFromConfigMap() bool {
-	return p.config.PolarisController.ConfigSync.Enable &&
-		p.config.PolarisController.ConfigSync.SyncDirection != util.SyncDirectionPolarisKubernetes
+	syncDirection := p.config.PolarisController.ConfigSync.SyncDirection
+	return p.config.PolarisController.ConfigSync.Enable && (syncDirection == util.SyncDirectionKubernetesToPolaris || syncDirection == util.SyncDirectionBoth)
 }
 
 // AllowSyncToConfigMap 是否开启配置同步从 Polaris 到 Kubernetes
 func (p *PolarisController) AllowSyncToConfigMap() bool {
-	return p.config.PolarisController.ConfigSync.Enable &&
-		p.config.PolarisController.ConfigSync.SyncDirection != util.SyncDirectionKubernetesToPolaris
+	syncDirection := p.config.PolarisController.ConfigSync.SyncDirection
+	return p.config.PolarisController.ConfigSync.Enable && (syncDirection == util.SyncDirectionPolarisToKubernetes || syncDirection == util.SyncDirectionBoth)
 }
 
 func (p *PolarisController) allowDeleteConfig() bool {
