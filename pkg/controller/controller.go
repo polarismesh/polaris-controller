@@ -199,7 +199,8 @@ func NewPolarisController(
 	p.provider = providerAPI
 
 	p.config = config
-	return p, nil
+	
+	return p, p.watchPolarisConfig()
 }
 
 // AllowSyncFromConfigMap 是否开启配置同步从 ConfigMap 到 Polaris
