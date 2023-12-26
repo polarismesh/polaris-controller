@@ -555,7 +555,7 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 	}
 
 	wait.Wait()
-	log.SyncConfigMapScope().Debugf("finish config map sync", zap.Duration("cost", time.Since(start)),
+	log.SyncConfigMapScope().Debug("finish config map sync", zap.Duration("cost", time.Since(start)),
 		zap.Int32("add", syncCnt.Load()), zap.Int32("del", delCnt.Load()))
 }
 
