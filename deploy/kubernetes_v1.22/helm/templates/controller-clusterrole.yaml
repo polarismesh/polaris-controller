@@ -8,8 +8,8 @@ rules:
   resources:
   - services
   - namespaces
-  - configmaps
   - pods
+  - endpoints
   verbs:
   - get
   - list
@@ -18,7 +18,7 @@ rules:
   - ""
   resources:
   - events
-  - endpoints
+  - configmaps
   verbs:
   - create
   - update

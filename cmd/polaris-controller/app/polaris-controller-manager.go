@@ -491,6 +491,9 @@ func buildAPI() (api.ConsumerAPI, api.ProviderAPI, error) {
 	cfg.GetGlobal().GetServerConnector().SetConnectTimeout(time.Second * 10)
 	cfg.GetGlobal().GetServerConnector().SetMessageTimeout(time.Second * 10)
 	cfg.GetGlobal().GetAPI().SetTimeout(time.Second * 10)
+	cfg.GetConfigFile().GetConfigConnectorConfig().SetAddresses([]string{polarisapi.PolarisConfigGrpc})
+	cfg.GetConfigFile().GetConfigConnectorConfig().SetConnectTimeout(time.Second * 10)
+	cfg.GetConfigFile().GetConfigConnectorConfig().SetMessageTimeout(time.Second * 10)
 
 	consumerAPI, err := api.NewConsumerAPIByConfig(cfg)
 	if err != nil {

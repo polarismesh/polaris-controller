@@ -38,8 +38,8 @@ spec:
                   fieldPath: metadata.namespace
           imagePullPolicy: Always
           volumeMounts:
-            - mountPath: /polaris-controller/log
-              name: log
+            - mountPath: /polaris-controller/logs
+              name: logs
             - name: certs
               mountPath: /etc/polaris-inject/certs
               readOnly: true
@@ -72,6 +72,6 @@ spec:
           configMap:
             name: injector-mesh
         - hostPath:
-            path: /data/polaris-controller/log
+            path: /data/polaris-controller/logs
             type: "DirectoryOrCreate"
-          name: log
+          name: logs

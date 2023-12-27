@@ -29,9 +29,6 @@ workdir=$(dirname $(realpath $0))
 sed -i "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
 cat "$workdir"/deploy/variables.txt
 
-folder_name="polaris-controller-release_${version}.k8s1.21"
-pkg_name="${folder_name}.zip"
-
 function replaceVar() {
   for file in $(ls *.yaml); do
     key="#$1#"
@@ -48,6 +45,11 @@ cd $workdir
 
 export -f replaceVar
 
+# 处理 kubernetes <= 1.21 的 polaris-controller 发布包
+
+folder_name="polaris-controller-release_${version}.k8s1.21"
+pkg_name="${folder_name}.zip"
+
 cd $workdir
 
 # 清理环境
@@ -58,10 +60,10 @@ rm -f "${pkg_name}"
 mkdir -p ${folder_name}
 
 cp -r deploy/kubernetes_v1.21/* ${folder_name}
-cp deploy/variables.txt ${folder_name}
+cp deploy/variables.txt ${folder_name}/kubernetes
 
 cd ${folder_name}/helm
-varFile="../variables.txt"
+varFile="../kubernetes/variables.txt"
 if [ ! -f "$varFile" ]; then
   echo "variables.txt not exists"
   exit 1
@@ -78,6 +80,8 @@ else
   md5sum ${pkg_name} >"${pkg_name}.md5sum"
 fi
 
+# 处理 kubernetes >= 1.22 的 polaris-controller 发布包
+
 folder_name="polaris-controller-release_${version}.k8s1.22"
 pkg_name="${folder_name}.zip"
 
@@ -91,10 +95,10 @@ rm -f "${pkg_name}"
 mkdir -p ${folder_name}
 
 cp -r deploy/kubernetes_v1.22/* ${folder_name}
-cp deploy/variables.txt ${folder_name}
+cp deploy/variables.txt ${folder_name}/kubernetes
 
 cd ${folder_name}/helm
-varFile="../variables.txt"
+varFile="../kubernetes/variables.txt"
 if [ ! -f "$varFile" ]; then
   echo "variables.txt not exists"
   exit 1

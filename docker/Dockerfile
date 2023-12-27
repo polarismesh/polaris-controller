@@ -13,10 +13,11 @@
 #  CONDITIONS OF ANY KIND, either express or implied. See the License for the
 #  specific language governing permissions and limitations under the License.
 
-FROM --platform=$TARGETPLATFORM  alpine:latest
+FROM alpine:latest
 
 ARG TARGETARCH
-ARG TARGETPLATFORM
+
+RUN sed -i 's!http://dl-cdn.alpinelinux.org/!https://mirrors.tencent.com/!g' /etc/apk/repositories
 
 RUN apk update \
     && apk add tzdata \
@@ -25,7 +26,7 @@ RUN apk update \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
-RUN mkdir -p /polaris-controller/log && \
+RUN mkdir -p /polaris-controller/logs && \
     chmod -R 755 /polaris-controller
 
 WORKDIR /polaris-controller

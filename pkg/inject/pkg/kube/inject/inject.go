@@ -42,6 +42,7 @@ import (
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
@@ -467,7 +468,11 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 
 	injectAnnonations := map[string]string{}
 	// 设置需要注入到 envoy 的 metadata
-	envoyMetadata := map[string]string{}
+	// 强制开启 XDS On-Demand 能力
+	envoyMetadata := map[string]string{
+		"sidecar.polarismesh.cn/openOnDemand":        "true",
+		"sidecar.polarismesh.cn/odcdsServerEndpoint": polarisapi.PolarisGrpc,
+	}
 	// 这里负责将需要额外塞入的 annonation 数据进行返回
 	if len(metadata.Annotations) != 0 {
 		tlsMode := util.MTLSModeNone

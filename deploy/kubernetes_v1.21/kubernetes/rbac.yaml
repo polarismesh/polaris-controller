@@ -3,9 +3,9 @@ kind: ServiceAccount
 metadata:
   name: polaris-controller
   namespace: polaris-system
-
 ---
-apiVersion: rbac.authorization.k8s.io/v1
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: polaris-controller
@@ -17,6 +17,7 @@ rules:
   - namespaces
   - configmaps
   - pods
+  - endpoints
   verbs:
   - get
   - list
@@ -25,7 +26,7 @@ rules:
   - ""
   resources:
   - events
-  - endpoints
+  - configmaps
   verbs:
   - create
   - update
@@ -42,8 +43,9 @@ rules:
   - list
   - update
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind:  ClusterRoleBinding
 metadata:
   name: polaris-controller
 roleRef:

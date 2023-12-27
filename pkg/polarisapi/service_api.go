@@ -107,7 +107,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 
 			var response AddResponse
 			err = json.Unmarshal(body, &response)
-			log.SyncNamingScope().Infof("Send add %s [%d/%d], body is %s. (%s)", msg, i+1, page, string(requestByte), requestID)
+			log.SyncNamingScope().Debugf("Send add %s [%d/%d], body is %s. (%s)", msg, i+1, page, string(requestByte), requestID)
 
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed unmarshal result %s [%d/%d], err %v. (%s)",
@@ -164,7 +164,7 @@ func dealAddInstanceResponse(response AddResponse, msg string,
 					Info: ins.Info,
 				})
 			} else {
-				log.SyncNamingScope().Infof("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.SyncNamingScope().Debugf("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 			}
 		}
@@ -194,7 +194,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 			requestID := uuid.New().String()
 			requestByte, err := json.Marshal(v)
 
-			log.SyncNamingScope().Infof("Send delete %s [%d/%d], body is %s. (%s)",
+			log.SyncNamingScope().Debugf("Send delete %s [%d/%d], body is %s. (%s)",
 				msg, i+1, page, string(requestByte), requestID)
 			if err != nil {
 				log.Errorf("Failed to marsh request %s [%d/%d], err %v. (%s)",
@@ -230,7 +230,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			err = json.Unmarshal(body, &response)
-			log.SyncNamingScope().Infof("%s [%d/%d], body is %s. (%s)",
+			log.SyncNamingScope().Debugf("%s [%d/%d], body is %s. (%s)",
 				msg, i+1, page, string(body), requestID)
 
 			if err != nil {
@@ -282,7 +282,7 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 					Info: ins.Info,
 				})
 			} else {
-				log.SyncNamingScope().Infof("Success delete %s [%s:%d] [%d/%d], info %s. (%s)",
+				log.SyncNamingScope().Debugf("Success delete %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 			}
 		}
@@ -330,7 +330,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 				})
 				return
 			}
-			log.SyncNamingScope().Infof("Update msg body is %s", string(requestByte))
+			log.SyncNamingScope().Debugf("Update msg body is %s", string(requestByte))
 			httpCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed request %s [%d/%d], err %v. requestId: %s", msg, i+1, page, err, requestID)
@@ -388,7 +388,7 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 					Info: ins.Info,
 				})
 			} else {
-				log.SyncNamingScope().Infof("Success add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
+				log.SyncNamingScope().Debugf("Success add %s [%s/%s] [%s:%d] [%d/%d], info %s.",
 					msg, ins.Instance.Namespace, ins.Instance.Service,
 					ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info)
 			}
@@ -429,7 +429,7 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
 
-	log.SyncNamingScope().Infof("Get service %s, body %s", serviceMsg, string(body))
+	log.SyncNamingScope().Debugf("Get service %s, body %s", serviceMsg, string(body))
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to get request %s %v", serviceMsg, err)
@@ -527,7 +527,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 		return response, err
 	}
 
-	log.SyncNamingScope().Infof("create service %s, body %s", serviceMsg, string(requestByte))
+	log.SyncNamingScope().Debugf("create service %s, body %s", serviceMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
@@ -592,7 +592,7 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 		return response, err
 	}
 
-	log.SyncNamingScope().Infof("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
+	log.SyncNamingScope().Debugf("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
@@ -637,7 +637,7 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 		return 0, PutServicesResponse{}, err
 	}
 
-	log.SyncNamingScope().Infof("Put service %s, body %s", serviceMsg, string(requestByte))
+	log.SyncNamingScope().Debugf("Put service %s, body %s", serviceMsg, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
 
@@ -684,7 +684,7 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 		return response, err
 	}
 
-	log.SyncNamingScope().Infof("create namespace %s, body %s", namespace, string(requestByte))
+	log.SyncNamingScope().Debugf("create namespace %s, body %s", namespace, string(requestByte))
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 

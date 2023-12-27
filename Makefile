@@ -29,7 +29,7 @@ build-multi-arch-image:
 	@echo "------------------"
 	@echo "--> Building multi-arch docker image for polaris-controller"
 	@echo "------------------"
-	@docker buildx build --platform $(PLATFORMS) --tag $(ORG)/$(REPO):$(IMAGE_TAG) -f ./docker/Dockerfile --push ./
+	@docker buildx build -f ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS) --push ./
 
 .PHONY: build-sidecar-init
 build-sidecar-init:
