@@ -350,7 +350,7 @@ type PolarisConfigWatcher struct {
 }
 
 func (p *PolarisConfigWatcher) Start(ctx context.Context) error {
-	p.executor = util.NewExecutor(runtime.NumCPU())
+	p.executor = util.NewExecutor(runtime.GOMAXPROCS(0))
 	nsList, err := p.k8sClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -391,9 +391,11 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 				continue
 			}
 
-			log.SyncConfigMapScope().Debugf("receive fetch config resource for type(%v) code(%d)",
-				msg.GetType().String(), msg.GetCode())
 			if msg.Code != uint32(apimodel.Code_ExecuteSuccess) {
+				if msg.Code != uint32(apimodel.Code_DataNoChange) {
+					log.SyncConfigMapScope().Errorf("receive fetch config resource for type(%v) code(%d) msg(%s)",
+						msg.GetType().String(), msg.GetCode(), msg.GetInfo())
+				}
 				continue
 			}
 
@@ -436,6 +438,11 @@ func (p *PolarisConfigWatcher) fetchResources(ctx context.Context) {
 		case <-ticker.C:
 			p.namespaces.Range(func(nsName string) {
 				p.fetchGroups(nsName)
+				if nsBucket, ok := p.groups.Load(nsName); ok {
+					nsBucket.Range(func(groupName string) {
+						p.fetchConfigFiles(nsName, groupName)
+					})
+				}
 			})
 		case <-ctx.Done():
 			return
@@ -485,12 +492,6 @@ func (p *PolarisConfigWatcher) receiveGroups(resp *config_manage.ConfigDiscoverR
 			return util.NewSyncMap[string, *configFileRefrence]()
 		})
 	}
-
-	if nsBucket, ok := p.groups.Load(nsVal); ok {
-		nsBucket.Range(func(groupName string) {
-			p.fetchConfigFiles(nsVal, groupName)
-		})
-	}
 }
 
 func (p *PolarisConfigWatcher) fetchConfigFiles(namespace, group string) {
@@ -517,7 +518,7 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 		return
 	}
 
-	log.SyncConfigMapScope().Debugf("begin fetch config files, count %d", len(resp.GetConfigFileNames()))
+	log.SyncConfigMapScope().Infof("begin fetch config files, count %d", len(resp.GetConfigFileNames()))
 
 	var (
 		start   = time.Now()
@@ -540,6 +541,7 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 			val, isNew := groupBucket.ComputeIfAbsent(fileName, func(k string) *configFileRefrence {
 				return &configFileRefrence{
 					Revision: 0,
+					Data:     item,
 				}
 			})
 			if isNew || val.Revision <= item.GetVersion().GetValue() {
@@ -558,10 +560,12 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 				zap.String("group", groupName), zap.String("file", fileName))
 			delCnt.Add(1)
 			groupBucket.Delete(fileName)
-			err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(),
-				fmt.Sprintf("%s/%s", groupName, fileName), metav1.DeleteOptions{})
-			if err != nil {
-				log.SyncConfigMapScope().Errorf("delete config map failed, %v", err)
+			if p.controller.allowDeleteConfig() {
+				err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(),
+					fmt.Sprintf("%s-%s", groupName, fileName), metav1.DeleteOptions{})
+				if err != nil {
+					log.SyncConfigMapScope().Errorf("delete config map failed, %v", err)
+				}
 			}
 		}
 	}
@@ -585,14 +589,18 @@ func (p *PolarisConfigWatcher) fetchConfigFile(req *config_manage.ClientConfigFi
 		return
 	}
 	log.SyncConfigMapScope().Info("finish fetch config file", zap.String("namespace", file.GetNamespace()),
-		zap.String("group", file.GetFileGroup()), zap.String("file", file.GetFileName()))
+		zap.String("group", file.GetFileGroup()), zap.String("file", file.GetFileName()),
+		zap.Any("labels", len(file.GetLabels())))
 	namespace := file.GetNamespace()
 
 	cm := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s/%s", file.GetFileGroup(), file.GetFileName()),
 			Namespace: namespace,
+			Name:      fmt.Sprintf("%s-%s", file.GetFileGroup(), file.GetFileName()),
 			Labels:    file.GetLabels(),
+			Annotations: map[string]string{
+				util.InternalConfigFileSyncSourceKey: util.SourceFromPolaris,
+			},
 		},
 		Data: map[string]string{
 			file.GetFileName(): file.GetContent(),
@@ -607,7 +615,7 @@ func (p *PolarisConfigWatcher) fetchConfigFile(req *config_manage.ClientConfigFi
 		_, err = p.k8sClient.CoreV1().ConfigMaps(namespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 	}
 	if err != nil {
-		log.SyncConfigMapScope().Errorf("update config file failed, %v", err)
+		log.SyncConfigMapScope().Errorf("upsert config file to configmap failed, %v", err)
 	}
 }
 

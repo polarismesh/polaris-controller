@@ -96,6 +96,11 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 		addr := addresses[i]
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
+		version := metadata[util.PolarisCustomVersion]
+		// 如果没有读取到用户显示设置的自定义版本号，则从 addr 中读取
+		if version == "" {
+			version = addr.Version
+		}
 
 		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
@@ -105,7 +110,7 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 			HealthCheck:       &healthCheck,
 			Host:              addr.IP,
 			Protocol:          addr.Protocol,
-			Version:           metadata[util.PolarisCustomVersion],
+			Version:           version,
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,

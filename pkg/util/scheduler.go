@@ -30,7 +30,7 @@ func NewExecutor(size int) *TaskExecutor {
 		workers = append(workers, &worker{
 			close:      0,
 			queue:      make(chan func(), 128),
-			delayQueue: sync.Map{},
+			delayQueue: &sync.Map{},
 		})
 	}
 
@@ -97,7 +97,7 @@ type worker struct {
 	close      int8
 	queue      chan func()
 	id         int64
-	delayQueue sync.Map
+	delayQueue *sync.Map
 }
 
 func (w *worker) add(f func()) {
