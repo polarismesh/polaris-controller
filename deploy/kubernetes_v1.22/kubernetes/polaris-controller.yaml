@@ -130,4 +130,4 @@ spec:
         - hostPath:
             path: /data/polaris-controller/log
             type: "DirectoryOrCreate"
-          name: log
+          name: logs
