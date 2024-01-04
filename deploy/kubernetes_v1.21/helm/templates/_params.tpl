@@ -89,6 +89,8 @@ Define the cmd envs for the bootstrap init container.
   value: 15010
 - name: CLUSTER_NAME
   value: {{ "{{" }}.ProxyConfig.ProxyMetadata.clusterName{{ "}}" }}
+- name: OPEN_DEMAND
+  value: {{ "{{" }}.ProxyConfig.ProxyMetadata.opemDemand{{ "}}" }}
 {{- end -}}
 
 

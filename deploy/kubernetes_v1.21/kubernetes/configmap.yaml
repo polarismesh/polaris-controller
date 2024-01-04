@@ -85,3 +85,4 @@ data:
     defaultConfig:
       proxyMetadata:
         serverAddress: #POLARIS_HOST#
+        clusterName: #CLUSTER_NAME#

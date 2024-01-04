@@ -18,32 +18,37 @@ set -ex
 readonly PACKAGE_DIRECTORY=$(dirname "$0")
 BOOTSTRAP_TEMPLATE="${PACKAGE_DIRECTORY}/bootstrap_template.yaml"
 readonly BOOTSTRAP_INSTANCE="${PACKAGE_DIRECTORY}/bootstrap_instance.yaml"
+OPEN_DEMAND=${OPEN_DEMAND}
+if [[ "${OPEN_DEMAND}" == "true" ]]; then
+  BOOTSTRAP_TEMPLATE="${PACKAGE_DIRECTORY}/bootstrap_template_odcds.yaml"
+fi
 
 function prepare_envoy() {
   # Generate Envoy bootstrap.
   # namespace/$uuidgen~$tlsmode~$hostname
   envoy_node_id="sidecar~${NAMESPACE}/${POD_NAME}~${INSTANCE_IP}"
-  if [[ -v TLS_MODE ]]
-  then
+  if [[ -v TLS_MODE ]]; then
     BOOTSTRAP_TEMPLATE="${PACKAGE_DIRECTORY}/bootstrap_template_tls.yaml"
-  fi 
-  cat "${BOOTSTRAP_TEMPLATE}" \
-      | sed -e "s|ENVOY_NODE_ID|${envoy_node_id}|g" \
-      | sed -e "s|CLUSTER_NAME|${CLUSTER_NAME}|g" \
-      | sed -e "s|POLARIS_SERVER_URL|${POLARIS_SERVER_URL}|g" \
-      | sed -e "s|POLARIS_SERVER_HOST|${POLARIS_SERVER_HOST}|g" \
-      | sed -e "s|POLARIS_SERVER_PORT|${POLARIS_SERVER_PORT}|g" \
-      | sed -e "s|METADATA|${METADATA}|g" \
-      > "${BOOTSTRAP_INSTANCE}"
+    if [[ "${OPEN_DEMAND}" == "true" ]]; then
+      BOOTSTRAP_TEMPLATE="${PACKAGE_DIRECTORY}/bootstrap_template_tls_odcds.yaml"
+    fi
+  fi
+  cat "${BOOTSTRAP_TEMPLATE}" |
+    sed -e "s|ENVOY_NODE_ID|${envoy_node_id}|g" |
+    sed -e "s|CLUSTER_NAME|${CLUSTER_NAME}|g" |
+    sed -e "s|POLARIS_SERVER_URL|${POLARIS_SERVER_URL}|g" |
+    sed -e "s|POLARIS_SERVER_HOST|${POLARIS_SERVER_HOST}|g" |
+    sed -e "s|POLARIS_SERVER_PORT|${POLARIS_SERVER_PORT}|g" |
+    sed -e "s|METADATA|${METADATA}|g" \
+      >"${BOOTSTRAP_INSTANCE}"
 }
 
-printenv polaris-client-config > /data/polaris-client-config/polaris.yaml
+printenv polaris-client-config >/data/polaris-client-config/polaris.yaml
 
 prepare_envoy
 
-if  [[ -v DEBUG_MODE ]]
-then
-   cat "${BOOTSTRAP_INSTANCE}"
+if [[ -v DEBUG_MODE ]]; then
+  cat "${BOOTSTRAP_INSTANCE}"
 fi
 
 mv "${BOOTSTRAP_INSTANCE}" /var/lib/data/envoy.yaml

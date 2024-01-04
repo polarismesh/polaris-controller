@@ -46,7 +46,6 @@ import (
 	"github.com/polarismesh/polaris-controller/common"
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
@@ -75,7 +74,7 @@ type Webhook struct {
 	sidecarMeshTemplateVersion string
 	sidecarDnsConfig           *Config
 	sidecarDnsTemplateVersion  string
-	meshConfig                 *meshconfig.MeshConfig
+	meshConfig                 *mesh.MeshConfig
 	valuesConfig               string
 
 	healthCheckInterval time.Duration
@@ -97,7 +96,7 @@ type Webhook struct {
 // env will be used for other things besides meshConfig - when webhook is running in Istiod it can take advantage
 // of the config and endpoint cache.
 // nolint directives: interfacer
-func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Config, *Config, *meshconfig.MeshConfig, string, error) {
+func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Config, *Config, *mesh.MeshConfig, string, error) {
 	// 处理 polaris-sidecar mesh 模式的注入
 	meshData, err := ioutil.ReadFile(injectMeshFile)
 	if err != nil {
@@ -837,21 +836,6 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 			Allowed: true,
 		}
 	}
-
-	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
-	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
-	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
-	if wh.meshConfig.SdsUdsPath != "" {
-		grp := int64(1337)
-		if pod.Spec.SecurityContext == nil {
-			pod.Spec.SecurityContext = &corev1.PodSecurityContext{
-				FSGroup: &grp,
-			}
-		} else {
-			pod.Spec.SecurityContext.FSGroup = &grp
-		}
-	}
-
 	// try to capture more useful namespace/name info for deployments, etc.
 	// TODO(dougreid): expand to enable lookup of OWNERs recursively a la kubernetesenv
 	deployMeta := pod.ObjectMeta.DeepCopy()
@@ -894,7 +878,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	}
 	proxyCfg := wh.meshConfig.DefaultConfig
 	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata,
-		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg, wh.meshConfig) // nolint: lll
+		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg) // nolint: lll
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1beta1AdmissionResponse(err)
@@ -974,20 +958,6 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		}
 	}
 
-	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
-	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
-	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
-	if wh.meshConfig.SdsUdsPath != "" {
-		grp := int64(1337)
-		if pod.Spec.SecurityContext == nil {
-			pod.Spec.SecurityContext = &corev1.PodSecurityContext{
-				FSGroup: &grp,
-			}
-		} else {
-			pod.Spec.SecurityContext.FSGroup = &grp
-		}
-	}
-
 	// try to capture more useful namespace/name info for deployments, etc.
 	// TODO(dougreid): expand to enable lookup of OWNERs recursively a la kubernetesenv
 	deployMeta := pod.ObjectMeta.DeepCopy()
@@ -1029,8 +999,9 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		deployMeta.Name = pod.Name
 	}
 
+	copyProxyCfg := wh.meshConfig.Clone()
 	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta,
-		&pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig)
+		&pod.Spec, &pod.ObjectMeta, copyProxyCfg.DefaultConfig)
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1AdmissionResponse(err)

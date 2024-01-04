@@ -28,12 +28,13 @@ import (
 type ProxyMetadata struct {
 	ServerAddress string `yaml:"serverAddress"`
 	ClusterName   string `yaml:"clusterName"`
+	OpenDemand    string `yaml:"openDemand"`
 	CAAddress     string `yaml:"caAddress"`
 }
 
 // DefaultConfig controller 用到的配置
 type DefaultConfig struct {
-	ProxyMetadata ProxyMetadata `yaml:"serviceSync"`
+	ProxyMetadata ProxyMetadata `yaml:"proxyMetadata"`
 }
 
 // SidecarInject sidecar 注入相关
