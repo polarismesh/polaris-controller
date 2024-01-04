@@ -72,7 +72,7 @@ spec:
                 path: values
         - name: config-volume
           configMap:
-            name: injector-mesh
+            name: polaris-controller-config
         - hostPath:
             path: /data/polaris-controller/log
             type: "DirectoryOrCreate"
