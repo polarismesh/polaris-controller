@@ -394,7 +394,7 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 			if msg.Code != uint32(apimodel.Code_ExecuteSuccess) {
 				if msg.Code != uint32(apimodel.Code_DataNoChange) {
 					log.SyncConfigMapScope().Errorf("receive fetch config resource for type(%v) code(%d) msg(%s)",
-					msg.GetType().String(), msg.GetCode(), msg.GetInfo())
+						msg.GetType().String(), msg.GetCode(), msg.GetInfo())
 				}
 				continue
 			}
