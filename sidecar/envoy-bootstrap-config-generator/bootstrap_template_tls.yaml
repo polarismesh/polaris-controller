@@ -19,8 +19,8 @@ node:
   metadata: METADATA
 static_resources:
   clusters:
-    - connectTimeout: 0.250s
-      name: sds-grpc
+    - name: sds-grpc
+      connectTimeout: 0.250s
       type: STATIC
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -35,6 +35,23 @@ static_resources:
                   address:
                     pipe:
                       path: /var/run/polaris/mtls/sds.sock
+    - name: polaris_xds_server
+      connect_timeout: 5s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: polaris_xds_server
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: POLARIS_SERVER_HOST
+                      port_value: POLARIS_SERVER_PORT
     - name: polaris_ratelimit
       type: STATIC
       connect_timeout: 1s
@@ -49,32 +66,20 @@ static_resources:
                   address:
                     pipe:
                       path: /var/run/polaris/ratelimit/rls.sock
-
 dynamic_resources:
   lds_config:
-    ads: {}
-    resource_api_version: V3
-  cds_config:
-    ads: {}
-    resource_api_version: V3
+    api_config_source:
+      api_type: DELTA_GRPC
+      transport_api_version: V3
+      grpc_services:
+        envoy_grpc:
+          cluster_name: polaris_xds_server
   ads_config:
     api_type: DELTA_GRPC
     transport_api_version: V3
     grpc_services:
-      - google_grpc:
-          target_uri: POLARIS_SERVER_URL
-          stat_prefix: polarismesh
-          channel_args:
-            args:
-              grpc.http2.max_ping_strikes:
-                int_value: 0
-              grpc.keepalive_time_ms:
-                int_value: 10000
-              grpc.keepalive_timeout_ms:
-                int_value: 20000
-              grpc.max_receive_message_length:
-                int_value: -1
-
+      envoy_grpc:
+        cluster_name: polaris_xds_server
 admin:
   access_log_path: /dev/stdout
   address:

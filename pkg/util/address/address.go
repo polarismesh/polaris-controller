@@ -41,6 +41,7 @@ type Address struct {
 	Isolate         bool
 	Metadata        map[string]string
 	Protocol        string
+	Version         string
 	PolarisInstance model.Instance
 }
 
@@ -68,6 +69,10 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 	}
 
 	pod, err := podLister.Pods(endpoint.TargetRef.Namespace).Get(endpoint.TargetRef.Name)
+	if err != nil {
+		log.SyncNamingScope().Error("list pod info fail", zap.String("namespace", endpoint.TargetRef.Namespace),
+			zap.String("pod-name", endpoint.TargetRef.Name), zap.Error(err))
+	}
 
 	instanceSet := make(InstanceSet)
 	for _, port := range subset.Ports {
@@ -92,14 +97,23 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 		}
 
 		instanceSet[ipPort] = address
-
 		if err != nil {
 			continue
 		}
-
-		address.Metadata = pod.Labels
+		address.Metadata = noEmptyMap(pod.Labels)
+		// 默认从 POD 的 labels 中获取到 version 字段的值
+		address.Version = address.Metadata["version"]
 	}
 	return instanceSet
+}
+
+var _emptyPodLabels = map[string]string{}
+
+func noEmptyMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return _emptyPodLabels
+	}
+	return m
 }
 
 func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,

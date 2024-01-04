@@ -42,7 +42,6 @@ import (
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
-	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
@@ -469,10 +468,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 	injectAnnonations := map[string]string{}
 	// 设置需要注入到 envoy 的 metadata
 	// 强制开启 XDS On-Demand 能力
-	envoyMetadata := map[string]string{
-		"sidecar.polarismesh.cn/openOnDemand":        "true",
-		"sidecar.polarismesh.cn/odcdsServerEndpoint": polarisapi.PolarisGrpc,
-	}
+	envoyMetadata := map[string]string{}
 	// 这里负责将需要额外塞入的 annonation 数据进行返回
 	if len(metadata.Annotations) != 0 {
 		tlsMode := util.MTLSModeNone
@@ -484,6 +480,11 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		}
 		injectAnnonations[util.PolarisTLSMode] = tlsMode
 		envoyMetadata[util.PolarisTLSMode] = tlsMode
+
+		// 按需加载能力需要显示开启
+		if val, ok := metadata.Annotations["sidecar.polarismesh.cn/openOnDemand"]; ok {
+			envoyMetadata["sidecar.polarismesh.cn/openOnDemand"] = val
+		}
 	}
 	// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
 	// 命名空间可以不太强要求用户设置，大部份场景都是保持和 kubernetes 部署所在的 namespace 保持一致的
