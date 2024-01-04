@@ -37,6 +37,15 @@ polaris:
   server:
     address: #POLARIS_HOST#
     token: #POLARIS_TOKEN#
+  sync:
+    service:
+      mode: all
+    config:
+      enable: true
+      direction: both
+      groupName: default
+      allowDelete: false
+
 
 ## polaris controller config
 controller:
