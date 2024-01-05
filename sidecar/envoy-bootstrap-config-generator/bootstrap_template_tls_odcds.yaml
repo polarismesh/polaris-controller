@@ -19,6 +19,22 @@ node:
   metadata: METADATA
 static_resources:
   clusters:
+    - name: sds-grpc
+      connectTimeout: 0.250s
+      type: STATIC
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": "type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+          explicit_http_config:
+            http2_protocol_options: {}
+      loadAssignment:
+        clusterName: sds-grpc
+        endpoints:
+          - lbEndpoints:
+              - endpoint:
+                  address:
+                    pipe:
+                      path: /var/run/polaris/mtls/sds.sock
     - name: polaris_xds_server
       connect_timeout: 5s
       typed_extension_protocol_options:
@@ -58,9 +74,6 @@ dynamic_resources:
       grpc_services:
         envoy_grpc:
           cluster_name: polaris_xds_server
-  cds_config:
-    ads: {}
-    resource_api_version: V3
   ads_config:
     api_type: DELTA_GRPC
     transport_api_version: V3

@@ -41,7 +41,7 @@ import (
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	meshconfig "github.com/polarismesh/polaris-controller/pkg/inject/api/mesh/v1alpha1"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
@@ -58,7 +58,6 @@ var (
 		annotation.SidecarInject.Name:                         alwaysValidFunc,
 		annotation.SidecarStatus.Name:                         alwaysValidFunc,
 		annotation.SidecarRewriteAppHTTPProbers.Name:          alwaysValidFunc,
-		annotation.SidecarControlPlaneAuthPolicy.Name:         alwaysValidFunc,
 		annotation.SidecarDiscoveryAddress.Name:               alwaysValidFunc,
 		annotation.SidecarProxyImage.Name:                     alwaysValidFunc,
 		annotation.SidecarProxyCPU.Name:                       alwaysValidFunc,
@@ -137,8 +136,7 @@ type SidecarTemplateData struct {
 	DeploymentMeta *metav1.ObjectMeta
 	ObjectMeta     *metav1.ObjectMeta
 	Spec           *corev1.PodSpec
-	ProxyConfig    *meshconfig.ProxyConfig
-	MeshConfig     *meshconfig.MeshConfig
+	ProxyConfig    *mesh.DefaultConfig
 	Values         map[string]interface{}
 }
 
@@ -443,7 +441,7 @@ func flippedContains(needle, haystack string) bool {
 // InjectionData renders sidecarTemplate with valuesConfig.
 func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *metav1.TypeMeta,
 	deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
-	metadata *metav1.ObjectMeta, proxyConfig *meshconfig.ProxyConfig, meshConfig *meshconfig.MeshConfig) (
+	metadata *metav1.ObjectMeta, proxyConfig *mesh.DefaultConfig) (
 	*SidecarInjectionSpec, map[string]string, string, error) {
 	// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to polaris.
 	if spec.DNSPolicy != "" && spec.DNSPolicy != corev1.DNSClusterFirst {
@@ -484,6 +482,7 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		// 按需加载能力需要显示开启
 		if val, ok := metadata.Annotations["sidecar.polarismesh.cn/openOnDemand"]; ok {
 			envoyMetadata["sidecar.polarismesh.cn/openOnDemand"] = val
+			proxyConfig.ProxyMetadata["OPEN_DEMAND"] = val
 		}
 	}
 	// 这里需要将 sidecar 所属的服务信息注入到 annonation 中，方便下发到 envoy 的 bootstrap.yaml 中
@@ -514,7 +513,6 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 		ObjectMeta:     metadataCopy,
 		Spec:           spec,
 		ProxyConfig:    proxyConfig,
-		MeshConfig:     meshConfig,
 		Values:         values,
 	}
 

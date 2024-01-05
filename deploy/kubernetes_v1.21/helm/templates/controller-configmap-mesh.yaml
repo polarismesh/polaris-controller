@@ -17,9 +17,9 @@ data:
           - stdout
         errorOutputPaths:
           - stderr
-      sync:
-        rotateOutputPath: logs/polaris-sync.log
-        errorRotateOutputPath: logs/polaris-sync-error.log
+      synccm:
+        rotateOutputPath: logs/polaris-synccm.log
+        errorRotateOutputPath: logs/polaris-synccm-error.log
         rotationMaxSize: 100
         rotationMaxBackups: 10
         rotationMaxAge: 7
@@ -68,10 +68,20 @@ data:
       mode: "{{ .Values.sidecar.mesh }}"
     # service sync
     serviceSync:
-      mode: "all"
+      mode: {{ .Values.polaris.sync.service.mode }}
       serverAddress: {{ .Values.polaris.server.address }}
       # 北极星开启鉴权时需要配置
       accessToken: {{ .Values.polaris.server.token }}
+    configSync:
+      enable: {{ .Values.polaris.sync.config.enable }}
+      serverAddress: {{ .Values.polaris.server.address }}
+      # 北极星开启鉴权时需要配置
+      accessToken: {{ .Values.polaris.server.token }}
+      allowDelete: {{ .Values.polaris.sync.config.allowDelete }}
+      # 配置同步方向: kubernetesToPolaris|polarisToKubernetes|both
+      syncDirection: {{ .Values.polaris.sync.config.direction }}
+      defaultGroup: {{ .Values.polaris.sync.config.groupName }}
     defaultConfig:
       proxyMetadata:
         serverAddress: {{ .Values.polaris.server.address }}
+        clusterName: "{{ .Values.cluster.name }}"

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: injector-mesh
+  name: polaris-controller-config
   namespace: polaris-system
 data:
   mesh: |-
@@ -17,9 +17,9 @@ data:
           - stdout
         errorOutputPaths:
           - stderr
-      sync:
-        rotateOutputPath: logs/polaris-sync.log
-        errorRotateOutputPath: logs/polaris-sync-error.log
+      synccm:
+        rotateOutputPath: logs/polaris-synccm.log
+        errorRotateOutputPath: logs/polaris-synccm-error.log
         rotationMaxSize: 100
         rotationMaxBackups: 10
         rotationMaxAge: 7
@@ -62,7 +62,7 @@ data:
         errorOutputPaths:
           - stderr
     # k8s cluster name
-    clusterName: "default"
+    clusterName: "#CLUSTER_NAME#"
     # polaris-sidecar 注入的默认启动模式, 可以配置 mesh 或者 dns
     sidecarInject:
       mode: "mesh"
@@ -78,6 +78,11 @@ data:
       serverAddress: #POLARIS_HOST#
       # 北极星开启鉴权时需要配置
       accessToken: #POLARIS_TOKEN#
+      allowDelete: false
+      # 配置同步方向: kubernetesToPolaris|polarisToKubernetes|both
+      syncDirection: both
+      defaultGroup: "#CLUSTER_NAME#"
     defaultConfig:
       proxyMetadata:
         serverAddress: #POLARIS_HOST#
+        clusterName: #CLUSTER_NAME#

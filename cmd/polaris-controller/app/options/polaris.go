@@ -56,8 +56,6 @@ type ConfigSync struct {
 	// polarisToKubernetes: 配置数据只能从 polaris 同步到 kubernetes
 	// both: 配置数据能从 kubernetes 同步到 polaris, 也能从 polaris 同步到 kubernetes, 但是不会出现循环同步
 	SyncDirection string `yaml:"syncDirection"`
-	// ConflictMode 同步冲突策略
-	ConflictMode string `yaml:"conflictMode"`
 	// Enable 开启同步
 	Enable bool `yaml:"enable"`
 	// IgnoreNamespaces 忽略同步的命名空间，默认不忽略
