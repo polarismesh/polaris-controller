@@ -34,7 +34,7 @@ static_resources:
               - endpoint:
                   address:
                     pipe:
-                      path: /var/run/polaris/mtls/sds.sock
+                      path: /tmp/polaris-sidecar/mtls/sds.sock
     - name: polaris_xds_server
       connect_timeout: 5s
       typed_extension_protocol_options:
@@ -65,7 +65,7 @@ static_resources:
               - endpoint:
                   address:
                     pipe:
-                      path: /var/run/polaris/ratelimit/rls.sock
+                      path: /tmp/polaris-sidecar/ratelimit/rls.sock
 dynamic_resources:
   lds_config:
     api_config_source:
