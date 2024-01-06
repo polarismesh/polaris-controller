@@ -157,8 +157,9 @@ data:
         - mountPath: /etc/envoy_logs
           name: envoy-logs
           readOnly: false
-        - name: sds
-          mountPath: /var/run/polaris/mtls
+        - mountPath: /tmp/polaris-sidecar
+          defaultMode: 777
+          name: polaris-socket
       - image: polarismesh/polaris-sidecar:#SIDECAR_VERSION#
         name: polaris-sidecar
         securityContext:
@@ -173,8 +174,9 @@ data:
             cpu: 100m
             memory: 50Mi
         volumeMounts:
-          - name: sds
-            mountPath: /var/run/polaris/mtls
+          - mountPath: /tmp/polaris-sidecar
+            defaultMode: 777
+            name: polaris-socket
           {{ if ( openTlsMode .ObjectMeta.Annotations `polarismesh.cn/tls-mode` ) }}
           - name: root-ca
             mountPath: /etc/polaris-sidecar/certs
@@ -267,6 +269,8 @@ data:
         - name: polaris-dir
           emptyDir: {}
         - name: polaris-log
+          emptyDir: {}
+        - name: polaris-socket
           emptyDir: {}
 ---
 apiVersion: v1

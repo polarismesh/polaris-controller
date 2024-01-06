@@ -15,9 +15,7 @@ rules:
   resources:
   - services
   - namespaces
-  - configmaps
   - pods
-  - endpoints
   verbs:
   - get
   - list
@@ -27,6 +25,7 @@ rules:
   resources:
   - events
   - configmaps
+  - endpoints
   verbs:
   - create
   - update

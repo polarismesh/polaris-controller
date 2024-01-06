@@ -24,40 +24,14 @@ data:
 Define the volume mounts for the sidecar container.
 */}}
 {{- define "configmap-sidecar.polaris_volume_mounts" -}}
-- name: sds
-  mountPath: /var/run/polaris/mtls
+- mountPath: /tmp/polaris-sidecar
+  defaultMode: 777
+  name: polaris-socket
 {{ "{{" }} if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none" {{ "}}" }}
 - name: root-ca
   mountPath: /etc/polaris-sidecar/certs
 {{ "{{" }} end {{ "}}" }}
 {{- end -}}
-
-{{/*
-Define the volume for the bootstrap init container.
-*/}}
-{{- define "configmap-sidecar.bootstrap_volume" -}}
-- name: sds
-  emptyDir: {}
-{{ "{{" }} if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
-- name: root-ca
-  secret:
-    secretName: polaris-sidecar-secret
-    items:
-    - key: root-cert
-      path: rootca.pem
-{{ "{{" }} end {{ "}}" }}
-- name: polaris-client-config
-  emptyDir: {}
-- name: envoy-bootstrap
-  emptyDir: {}
-- name: envoy-logs
-  emptyDir: {}
-- name: polaris-dir
-  emptyDir: {}
-- name: polaris-log
-  emptyDir: {}
-{{- end -}}
-
 
 {{/*
 Define the cmd envs for the bootstrap init container.

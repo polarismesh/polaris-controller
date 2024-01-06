@@ -114,8 +114,9 @@ data:
         - mountPath: /etc/envoy_logs
           name: envoy-logs
           readOnly: false
-        - name: sds
-          mountPath: /var/run/polaris/mtls
+        - mountPath: /tmp/polaris-sidecar
+          defaultMode: 777
+          name: polaris-socket
       - image: {{ include "polaris-controller.sidecar.image" . }}
         name: polaris-sidecar
         securityContext:
@@ -130,7 +131,15 @@ data:
             cpu: 100m
             memory: 50Mi
         volumeMounts:
-        {{ include "configmap-sidecar.polaris_volume_mounts" . | nindent 10 }}
+          - mountPath: /root/polaris
+            defaultMode: 777
+            name: polaris-dir
+          - mountPath: /root/log
+            defaultMode: 777
+            name: polaris-log
+          - mountPath: /tmp/polaris-sidecar
+            defaultMode: 777
+            name: polaris-socket
       initContainers:
       - name: polaris-bootstrap-writer
         image: {{ include "polaris-controller.sidecar.envoy_init.image" . }}
@@ -182,4 +191,6 @@ data:
         - name: polaris-dir
           emptyDir: {}
         - name: polaris-log
+          emptyDir: {}
+        - name: polaris-socket
           emptyDir: {}
