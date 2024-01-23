@@ -53,6 +53,9 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
+
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/javaagent"
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/mesh"
 )
 
 const (
@@ -62,12 +65,13 @@ const (
 	DefaultLockObjectName           = "polaris-controller"
 	DefaultLeaderElectionName       = "polaris-controller"
 
-	MeshConfigFile = "/etc/polaris-inject/inject/mesh-config"
-	DnsConfigFile  = "/etc/polaris-inject/inject/dns-config"
-	ValuesFile     = "/etc/polaris-inject/inject/values"
-	MeshFile       = "/etc/polaris-inject/config/mesh"
-	CertFile       = "/etc/polaris-inject/certs/cert.pem"
-	KeyFile        = "/etc/polaris-inject/certs/key.pem"
+	MeshConfigFile      = "/etc/polaris-inject/inject/mesh-config"
+	DnsConfigFile       = "/etc/polaris-inject/inject/dns-config"
+	JavaAgentConfigFile = "/etc/polaris-inject/inject/java-agent-config"
+	ValuesFile          = "/etc/polaris-inject/inject/values"
+	MeshFile            = "/etc/polaris-inject/config/mesh"
+	CertFile            = "/etc/polaris-inject/certs/cert.pem"
+	KeyFile             = "/etc/polaris-inject/certs/key.pem"
 )
 
 var (
@@ -248,6 +252,7 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
 		MeshConfigFile:      MeshConfigFile,
 		DnsConfigFile:       DnsConfigFile,
+		JavaAgentConfigFile: JavaAgentConfigFile,
 		ValuesFile:          ValuesFile,
 		MeshFile:            MeshFile,
 		CertFile:            CertFile,

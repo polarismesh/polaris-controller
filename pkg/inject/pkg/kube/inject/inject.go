@@ -267,6 +267,7 @@ func validateBool(value string) error {
 	return err
 }
 
+// getSidecarMode 获取 sidecar 注入模式
 func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.SidecarMode {
 	// 这里主要是处理北极星 sidecar, 优先级: pod.annotations > namespace.labels > configmap
 	sidecarMode := ""
@@ -577,16 +578,24 @@ func InjectionData(sidecarTemplate, valuesConfig, version string, typeMetadata *
 
 	status := &SidecarInjectionStatus{Version: version}
 	for _, c := range sic.InitContainers {
-		status.InitContainers = append(status.InitContainers, c.Name)
+		status.InitContainers = append(status.InitContainers, corev1.Container{
+			Name: c.Name,
+		})
 	}
 	for _, c := range sic.Containers {
-		status.Containers = append(status.Containers, c.Name)
+		status.Containers = append(status.Containers, corev1.Container{
+			Name: c.Name,
+		})
 	}
 	for _, c := range sic.Volumes {
-		status.Volumes = append(status.Volumes, c.Name)
+		status.Volumes = append(status.Volumes, corev1.Volume{
+			Name: c.Name,
+		})
 	}
 	for _, c := range sic.ImagePullSecrets {
-		status.ImagePullSecrets = append(status.ImagePullSecrets, c.Name)
+		status.ImagePullSecrets = append(status.ImagePullSecrets, corev1.LocalObjectReference{
+			Name: c.Name,
+		})
 	}
 	statusAnnotationValue, err := json.Marshal(status)
 	if err != nil {
@@ -788,11 +797,11 @@ func valueOrDefault(value interface{}, defaultValue interface{}) interface{} {
 // injected sidecar. This includes the names of added containers and
 // volumes.
 type SidecarInjectionStatus struct {
-	Version          string   `json:"version"`
-	InitContainers   []string `json:"initContainers"`
-	Containers       []string `json:"containers"`
-	Volumes          []string `json:"volumes"`
-	ImagePullSecrets []string `json:"imagePullSecrets"`
+	Version          string                        `json:"version"`
+	InitContainers   []corev1.Container            `json:"initContainers"`
+	Containers       []corev1.Container            `json:"containers"`
+	Volumes          []corev1.Volume               `json:"volumes"`
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets"`
 }
 
 // helper function to generate a template version identifier from a

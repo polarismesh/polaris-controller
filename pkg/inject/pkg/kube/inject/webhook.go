@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -38,6 +37,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apismetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -68,65 +68,91 @@ const (
 
 // Webhook implements a mutating webhook for automatic proxy injection.
 type Webhook struct {
-	defaultSidecarMode         utils.SidecarMode
-	mu                         sync.RWMutex
+	defaultSidecarMode utils.SidecarMode
+	mu                 sync.RWMutex
+
+	// envoy mesh 场景下的 sidecar 注入配置
 	sidecarMeshConfig          *Config
 	sidecarMeshTemplateVersion string
-	sidecarDnsConfig           *Config
-	sidecarDnsTemplateVersion  string
-	meshConfig                 *mesh.MeshConfig
-	valuesConfig               string
+	// dns 场景下的 sidecar 注入配置
+	sidecarDnsConfig          *Config
+	sidecarDnsTemplateVersion string
+	// java agent 场景下的注入配置
+	sidecarJavaAgentConfig          *Config
+	sidecarJavaAgentTemplateVersion string
+	meshConfig                      *mesh.MeshConfig
+	valuesConfig                    string
 
 	healthCheckInterval time.Duration
 	healthCheckFile     string
 
-	server         *http.Server
-	meshFile       string
-	meshConfigFile string
-	dnsConfigFile  string
-	valuesFile     string
-	watcher        *fsnotify.Watcher
-	certFile       string
-	keyFile        string
-	cert           *tls.Certificate
+	server              *http.Server
+	meshFile            string
+	meshConfigFile      string
+	dnsConfigFile       string
+	javaAgentConfigFile string
+	valuesFile          string
+	watcher             *fsnotify.Watcher
+	certFile            string
+	keyFile             string
+	cert                *tls.Certificate
 
 	k8sClient kubernetes.Interface
+}
+
+type InjectConfigInfo struct {
+	MeshInjectConf      *Config
+	DnsInjectConf       *Config
+	JavaAgentInjectConf *Config
+	MeshConf            *mesh.MeshConfig
+	ValuesConf          string
 }
 
 // env will be used for other things besides meshConfig - when webhook is running in Istiod it can take advantage
 // of the config and endpoint cache.
 // nolint directives: interfacer
-func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Config, *Config, *mesh.MeshConfig, string, error) {
+func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesFile string) (*InjectConfigInfo, error) {
 	// 处理 polaris-sidecar mesh 模式的注入
 	meshData, err := ioutil.ReadFile(injectMeshFile)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, err
 	}
 	var meshConf Config
 	if err := gyaml.Unmarshal(meshData, &meshConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse injectFile %s", string(meshData))
-		return nil, nil, nil, "", err
+		log.InjectScope().Warnf("Failed to parse inject mesh config file %s", string(meshData))
+		return nil, err
 	}
 
 	// 处理 polaris-sidecar dns 模式的注入
 	dnsData, err := ioutil.ReadFile(injectDnsFile)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, err
 	}
 	var dnsConf Config
 	if err := gyaml.Unmarshal(dnsData, &dnsConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse injectFile %s", string(dnsData))
-		return nil, nil, nil, "", err
+		log.InjectScope().Warnf("Failed to parse inject dns config file %s", string(dnsData))
+		return nil, err
+	}
+
+	// 处理 java-agent 模式的注入
+	javaAgentData, err := ioutil.ReadFile(injectJavaFile)
+	if err != nil {
+		return nil, err
+	}
+	var javaAgentConf Config
+	if err := gyaml.Unmarshal(javaAgentData, &javaAgentData); err != nil {
+		log.InjectScope().Warnf("Failed to parse inject java-agent config file %s", string(dnsData))
+		return nil, err
 	}
 
 	valuesConfig, err := ioutil.ReadFile(valuesFile)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, err
 	}
 
 	meshConfig, err := mesh.ReadMeshConfig(meshFile)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, err
 	}
 
 	log.InjectScope().Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
@@ -141,7 +167,18 @@ func loadConfig(injectMeshFile, injectDnsFile, meshFile, valuesFile string) (*Co
 	log.InjectScope().Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
 	log.InjectScope().Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
 
-	return &meshConf, &dnsConf, meshConfig, string(valuesConfig), nil
+	log.InjectScope().Infof("[JavaAgent] New inject configuration: sha256sum %x", sha256.Sum256(javaAgentData))
+	log.InjectScope().Infof("[JavaAgent] AlwaysInjectSelector: %v", javaAgentConf.AlwaysInjectSelector)
+	log.InjectScope().Infof("[JavaAgent] NeverInjectSelector: %v", javaAgentConf.NeverInjectSelector)
+	log.InjectScope().Infof("[JavaAgent] Template: |\n  %v", strings.Replace(javaAgentConf.Template, "\n", "\n  ", -1))
+
+	return &InjectConfigInfo{
+		MeshInjectConf:      &meshConf,
+		DnsInjectConf:       &dnsConf,
+		JavaAgentInjectConf: &javaAgentConf,
+		MeshConf:            meshConfig,
+		ValuesConf:          string(valuesConfig),
+	}, nil
 }
 
 // WebhookParameters configures parameters for the sidecar injection
@@ -155,6 +192,9 @@ type WebhookParameters struct {
 
 	// DnsConfigFile 处理 polaris-sidecar 运行模式为 dns 的配置文件
 	DnsConfigFile string
+
+	// JavaAgentConfigFile 处理运行模式为 javaagent 的配置文件
+	JavaAgentConfigFile string
 
 	ValuesFile string
 
@@ -190,7 +230,9 @@ type WebhookParameters struct {
 func NewWebhook(p WebhookParameters) (*Webhook, error) {
 	// TODO: pass a pointer to mesh config from Pilot bootstrap, no need to watch and load 2 times
 	// This is needed before we implement advanced merging / patching of mesh config
-	sidecarMeshConfig, sidecarDnsConfig, meshConfig, valuesConfig, err := loadConfig(p.MeshConfigFile, p.DnsConfigFile, p.MeshFile, p.ValuesFile)
+	injectConf, err := loadConfig(p.MeshConfigFile, p.DnsConfigFile,
+		p.JavaAgentConfigFile, p.MeshFile, p.ValuesFile)
+
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +245,8 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO 直接监听 configmap
 	// watch the parent directory of the target files so we can catch
 	// symlink updates of k8s ConfigMaps volumes.
 	for _, file := range []string{p.MeshConfigFile, p.DnsConfigFile, p.MeshFile, p.CertFile, p.KeyFile} {
@@ -216,22 +260,25 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 	}
 
 	wh := &Webhook{
-		sidecarMeshConfig:          sidecarMeshConfig,
-		sidecarMeshTemplateVersion: sidecarTemplateVersionHash(sidecarMeshConfig.Template),
-		sidecarDnsConfig:           sidecarDnsConfig,
-		sidecarDnsTemplateVersion:  sidecarTemplateVersionHash(sidecarDnsConfig.Template),
-		meshConfig:                 meshConfig,
-		meshConfigFile:             p.MeshConfigFile,
-		dnsConfigFile:              p.DnsConfigFile,
-		valuesFile:                 p.ValuesFile,
-		valuesConfig:               valuesConfig,
-		meshFile:                   p.MeshFile,
-		watcher:                    watcher,
-		healthCheckInterval:        p.HealthCheckInterval,
-		healthCheckFile:            p.HealthCheckFile,
-		certFile:                   p.CertFile,
-		keyFile:                    p.KeyFile,
-		cert:                       &pair,
+		sidecarMeshConfig:               injectConf.MeshInjectConf,
+		sidecarMeshTemplateVersion:      sidecarTemplateVersionHash(injectConf.MeshInjectConf.Template),
+		sidecarDnsConfig:                injectConf.DnsInjectConf,
+		sidecarDnsTemplateVersion:       sidecarTemplateVersionHash(injectConf.DnsInjectConf.Template),
+		sidecarJavaAgentConfig:          injectConf.JavaAgentInjectConf,
+		sidecarJavaAgentTemplateVersion: sidecarTemplateVersionHash(injectConf.JavaAgentInjectConf.Template),
+		meshConfig:                      injectConf.MeshConf,
+		meshConfigFile:                  p.MeshConfigFile,
+		dnsConfigFile:                   p.DnsConfigFile,
+		javaAgentConfigFile:             p.JavaAgentConfigFile,
+		valuesFile:                      p.ValuesFile,
+		valuesConfig:                    injectConf.ValuesConf,
+		meshFile:                        p.MeshFile,
+		watcher:                         watcher,
+		healthCheckInterval:             p.HealthCheckInterval,
+		healthCheckFile:                 p.HealthCheckFile,
+		certFile:                        p.CertFile,
+		keyFile:                         p.KeyFile,
+		cert:                            &pair,
 
 		// 新增查询 k8s 资源的操作者
 		k8sClient:          p.Client,
@@ -279,7 +326,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 		select {
 		case <-timerC:
 			timerC = nil
-			sidecarMeshConfig, sidecarDnsConfig, meshConfig, valuesConfig, err := loadConfig(wh.meshConfigFile, wh.dnsConfigFile, wh.meshFile, wh.valuesFile)
+			injectConf, err := loadConfig(wh.meshConfigFile, wh.dnsConfigFile, wh.javaAgentConfigFile, wh.meshFile, wh.valuesFile)
 			if err != nil {
 				log.InjectScope().Errorf("update error: %v", err)
 				break
@@ -290,11 +337,19 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 				log.InjectScope().Errorf("reload cert error: %v", err)
 				break
 			}
+
+			sidecarMeshConfig := injectConf.MeshInjectConf
+			sidecarDnsConfig := injectConf.DnsInjectConf
+			meshConfig := injectConf.MeshConf
+			valuesConfig := injectConf.ValuesConf
+
 			wh.mu.Lock()
 			wh.sidecarMeshConfig = sidecarMeshConfig
 			wh.sidecarMeshTemplateVersion = sidecarTemplateVersionHash(sidecarMeshConfig.Template)
 			wh.sidecarDnsConfig = sidecarDnsConfig
 			wh.sidecarDnsTemplateVersion = sidecarTemplateVersionHash(sidecarDnsConfig.Template)
+			wh.sidecarJavaAgentConfig = sidecarDnsConfig
+			wh.sidecarJavaAgentTemplateVersion = sidecarTemplateVersionHash(sidecarDnsConfig.Template)
 
 			wh.valuesConfig = valuesConfig
 			wh.meshConfig = meshConfig
@@ -329,133 +384,20 @@ func (wh *Webhook) getCert(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 // generate RFC6902 JSON patches. Unfortunately, it doesn't produce
 // correct patches for object removal. Fortunately, our patching needs
 // are fairly simple so generating them manually isn't horrible (yet).
-type rfc6902PatchOperation struct {
+type Rfc6902PatchOperation struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
 	Value interface{} `json:"value,omitempty"`
-}
-
-// JSONPatch `remove` is applied sequentially. Remove items in reverse
-// order to avoid renumbering indices.
-func removeContainers(containers []corev1.Container, removed []string, path string) (patch []rfc6902PatchOperation) {
-	names := map[string]bool{}
-	for _, name := range removed {
-		names[name] = true
-	}
-	for i := len(containers) - 1; i >= 0; i-- {
-		if _, ok := names[containers[i].Name]; ok {
-			patch = append(patch, rfc6902PatchOperation{
-				Op:   "remove",
-				Path: fmt.Sprintf("%v/%v", path, i),
-			})
-		}
-	}
-	return patch
-}
-
-func removeVolumes(volumes []corev1.Volume, removed []string, path string) (patch []rfc6902PatchOperation) {
-	names := map[string]bool{}
-	for _, name := range removed {
-		names[name] = true
-	}
-	for i := len(volumes) - 1; i >= 0; i-- {
-		if _, ok := names[volumes[i].Name]; ok {
-			patch = append(patch, rfc6902PatchOperation{
-				Op:   "remove",
-				Path: fmt.Sprintf("%v/%v", path, i),
-			})
-		}
-	}
-	return patch
-}
-
-func removeImagePullSecrets(imagePullSecrets []corev1.LocalObjectReference, removed []string, path string) (patch []rfc6902PatchOperation) {
-	names := map[string]bool{}
-	for _, name := range removed {
-		names[name] = true
-	}
-	for i := len(imagePullSecrets) - 1; i >= 0; i-- {
-		if _, ok := names[imagePullSecrets[i].Name]; ok {
-			patch = append(patch, rfc6902PatchOperation{
-				Op:   "remove",
-				Path: fmt.Sprintf("%v/%v", path, i),
-			})
-		}
-	}
-	return patch
-}
-
-func (wh *Webhook) addContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod, target, added []corev1.Container, basePath string) (patch []rfc6902PatchOperation) {
-	saJwtSecretMountName := ""
-	var saJwtSecretMount corev1.VolumeMount
-	// find service account secret volume mount(/var/run/secrets/kubernetes.io/serviceaccount,
-	// https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#service-account-automation) from app container
-	for _, add := range target {
-		for _, vmount := range add.VolumeMounts {
-			if vmount.MountPath == "/var/run/secrets/kubernetes.io/serviceaccount" {
-				saJwtSecretMountName = vmount.Name
-				saJwtSecretMount = vmount
-			}
-		}
-	}
-	first := len(target) == 0
-	var value interface{}
-	for _, add := range added {
-		if add.Name == ProxyContainerName && saJwtSecretMountName != "" {
-			// add service account secret volume mount(/var/run/secrets/kubernetes.io/serviceaccount,
-			// https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#service-account-automation) to istio-proxy container,
-			// so that envoy could fetch/pass k8s sa jwt and pass to sds server, which will be used to request workload identity for the pod.
-			add.VolumeMounts = append(add.VolumeMounts, saJwtSecretMount)
-		}
-
-		// mesh condition || dns condition
-		if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
-			log.InjectScope().Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
-				pod.Namespace, pod.Name)
-			if err := wh.addPolarisConfigToInitContainerEnv(&add); err != nil {
-				log.InjectScope().Errorf("begin to add polaris-sidecar config to init container for pod[%s, %s] failed: %v",
-					pod.Namespace, pod.Name, err)
-			}
-		}
-
-		if add.Name == "polaris-sidecar" {
-			log.InjectScope().Infof("begin deal polaris-sidecar inject for pod=[%s, %s]", pod.Namespace, pod.Name)
-			if _, err := wh.handlePolarisSidecarEnvInject(sidecarMode, pod, &add); err != nil {
-				log.InjectScope().Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
-			}
-
-			//if _, err := wh.handlePolarisSideInject(sidecarMode, pod, &add); err != nil {
-			//	log.InjectScope().Errorf("handle polaris-sidecar inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
-			//}
-			// 将刚刚创建好的配置文件挂载到 pod 的 container 中去
-			add.VolumeMounts = append(add.VolumeMounts, corev1.VolumeMount{
-				Name:      utils.PolarisGoConfigFile,
-				SubPath:   "polaris.yaml",
-				MountPath: "/data/polaris.yaml",
-			})
-		}
-
-		value = add
-		path := basePath
-		if first {
-			first = false
-			value = []corev1.Container{add}
-		} else {
-			path += "/-"
-		}
-		patch = append(patch, rfc6902PatchOperation{
-			Op:    "add",
-			Path:  path,
-			Value: value,
-		})
-	}
-	return patch
 }
 
 type PolarisGoConfig struct {
 	Name          string
 	Namespace     string
 	PolarisServer string
+}
+
+func EnableMtls(pod *corev1.Pod) bool {
+	return enableMtls(pod)
 }
 
 func enableMtls(pod *corev1.Pod) bool {
@@ -504,52 +446,6 @@ func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) err
 	return nil
 }
 
-func (wh *Webhook) handlePolarisSidecarEnvInject(
-	sidecarMode utils.SidecarMode, pod *corev1.Pod, add *corev1.Container) (bool, error) {
-	err := wh.ensureRootCertExist(pod)
-	if err != nil {
-		return false, err
-	}
-	envMap := make(map[string]string)
-	envMap[EnvSidecarPort] = strconv.Itoa(ValueListenPort)
-	envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(true)
-	if sidecarMode == utils.SidecarForDns {
-		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
-		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
-		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(false)
-		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
-	} else {
-		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
-		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
-		envMap[EnvSidecarRLSEnable] = strconv.FormatBool(true)
-		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(true)
-		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
-	}
-	envMap[EnvSidecarLogLevel] = "info"
-	envMap[EnvSidecarNamespace] = pod.GetNamespace()
-	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
-	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
-	if enableMtls(pod) {
-		envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
-	}
-	log.InjectScope().Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
-		pod.Namespace, pod.Name, utils.ParseSidecarModeName(sidecarMode), envMap)
-	for k, v := range envMap {
-		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
-	}
-	return true, nil
-}
-
-func buildLabelsStr(labels map[string]string) string {
-	tags := make([]string, 0, len(labels))
-
-	for k, v := range labels {
-		tags = append(tags, fmt.Sprintf("%s:%s", k, v))
-	}
-
-	return strings.Join(tags, ",")
-}
-
 // currently we assume that polaris-security deploy into polaris-system namespace.
 const rootNamespace = "polaris-system"
 
@@ -583,8 +479,8 @@ func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 	return err
 }
 
-func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (patch []rfc6902PatchOperation) {
-	patch = append(patch, rfc6902PatchOperation{
+func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (patch []Rfc6902PatchOperation) {
+	patch = append(patch, Rfc6902PatchOperation{
 		Op:    "add",
 		Path:  basePath,
 		Value: target,
@@ -592,50 +488,8 @@ func addSecurityContext(target *corev1.PodSecurityContext, basePath string) (pat
 	return patch
 }
 
-func addVolume(target, added []corev1.Volume, basePath string) (patch []rfc6902PatchOperation) {
-	first := len(target) == 0
-	var value interface{}
-	for _, add := range added {
-		value = add
-		path := basePath
-		if first {
-			first = false
-			value = []corev1.Volume{add}
-		} else {
-			path += "/-"
-		}
-		patch = append(patch, rfc6902PatchOperation{
-			Op:    "add",
-			Path:  path,
-			Value: value,
-		})
-	}
-	return patch
-}
-
-func addImagePullSecrets(target, added []corev1.LocalObjectReference, basePath string) (patch []rfc6902PatchOperation) {
-	first := len(target) == 0
-	var value interface{}
-	for _, add := range added {
-		value = add
-		path := basePath
-		if first {
-			first = false
-			value = []corev1.LocalObjectReference{add}
-		} else {
-			path += "/-"
-		}
-		patch = append(patch, rfc6902PatchOperation{
-			Op:    "add",
-			Path:  path,
-			Value: value,
-		})
-	}
-	return patch
-}
-
-func addPodDNSConfig(target *corev1.PodDNSConfig, basePath string) (patch []rfc6902PatchOperation) {
-	patch = append(patch, rfc6902PatchOperation{
+func addPodDNSConfig(target *corev1.PodDNSConfig, basePath string) (patch []Rfc6902PatchOperation) {
+	patch = append(patch, Rfc6902PatchOperation{
 		Op:    "add",
 		Path:  basePath,
 		Value: target,
@@ -650,8 +504,8 @@ func escapeJSONPointerValue(in string) string {
 }
 
 // adds labels to the target spec, will not overwrite label's value if it already exists
-func addLabels(target map[string]string, added map[string]string) []rfc6902PatchOperation {
-	patches := []rfc6902PatchOperation{}
+func addLabels(target map[string]string, added map[string]string) []Rfc6902PatchOperation {
+	patches := []Rfc6902PatchOperation{}
 
 	addedKeys := make([]string, 0, len(added))
 	for key := range added {
@@ -665,7 +519,7 @@ func addLabels(target map[string]string, added map[string]string) []rfc6902Patch
 			continue
 		}
 
-		patch := rfc6902PatchOperation{
+		patch := Rfc6902PatchOperation{
 			Op:    "add",
 			Path:  "/metadata/labels/" + escapeJSONPointerValue(key),
 			Value: value,
@@ -687,7 +541,7 @@ func addLabels(target map[string]string, added map[string]string) []rfc6902Patch
 	return patches
 }
 
-func updateAnnotation(target map[string]string, added map[string]string) (patch []rfc6902PatchOperation) {
+func updateAnnotation(target map[string]string, added map[string]string) (patch []Rfc6902PatchOperation) {
 	// To ensure deterministic patches, we sort the keys
 	var keys []string
 	for k := range added {
@@ -702,7 +556,7 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 		}
 		if target == nil {
 			target = map[string]string{}
-			patch = append(patch, rfc6902PatchOperation{
+			patch = append(patch, Rfc6902PatchOperation{
 				Op:   "add",
 				Path: "/metadata/annotations",
 				Value: map[string]string{
@@ -714,7 +568,7 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 			if target[key] != "" {
 				op = "replace"
 			}
-			patch = append(patch, rfc6902PatchOperation{
+			patch = append(patch, Rfc6902PatchOperation{
 				Op:    op,
 				Path:  "/metadata/annotations/" + escapeJSONPointerValue(key),
 				Value: value,
@@ -727,19 +581,113 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, prevStatus *SidecarInjectionStatus, annotations map[string]string, sic *SidecarInjectionSpec,
 	workloadName string,
 ) ([]byte, error) {
-	var patch []rfc6902PatchOperation
+
+	var patch []Rfc6902PatchOperation
+
+	patchBuilder, ok := _PatchBuilders[utils.ParseSidecarModeName(sidecarMode)]
+	if !ok {
+		return nil, errors.NewInternalError(fmt.Errorf("sidecar-mode %s not found target patch builder", sidecarMode))
+	}
 
 	// Remove any containers previously injected by kube-inject using
 	// container and volume name as unique key for removal.
-	patch = append(patch, removeContainers(pod.Spec.InitContainers, prevStatus.InitContainers, "/spec/initContainers")...)
-	patch = append(patch, removeContainers(pod.Spec.Containers, prevStatus.Containers, "/spec/containers")...)
-	patch = append(patch, removeVolumes(pod.Spec.Volumes, prevStatus.Volumes, "/spec/volumes")...)
-	patch = append(patch, removeImagePullSecrets(pod.Spec.ImagePullSecrets, prevStatus.ImagePullSecrets, "/spec/imagePullSecrets")...)
+	removeInitContainerPatch, err := patchBuilder.PatchContainer(&OperateContainerRequest{
+		Type:     PatchType_Remove,
+		BasePath: "/spec/initContainers",
+		Source:   pod.Spec.InitContainers,
+		External: prevStatus.InitContainers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	removeContainerPatch, err := patchBuilder.PatchContainer(&OperateContainerRequest{
+		Type:     PatchType_Remove,
+		BasePath: "/spec/containers",
+		Source:   pod.Spec.Containers,
+		External: prevStatus.Containers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	removeVolumesPatch, err := patchBuilder.PatchVolumes(&OperateVolumesRequest{
+		Type:     PatchType_Remove,
+		BasePath: "/spec/volumes",
+		Source:   pod.Spec.Volumes,
+		External: prevStatus.Volumes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	removeImagePullSecretsPatch, err := patchBuilder.PatchImagePullSecrets(&OperateImagePullSecretsRequest{
+		Type:     PatchType_Remove,
+		BasePath: "/spec/imagePullSecrets",
+		Source:   pod.Spec.ImagePullSecrets,
+		External: prevStatus.ImagePullSecrets,
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	patch = append(patch, wh.addContainer(sidecarMode, pod, pod.Spec.InitContainers, sic.InitContainers, "/spec/initContainers")...)
-	patch = append(patch, wh.addContainer(sidecarMode, pod, pod.Spec.Containers, sic.Containers, "/spec/containers")...)
-	patch = append(patch, addVolume(pod.Spec.Volumes, sic.Volumes, "/spec/volumes")...)
-	patch = append(patch, addImagePullSecrets(pod.Spec.ImagePullSecrets, sic.ImagePullSecrets, "/spec/imagePullSecrets")...)
+	//
+	addInitContainerPatch, err := patchBuilder.PatchContainer(&OperateContainerRequest{
+		Type:     PatchType_Add,
+		BasePath: "/spec/initContainers",
+		Source:   pod.Spec.InitContainers,
+		External: sic.InitContainers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	addContainerPatch, err := patchBuilder.PatchContainer(&OperateContainerRequest{
+		Type:     PatchType_Add,
+		BasePath: "/spec/containers",
+		Source:   pod.Spec.Containers,
+		External: sic.Containers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	updateContainerPatch, err := patchBuilder.PatchContainer(&OperateContainerRequest{
+		Type:     PatchType_Update,
+		BasePath: "/spec/containers",
+		Source:   pod.Spec.Containers,
+		External: sic.Containers,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	addVolumePatch, err := patchBuilder.PatchVolumes(&OperateVolumesRequest{
+		Type:     PatchType_Add,
+		BasePath: "/spec/volumes",
+		Source:   pod.Spec.Volumes,
+		External: sic.Volumes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	addImagePullSecretsPatch, err := patchBuilder.PatchImagePullSecrets(&OperateImagePullSecretsRequest{
+		Type:     PatchType_Add,
+		BasePath: "/spec/imagePullSecrets",
+		Source:   pod.Spec.ImagePullSecrets,
+		External: sic.ImagePullSecrets,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	//
+	patch = append(patch, removeInitContainerPatch...)
+	patch = append(patch, removeContainerPatch...)
+	patch = append(patch, removeVolumesPatch...)
+	patch = append(patch, removeImagePullSecretsPatch...)
+
+	//
+	patch = append(patch, addInitContainerPatch...)
+	patch = append(patch, addContainerPatch...)
+	patch = append(patch, updateContainerPatch...)
+	patch = append(patch, addVolumePatch...)
+	patch = append(patch, addImagePullSecretsPatch...)
 
 	if sic.DNSConfig != nil {
 		patch = append(patch, addPodDNSConfig(sic.DNSConfig, "/spec/dnsConfig")...)
@@ -757,9 +705,9 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 // Retain deprecated hardcoded container and volumes names to aid in
 // backwards compatible migration to the new SidecarInjectionStatus.
 var (
-	legacyInitContainerNames = []string{"istio-init", "enable-core-dump"}
-	legacyContainerNames     = []string{ProxyContainerName}
-	legacyVolumeNames        = []string{"polaris-certs", "polaris-envoy"}
+	legacyInitContainerNames = []corev1.Container{corev1.Container{Name: "istio-init"}, corev1.Container{Name: "enable-core-dump"}}
+	legacyContainerNames     = []corev1.Container{corev1.Container{Name: ProxyContainerName}}
+	legacyVolumeNames        = []corev1.Volume{corev1.Volume{Name: "polaris-certs"}, corev1.Volume{Name: "polaris-envoy"}}
 )
 
 func injectionStatus(pod *corev1.Pod) *SidecarInjectionStatus {
@@ -773,7 +721,7 @@ func injectionStatus(pod *corev1.Pod) *SidecarInjectionStatus {
 	// default case when injected pod has explicit status
 	var iStatus SidecarInjectionStatus
 	if err := json.Unmarshal(statusBytes, &iStatus); err == nil {
-		// heuristic assumes status is valid if any of the resource
+		// heuristic assumes status is valid if any o
 		// lists is non-empty.
 		if len(iStatus.InitContainers) != 0 ||
 			len(iStatus.Containers) != 0 ||
@@ -798,7 +746,7 @@ func toV1AdmissionResponse(err error) *v1.AdmissionResponse {
 }
 
 func toV1beta1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	return &v1beta1.AdmissionResponse{Result: &metav1.Status{Message: err.Error()}}
+	return &v1beta1.AdmissionResponse{Result: &apismetav1.Status{Message: err.Error()}}
 }
 
 func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -828,6 +776,10 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	if sidecarMode == utils.SidecarForDns {
 		config = wh.sidecarDnsConfig
 		tempVersion = wh.sidecarDnsTemplateVersion
+	}
+	if sidecarMode == utils.SidecarForJavaAgent {
+		config = wh.sidecarJavaAgentConfig
+		tempVersion = wh.sidecarJavaAgentTemplateVersion
 	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
