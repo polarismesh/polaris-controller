@@ -87,6 +87,51 @@ data:
         - name: polaris-log
           emptyDir: {}
 
+  java-agent-config: |-
+    policy: enabled
+    alwaysInjectSelector:
+      []
+
+    neverInjectSelector:
+      []
+
+    template: |
+      initContainers:
+      - name: polaris-javaagent-init
+        image: polarismesh/polaris-javaagent-init:#JAVA_AGENT_INIT#
+        imagePullPolicy: Always
+        env:
+          - name: JAVA_AGENT_DIR
+            value: /app/lib/.polaris/java_agent
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsGroup: 0
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+          - mountPath: /app/lib/.polaris/java_agent
+            name: java-agent-dir
+      volumes:
+        - name: java-agent-dir
+          emptyDir: {}
+
+
+
   mesh-config: |-
     policy: enabled
     alwaysInjectSelector:

@@ -16,6 +16,10 @@
 package util
 
 const (
+	RootNamespace = "polaris-system"
+)
+
+const (
 	PolarisSync           = "polarismesh.cn/sync"
 	PolarisEnableRegister = "polarismesh.cn/enableRegister"
 	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
@@ -135,9 +139,11 @@ const (
 	SidecarForUnknown SidecarMode = iota
 	SidecarForMesh
 	SidecarForDns
+	SidecarForJavaAgent
 
-	SidecarMeshModeName string = "mesh"
-	SidecarDnsModeName  string = "dns"
+	SidecarMeshModeName      string = "mesh"
+	SidecarDnsModeName       string = "dns"
+	SidecarJavaAgentModeName string = "java-agent"
 )
 
 func ParseSidecarMode(val string) SidecarMode {
@@ -146,6 +152,9 @@ func ParseSidecarMode(val string) SidecarMode {
 	}
 	if val == SidecarDnsModeName {
 		return SidecarForDns
+	}
+	if val == SidecarJavaAgentModeName {
+		return SidecarForJavaAgent
 	}
 	return SidecarForMesh
 }
@@ -156,6 +165,9 @@ func ParseSidecarModeName(mode SidecarMode) string {
 	}
 	if mode == SidecarForDns {
 		return SidecarDnsModeName
+	}
+	if mode == SidecarForJavaAgent {
+		return SidecarJavaAgentModeName
 	}
 	return SidecarMeshModeName
 }
