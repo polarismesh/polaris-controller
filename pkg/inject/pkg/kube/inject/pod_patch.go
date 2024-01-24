@@ -15,14 +15,15 @@
 package inject
 
 import (
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 var (
 	// 定义一个变量，用于记录当前正在使用的 patch builder
-	_PatchBuilders map[string]PodPatchBuilder
+	_PatchBuilders = map[string]PodPatchBuilder{}
 )
 
 func RegisterPatchBuilder(name string, pb PodPatchBuilder) {
@@ -42,7 +43,7 @@ const (
 )
 
 type PatchOptions struct {
-	KubeClient *kubernetes.Clientset
+	KubeClient kubernetes.Interface
 	// Sidecar 的运行模式
 	SidecarMode utils.SidecarMode
 	// 目标操作的 POD

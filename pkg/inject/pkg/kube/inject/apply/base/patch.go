@@ -17,10 +17,10 @@ package base
 import (
 	"fmt"
 
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
-	corev1 "k8s.io/api/core/v1"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // PodPatchBuilder
