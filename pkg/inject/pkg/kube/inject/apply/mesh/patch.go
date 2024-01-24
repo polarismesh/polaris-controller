@@ -167,7 +167,7 @@ func (pb *PodPatchBuilder) addPolarisConfigToInitContainerEnv(opt *inject.PatchO
 		return err
 	}
 
-	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
+	tmp, err := template.New("polaris-config-init").Parse(cfgTpl.Data["polaris.yaml"])
 	if err != nil {
 		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err
