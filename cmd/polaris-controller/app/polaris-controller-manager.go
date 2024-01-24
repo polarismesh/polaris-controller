@@ -49,13 +49,12 @@ import (
 	"github.com/polarismesh/polaris-controller/common/log"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/javaagent"
+	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/mesh"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utilflag "github.com/polarismesh/polaris-controller/pkg/util/flag"
 	"github.com/polarismesh/polaris-controller/pkg/version"
-
-	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/javaagent"
-	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/mesh"
 )
 
 const (

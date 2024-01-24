@@ -36,8 +36,8 @@ import (
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apismetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -140,7 +140,7 @@ func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesF
 		return nil, err
 	}
 	var javaAgentConf Config
-	if err := gyaml.Unmarshal(javaAgentData, &javaAgentData); err != nil {
+	if err := gyaml.Unmarshal(javaAgentData, &javaAgentConf); err != nil {
 		log.InjectScope().Warnf("Failed to parse inject java-agent config file %s", string(dnsData))
 		return nil, err
 	}
@@ -588,6 +588,19 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 	if !ok {
 		return nil, errors.NewInternalError(fmt.Errorf("sidecar-mode %s not found target patch builder", sidecarMode))
 	}
+	if sidecarMode != utils.SidecarForMesh {
+		delete(annotations, utils.SidecarEnvoyMetadata)
+	}
+
+	opt := &PatchOptions{
+		Pod:          pod,
+		KubeClient:   wh.k8sClient,
+		PrevStatus:   prevStatus,
+		SidecarMode:  sidecarMode,
+		WorkloadName: workloadName,
+		Sic:          sic,
+		Annotations:  annotations,
+	}
 
 	// Remove any containers previously injected by kube-inject using
 	// container and volume name as unique key for removal.
@@ -596,6 +609,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/initContainers",
 		Source:   pod.Spec.InitContainers,
 		External: prevStatus.InitContainers,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -605,6 +619,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/containers",
 		Source:   pod.Spec.Containers,
 		External: prevStatus.Containers,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -614,6 +629,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/volumes",
 		Source:   pod.Spec.Volumes,
 		External: prevStatus.Volumes,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -623,6 +639,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/imagePullSecrets",
 		Source:   pod.Spec.ImagePullSecrets,
 		External: prevStatus.ImagePullSecrets,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -634,6 +651,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/initContainers",
 		Source:   pod.Spec.InitContainers,
 		External: sic.InitContainers,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -643,6 +661,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/containers",
 		Source:   pod.Spec.Containers,
 		External: sic.Containers,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -652,6 +671,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/containers",
 		Source:   pod.Spec.Containers,
 		External: sic.Containers,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -662,6 +682,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/volumes",
 		Source:   pod.Spec.Volumes,
 		External: sic.Volumes,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err
@@ -671,6 +692,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		BasePath: "/spec/imagePullSecrets",
 		Source:   pod.Spec.ImagePullSecrets,
 		External: sic.ImagePullSecrets,
+		Option:   opt,
 	})
 	if err != nil {
 		return nil, err

@@ -22,18 +22,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/polarismesh/polaris-controller/common"
-	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/util"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/polarismesh/polaris-controller/common"
+	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/base"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/yaml"
+	"github.com/polarismesh/polaris-controller/pkg/util"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 func init() {
@@ -51,7 +51,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 	case inject.PatchType_Add:
 		pod := req.Option.Pod
 		added := req.External
-		for _, add := range added {
+		for index, add := range added {
 			// mesh condition || dns condition
 			if add.Name == "polaris-bootstrap-writer" || add.Name == "polaris-sidecar-init" {
 				log.InjectScope().Infof("begin to add polaris-sidecar config to int container for pod[%s, %s]",
@@ -73,6 +73,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 					MountPath: "/data/polaris.yaml",
 				})
 			}
+			added[index] = add
 		}
 		// 重新更新请求参数中的 req.External
 		req.External = added
@@ -117,7 +118,7 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 }
 
 // ensureRootCertExist ensure that we have rootca pem secret in current namespace
-func (pb *PodPatchBuilder) ensureRootCertExist(k8sClient *kubernetes.Clientset, pod *corev1.Pod) error {
+func (pb *PodPatchBuilder) ensureRootCertExist(k8sClient kubernetes.Interface, pod *corev1.Pod) error {
 	if !inject.EnableMtls(pod) {
 		return nil
 	}
@@ -166,7 +167,7 @@ func (pb *PodPatchBuilder) addPolarisConfigToInitContainerEnv(opt *inject.PatchO
 		return err
 	}
 
-	tmp, err := (&template.Template{}).Parse(cfgTpl.Data["polaris.yaml"])
+	tmp, err := template.New("polaris-config-init").Parse(cfgTpl.Data["polaris.yaml"])
 	if err != nil {
 		log.InjectScope().Errorf("[Webhook][Inject] parse polaris-sidecar failed: %v", err)
 		return err

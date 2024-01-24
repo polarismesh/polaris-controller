@@ -15,22 +15,24 @@
 package javaagent
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/base"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/base"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // Java Agent 场景下的特殊 annonations 信息
@@ -60,16 +62,19 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 	case inject.PatchType_Add:
 		pod := req.Option.Pod
 		added := req.External
-		for _, add := range added {
+		for index, add := range added {
 			if add.Name == "polaris-javaagent-init" {
 				log.InjectScope().Infof("begin deal polaris-javaagent-init inject for pod=[%s, %s]", pod.Namespace, pod.Name)
 				if err := pb.handleJavaAgentInit(req.Option, pod, &add); err != nil {
 					log.InjectScope().Errorf("handle polaris-javaagent-init inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 				}
 			}
+			added[index] = add
 		}
 		// 重新更新请求参数中的 req.External
 		req.External = added
+		log.InjectScope().Infof("finish deal polaris-javaagent-init inject for pod=[%s, %s] added: %#v", pod.Namespace, pod.Name, added)
+		return pb.PodPatchBuilder.PatchContainer(req)
 	case inject.PatchType_Update:
 		return pb.updateContainer(req.Option.SidecarMode, req.Option.Pod, req.Option.Pod.Spec.Containers, req.BasePath), nil
 	}
@@ -77,7 +82,9 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 }
 
 func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) error {
-	annonations := opt.Annotations
+	annonations := pod.Annotations
+	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v",
+		pod.Namespace, pod.Name, pod.Annotations)
 	// 判断用户是否自定义了 javaagent 的版本
 	if val, ok := annonations[customJavaAgentVersion]; ok {
 		oldImageInfo := strings.Split(add.Image, ":")
@@ -85,59 +92,69 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	}
 
 	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
-	if pluginType, ok := annonations[customJavaAgentPluginType]; ok {
-		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_PLUGIN_TYPE",
-			Value: pluginType,
-		})
-		kubeClient := opt.KubeClient
-		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
-			"plugin-default.properties", metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		pluginConfTemp := pluginCm.Data[nameOfPluginDefault(pluginType)]
-		defaultParam := map[string]string{
-			"MicroserviceName":    annonations[util.SidecarServiceName],
-			"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
-			"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
-		}
-		tpl, err := template.New(pluginType).Parse(pluginConfTemp)
-		if err != nil {
-			return err
-		}
-		buf := new(bytes.Buffer)
-		if err := tpl.Execute(buf, defaultParam); err != nil {
-			return err
-		}
-		defaultProperties := map[string]string{}
-		if err := json.Unmarshal(buf.Bytes(), &defaultProperties); err != nil {
-			return err
-		}
-
-		// 查看用户是否自定义了相关配置信息
-		// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
-		if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
-			customProperties := map[string]string{}
-			if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
-				return err
-			}
-			// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
-			for k, v := range customProperties {
-				defaultProperties[k] = v
+	pluginType, ok := annonations[customJavaAgentPluginType]
+	if !ok {
+		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found plugin type",
+			pod.Namespace, pod.Name)
+	}
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  "JAVA_AGENT_PLUGIN_TYPE",
+		Value: pluginType,
+	})
+	kubeClient := opt.KubeClient
+	pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+		"plugin-default.properties", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	defaultParam := map[string]string{
+		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
+		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
+		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
+	}
+	tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+	if err != nil {
+		return err
+	}
+	buf := new(bytes.Buffer)
+	if err := tpl.Execute(buf, defaultParam); err != nil {
+		return err
+	}
+	defaultProperties := map[string]string{}
+	scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// 注释不放在 defaultProperties 中
+		if !strings.HasPrefix(line, "#") {
+			kvs := strings.Split(line, "=")
+			if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+				defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
 			}
 		}
-		exportAgentPluginConf := ""
-		for key, value := range defaultProperties {
-			exportAgentPluginConf += fmt.Sprintf("\n%s=%s\n", key, value)
-		}
-
-		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_PLUGIN_CONF",
-			Value: exportAgentPluginConf,
-		})
 	}
 
+	// 查看用户是否自定义了相关配置信息
+	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
+	if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+		customProperties := map[string]string{}
+		if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+			return err
+		}
+		// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+		for k, v := range customProperties {
+			defaultProperties[k] = v
+		}
+	}
+	exportAgentPluginConf := ""
+	for key, value := range defaultProperties {
+		exportAgentPluginConf += fmt.Sprintf("%s=%s\n", key, value)
+	}
+
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  "JAVA_AGENT_PLUGIN_CONF",
+		Value: exportAgentPluginConf,
+	})
 	return nil
 }
 
@@ -150,7 +167,7 @@ func (pb *PodPatchBuilder) updateContainer(sidecarMode utils.SidecarMode, pod *c
 
 	patchs := make([]inject.Rfc6902PatchOperation, 0, len(target))
 
-	for _, container := range target {
+	for index, container := range target {
 		envs := container.Env
 		javaEnvIndex := -1
 		if len(envs) != 0 {
@@ -183,7 +200,8 @@ func (pb *PodPatchBuilder) updateContainer(sidecarMode utils.SidecarMode, pod *c
 				MountPath: "/app/lib/.polaris/java_agent",
 			})
 
-		path := basePath + "/-"
+		path := basePath
+		path += "/" + strconv.Itoa(index)
 		patchs = append(patchs, inject.Rfc6902PatchOperation{
 			Op:    "replace",
 			Path:  path,
