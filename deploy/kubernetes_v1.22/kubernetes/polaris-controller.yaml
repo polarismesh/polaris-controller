@@ -122,6 +122,8 @@ spec:
                 path: mesh-config
               - key: dns-config
                 path: dns-config
+              - key: java-agent-config
+                path: java-agent-config
               - key: values
                 path: values
         - name: config-volume
