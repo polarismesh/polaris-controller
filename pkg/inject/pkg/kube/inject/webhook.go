@@ -586,7 +586,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 
 	patchBuilder, ok := _PatchBuilders[utils.ParseSidecarModeName(sidecarMode)]
 	if !ok {
-		return nil, errors.NewInternalError(fmt.Errorf("sidecar-mode %s not found target patch builder", sidecarMode))
+		return nil, errors.NewInternalError(fmt.Errorf("sidecar-mode %+v not found target patch builder", sidecarMode))
 	}
 	if sidecarMode != utils.SidecarForMesh {
 		delete(annotations, utils.SidecarEnvoyMetadata)
