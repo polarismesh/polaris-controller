@@ -37,9 +37,10 @@ import (
 
 // Java Agent 场景下的特殊 annonations 信息
 const (
-	customJavaAgentVersion      = "sidecar.polarismesh.cn/java-agent-version"
-	customJavaAgentPluginType   = "sidecar.polarismesh.cn/java-agent-plugin-type"
-	customJavaAgentPluginConfig = "sidecar.polarismesh.cn/java-agent-plugin-config"
+	customJavaAgentVersion                = "polarismesh.cn/java-agent/version"
+	customJavaAgentPluginFramework        = "polarismesh.cn/java-agent/framework-name"
+	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/java-agent/framework-version"
+	customJavaAgentPluginConfig           = "polarismesh.cn/java-agent/config"
 )
 
 const (
@@ -92,11 +93,20 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	}
 
 	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
-	pluginType, ok := annonations[customJavaAgentPluginType]
+	frameworkName, ok := annonations[customJavaAgentPluginFramework]
 	if !ok {
-		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found plugin type",
+		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
+		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFramework)
 	}
+	frameworkVersion, ok := annonations[customJavaAgentPluginFrameworkVersion]
+	if !ok {
+		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
+			pod.Namespace, pod.Name)
+		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFrameworkVersion)
+	}
+
+	pluginType := frameworkName + frameworkVersion
 	add.Env = append(add.Env, corev1.EnvVar{
 		Name:  "JAVA_AGENT_PLUGIN_TYPE",
 		Value: "plugins.enable=" + pluginType,
