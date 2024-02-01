@@ -37,10 +37,10 @@ import (
 
 // Java Agent 场景下的特殊 annonations 信息
 const (
-	customJavaAgentVersion                = "polarismesh.cn/java-agent/version"
-	customJavaAgentPluginFramework        = "polarismesh.cn/java-agent/framework-name"
-	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/java-agent/framework-version"
-	customJavaAgentPluginConfig           = "polarismesh.cn/java-agent/config"
+	customJavaAgentVersion                = "polarismesh.cn/javaagentVersion"
+	customJavaAgentPluginFramework        = "polarismesh.cn/javaagentFrameworkName"
+	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
+	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
 )
 
 const (

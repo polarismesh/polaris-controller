@@ -270,7 +270,7 @@ func validateBool(value string) error {
 // getSidecarMode 获取 sidecar 注入模式
 func (wh *Webhook) getSidecarMode(namespace string, pod *corev1.Pod) utils.SidecarMode {
 	// 这里主要是处理北极星 sidecar, 优先级: pod.annotations > namespace.labels > configmap
-	if val, ok := pod.Annotations["polarismesh.cn/java-agent"]; ok && val == "true" {
+	if val, ok := pod.Annotations["polarismesh.cn/javaagent"]; ok && val == "true" {
 		return utils.SidecarForJavaAgent
 	}
 	sidecarMode := ""
