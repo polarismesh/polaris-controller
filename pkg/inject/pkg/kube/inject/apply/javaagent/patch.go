@@ -113,6 +113,14 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		Name:  "JAVA_AGENT_PLUGIN_TYPE",
 		Value: pluginType,
 	})
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  "JAVA_AGENT_FRAMEWORK_NAME",
+		Value: frameworkName,
+	})
+	add.Env = append(add.Env, corev1.EnvVar{
+		Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
+		Value: frameworkVersion,
+	})
 	kubeClient := opt.KubeClient
 	pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
 		"plugin-default.properties", metav1.GetOptions{})
