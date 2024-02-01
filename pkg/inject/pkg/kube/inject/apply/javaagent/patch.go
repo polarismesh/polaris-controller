@@ -44,7 +44,7 @@ const (
 )
 
 const (
-	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-agent-core-bootstrap.jar"
+	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
 )
 
 func init() {
@@ -77,7 +77,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 		log.InjectScope().Infof("finish deal polaris-javaagent-init inject for pod=[%s, %s] added: %#v", pod.Namespace, pod.Name, added)
 		return pb.PodPatchBuilder.PatchContainer(req)
 	case inject.PatchType_Update:
-		return pb.updateContainer(req.Option.SidecarMode, req.Option.Pod, req.Option.Pod.Spec.Containers, req.BasePath), nil
+		return pb.updateContainer(req.Option, req.Option.SidecarMode, req.Option.Pod, req.Option.Pod.Spec.Containers, req.BasePath), nil
 	}
 	return nil, nil
 }
@@ -87,9 +87,11 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v",
 		pod.Namespace, pod.Name, pod.Annotations)
 	// 判断用户是否自定义了 javaagent 的版本
+	oldImageInfo := strings.Split(add.Image, ":")
+	opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	if val, ok := annonations[customJavaAgentVersion]; ok {
-		oldImageInfo := strings.Split(add.Image, ":")
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
+		opt.ExternalInfo[customJavaAgentVersion] = val
 	}
 
 	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
@@ -172,7 +174,7 @@ func nameOfPluginDefault(v string) string {
 	return v + "-default-properties"
 }
 
-func (pb *PodPatchBuilder) updateContainer(sidecarMode utils.SidecarMode, pod *corev1.Pod,
+func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode utils.SidecarMode, pod *corev1.Pod,
 	target []corev1.Container, basePath string) []inject.Rfc6902PatchOperation {
 
 	patchs := make([]inject.Rfc6902PatchOperation, 0, len(target))
@@ -191,7 +193,7 @@ func (pb *PodPatchBuilder) updateContainer(sidecarMode utils.SidecarMode, pod *c
 				oldVal := envs[javaEnvIndex].Value
 				envs[javaEnvIndex] = corev1.EnvVar{
 					Name:  "JAVA_TOOL_OPTIONS",
-					Value: oldVal + " " + ActiveJavaAgentCmd,
+					Value: oldVal + " " + fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
 				}
 			}
 		}
@@ -199,7 +201,7 @@ func (pb *PodPatchBuilder) updateContainer(sidecarMode utils.SidecarMode, pod *c
 			// 注入 java agent 需要用到的参数信息
 			container.Env = append(container.Env, corev1.EnvVar{
 				Name:  "JAVA_TOOL_OPTIONS",
-				Value: ActiveJavaAgentCmd,
+				Value: fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
 			})
 		}
 

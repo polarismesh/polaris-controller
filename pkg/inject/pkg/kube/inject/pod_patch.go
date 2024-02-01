@@ -56,6 +56,8 @@ type PatchOptions struct {
 	Sic *SidecarInjectionSpec
 	// Workload 的名称
 	WorkloadName string
+	// ExternalInfo .
+	ExternalInfo map[string]string
 }
 
 type OperateContainerRequest struct {
