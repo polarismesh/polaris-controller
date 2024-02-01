@@ -924,6 +924,10 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 		config = wh.sidecarDnsConfig
 		tempVersion = wh.sidecarDnsTemplateVersion
 	}
+	if sidecarMode == utils.SidecarForJavaAgent {
+		config = wh.sidecarJavaAgentConfig
+		tempVersion = wh.sidecarJavaAgentTemplateVersion
+	}
 
 	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
 		log.InjectScope().Infof("[Webhook] skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
