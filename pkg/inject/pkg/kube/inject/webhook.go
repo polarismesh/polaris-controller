@@ -600,6 +600,7 @@ func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, p
 		WorkloadName: workloadName,
 		Sic:          sic,
 		Annotations:  annotations,
+		ExternalInfo: map[string]string{},
 	}
 
 	// Remove any containers previously injected by kube-inject using
