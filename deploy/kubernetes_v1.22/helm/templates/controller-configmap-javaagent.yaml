@@ -6,7 +6,7 @@ metadata:
   labels:
     app: sidecar-injector
 data:
-  springcloud2020-default-properties: |+
+  spring-cloud2020-default-properties: |+
     # 应用名称
     spring.application.name={{ .MicroserviceName }}
     # 配置北极星服务端地址
@@ -56,7 +56,7 @@ data:
     # 指标上报暴露的 http path
     spring.cloud.polaris.stat.path=/metrics
 
-  springcloud2021-default-properties: |+
+  spring-cloud2021-default-properties: |+
     # 应用名称
     spring.application.name={{ .MicroserviceName }}
     # 配置北极星服务端地址
@@ -106,7 +106,7 @@ data:
     # 指标上报暴露的 http path
     spring.cloud.polaris.stat.path=/metrics
 
-  springcloudhoxton-default-properties: |+
+  spring-cloudhoxton-default-properties: |+
     # 应用名称
     spring.application.name={{ .MicroserviceName }}
     # 配置北极星服务端地址
