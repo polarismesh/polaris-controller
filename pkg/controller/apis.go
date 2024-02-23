@@ -68,7 +68,7 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
 	// 处理健康检查
 	var healthCheck polarisapi.HealthCheck
 	healthy := util.Bool(true)
@@ -104,8 +104,8 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 
 		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
-			Service:           service.Name,
-			Namespace:         service.Namespace,
+			Service:           util.GetServiceName(service),
+			Namespace:         util.GetNamespace(service),
 			ServiceToken:      globalToken,
 			HealthCheck:       &healthCheck,
 			Host:              addr.IP,
@@ -129,7 +129,7 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("Finish to delete all instance %s (%v)", serviceMsg, time.Since(startTime))
@@ -139,8 +139,8 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 
 	for _, i := range addresses {
 		tmpInstance := polarisapi.Instance{
-			Service:      service.Name,
-			Namespace:    service.Namespace,
+			Service:      util.GetServiceName(service),
+			Namespace:    util.GetNamespace(service),
 			ServiceToken: globalToken,
 			Host:         i.IP,
 			Port:         util.IntPtr(i.Port),
@@ -155,7 +155,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
@@ -189,8 +189,8 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 
 		healthy := util.Bool(addr.Healthy)
 		tmpInstance := polarisapi.Instance{
-			Service:           service.Name,
-			Namespace:         service.Namespace,
+			Service:           util.GetServiceName(service),
+			Namespace:         util.GetNamespace(service),
 			ServiceToken:      globalToken,
 			HealthCheck:       &healthCheck,
 			Host:              addr.IP,
@@ -212,9 +212,8 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	startTime := time.Now()
 	getInstancesReq := &api.GetAllInstancesRequest{}
 	getInstancesReq.FlowID = rand.Uint64()
-	getInstancesReq.Namespace = service.Namespace
-	getInstancesReq.Service = service.Name
-
+	getInstancesReq.Namespace = util.GetNamespace(service)
+	getInstancesReq.Service = util.GetServiceName(service)
 	registered, err := p.consumer.GetAllInstances(getInstancesReq)
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").

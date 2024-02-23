@@ -405,7 +405,8 @@ func dealUpdateInstanceResponse(response AddResponse, msg string,
 // GetService 查询服务接口
 // GET /naming/v1/services?参数名=参数值
 func GetService(service *v1.Service) (res GetServiceResponse, err error) {
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	polarisName, polarisNamespace := getPolarisName(service)
+	serviceMsg := fmt.Sprintf("[%s/%s]", polarisNamespace, polarisName)
 
 	log.SyncNamingScope().Infof("Start to get %s", serviceMsg)
 	startTime := time.Now()
@@ -415,17 +416,15 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 	var response GetServiceResponse
 	requestID := uuid.New().String()
 
-	polarisNamespace := service.Namespace
 	if polarisNamespace == "" {
 		return response, fmt.Errorf("failed service is invalid, polarisNamespace is empty")
 	}
-	polaris := service.Name
-	if polaris == "" {
+	if polarisName == "" {
 		return response, fmt.Errorf("failed service is invalid, polarisService is empty")
 	}
 
 	url := fmt.Sprintf("%s%s?namespace=%s&name=%s&offset=%d&limit=%d",
-		PolarisHttpURL, getService, polarisNamespace, polaris, 0, 100)
+		PolarisHttpURL, getService, polarisNamespace, polarisName, 0, 100)
 
 	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
 
@@ -487,7 +486,6 @@ func ListService(clusterID string) (res GetServiceResponse, err error) {
 }
 
 func getPolarisPorts(service *v1.Service) string {
-
 	var ports []string
 	for _, port := range service.Spec.Ports {
 		ports = append(ports, strconv.Itoa(int(port.Port)))
@@ -498,10 +496,10 @@ func getPolarisPorts(service *v1.Service) string {
 
 // CreateService 创建北极星服务
 func CreateService(service *v1.Service) (CreateServicesResponse, error) {
+	polarisName, polarisNamespace := getPolarisName(service)
+	serviceMsg := fmt.Sprintf("[%s/%s]", polarisNamespace, polarisName)
 
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-
-	log.SyncNamingScope().Infof("Start to create service [%s][%s]", service.Namespace, service.Name)
+	log.SyncNamingScope().Infof("Start to create service [%s][%s]", polarisNamespace, polarisName)
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("Finish to update %s (%v)", serviceMsg, time.Since(startTime))
@@ -513,8 +511,8 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 	createRequest := []CreateServiceRequest{
 		{
-			Name:      service.Name,
-			Namespace: service.Namespace,
+			Name:      polarisName,
+			Namespace: polarisNamespace,
 			Owners:    Source,
 			Ports:     getPolarisPorts(service),
 			Metadata:  service.Labels,
@@ -553,13 +551,12 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 // CreateServiceAlias 创建北极星服务别名
 func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error) {
-
 	var response CreateServiceAliasResponse
-
 	alias := service.GetAnnotations()[util.PolarisAliasService]
 	aliasNs := service.GetAnnotations()[util.PolarisAliasNamespace]
+	polarisName, polarisNamespace := getPolarisName(service)
 
-	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", service.GetNamespace(), service.GetName(), aliasNs, alias)
+	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", polarisNamespace, polarisName, aliasNs, alias)
 
 	log.SyncNamingScope().Infof("Start to create service alias %s", serviceAliasMsg)
 	startTime := time.Now()
@@ -579,8 +576,8 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
 
 	createRequest := &CreateServiceAliasRequest{
-		Service:        service.Name,
-		Namespace:      service.Namespace,
+		Service:        polarisName,
+		Namespace:      polarisNamespace,
 		Alias:          alias,
 		AliasNamespace: aliasNs,
 		Owners:         Source,
@@ -619,7 +616,8 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 // UpdateService 更新服务字段
 // PUT /naming/v1/services
 func UpdateService(service *v1.Service, request []Service) (int, PutServicesResponse, error) {
-	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	polarisName, polarisNamespace := getPolarisName(service)
+	serviceMsg := fmt.Sprintf("[%s/%s]", polarisNamespace, polarisName)
 	log.SyncNamingScope().Infof("Start to update %s", serviceMsg)
 	startTime := time.Now()
 	defer func() {
@@ -820,4 +818,9 @@ func lookAccessToken() (string, error) {
 	}
 
 	return userResp.User.AuthToken, nil
+}
+
+// getPolarisName, 解析北极星的Name
+func getPolarisName(svr *v1.Service) (string, string) {
+	return util.GetServiceName(svr), util.GetNamespace(svr)
 }
