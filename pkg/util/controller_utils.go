@@ -120,3 +120,18 @@ func IsConfigMapKey(key string) (string, bool) {
 	}
 	return key, false
 }
+
+func GetNamespace(svr *v1.Service) string {
+	if v, ok := svr.GetAnnotations()[PolarisOverideNamespace]; ok && v != "" {
+		return v
+	}
+
+	return svr.GetNamespace()
+}
+
+func GetServiceName(svr *v1.Service) string {
+	if v, ok := svr.GetAnnotations()[PolarisOverideService]; ok && v != "" {
+		return v
+	}
+	return svr.GetName()
+}

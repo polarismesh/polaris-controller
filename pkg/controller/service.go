@@ -240,7 +240,7 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		return nil
 	}
 
-	createNsResponse, err := polarisapi.CreateNamespaces(service.Namespace)
+	createNsResponse, err := polarisapi.CreateNamespaces(util.GetNamespace(service))
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed create namespaces in processSyncNamespaceAndService %s, err %s, resp %v",
 			serviceMsg, err, createNsResponse)

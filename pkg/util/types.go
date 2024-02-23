@@ -20,14 +20,16 @@ const (
 )
 
 const (
-	PolarisSync           = "polarismesh.cn/sync"
-	PolarisEnableRegister = "polarismesh.cn/enableRegister"
-	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
-	PolarisAliasService   = "polarismesh.cn/aliasService"
-	PolarisSidecarMode    = "polarismesh.cn/sidecar-mode"
-	PolarisMetadata       = "polarismesh.cn/metadata"
-	PolarisWeight         = "polarismesh.cn/weight"
-	PolarisHeartBeatTTL   = "polarismesh.cn/ttl"
+	PolarisSync             = "polarismesh.cn/sync"
+	PolarisEnableRegister   = "polarismesh.cn/enableRegister"
+	PolarisAliasNamespace   = "polarismesh.cn/aliasNamespace"
+	PolarisAliasService     = "polarismesh.cn/aliasService"
+	PolarisOverideNamespace = "polarismesh.cn/overideNamespace"
+	PolarisOverideService   = "polarismesh.cn/overideService"
+	PolarisSidecarMode      = "polarismesh.cn/sidecar-mode"
+	PolarisMetadata         = "polarismesh.cn/metadata"
+	PolarisWeight           = "polarismesh.cn/weight"
+	PolarisHeartBeatTTL     = "polarismesh.cn/ttl"
 
 	WorkloadKind        = "polarismesh.cn/workloadKind"
 	PolarisCustomWeight = "polarismesh.cn/customWeight"
