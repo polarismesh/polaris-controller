@@ -93,7 +93,7 @@ spec:
           imagePullPolicy: Always
           volumeMounts:
             - mountPath: /polaris-controller/log
-              name: log
+              name: logs
             - name: certs
               mountPath: /etc/polaris-inject/certs
               readOnly: true
