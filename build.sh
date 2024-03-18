@@ -68,7 +68,7 @@ if [ ! -f "$varFile" ]; then
   echo "variables.txt not exists"
   exit 1
 fi
-cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
+cat $varFile | awk -F ':' '{print "replaceVar", $1, $2}' | "/bin/bash"
 
 cd $workdir
 zip -r "${pkg_name}" ${folder_name}
@@ -103,7 +103,7 @@ if [ ! -f "$varFile" ]; then
   echo "variables.txt not exists"
   exit 1
 fi
-cat $varFile | awk -F ':' '{print "replaceVar", $1, $2 | "/bin/bash"}'
+cat $varFile | awk -F ':' '{print "replaceVar", $1, $2}' | "/bin/bash"
 cd $workdir
 zip -r "${pkg_name}" ${folder_name}
 #md5sum ${pkg_name} > "${pkg_name}.md5sum"
