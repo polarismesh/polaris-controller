@@ -577,6 +577,8 @@ func registerController(c *options.KubeControllerManagerConfiguration, provider 
 	req.Host = podIP
 	req.Port = int(c.Generic.Port)
 	req.SetTTL(5)
+	// 开启自动上报心跳
+	req.AutoHeartbeat = true
 
 	_, err := provider.RegisterInstance(req)
 	if err != nil {
