@@ -3,7 +3,7 @@ ORG = polarismesh
 REPO = polaris-controller
 SIDECAR_INIT_REPO = polaris-sidecar-init
 ENVOY_SIDECAR_INIT_REPO = polaris-envoy-bootstrap-generator
-IMAGE_TAG = v1.7.0-alpha.3
+IMAGE_TAG = v1.7.1
 PLATFORMS = linux/amd64,linux/arm64
 
 .PHONY: all
