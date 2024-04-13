@@ -64,6 +64,7 @@ data:
     # 地域信息
     spring.cloud.tencent.metadata.content.region=""
     spring.cloud.tencent.metadata.content.zone=""
+    spring.cloud.tencent.metadata.content.campus=""
 
   spring-cloud2021-default-properties: |+
     # 应用名称
