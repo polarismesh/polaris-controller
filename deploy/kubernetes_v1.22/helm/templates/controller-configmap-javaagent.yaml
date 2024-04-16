@@ -6,7 +6,67 @@ metadata:
   labels:
     app: sidecar-injector
 data:
-  spring-cloud2020-default-properties: |+
+  spring-cloud2023-default-properties: |+
+    # 应用名称
+    spring.application.name={{ .MicroserviceName }}
+    # 配置北极星服务端地址
+    spring.cloud.polaris.address=grpc\://{{ .PolarisServerIP }}\:{{ .PolarisDiscoverPort }}
+    spring.cloud.polaris.enabled=true
+    
+    # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
+    spring.cloud.discovery.enabled=true
+    # 配置服务注册发现的命名空间信息
+    spring.cloud.polaris.discovery.namespace=default
+    # 启用从北极星
+    spring.cloud.polaris.discovery.enabled=true
+    spring.cloud.polaris.discovery.register=true
+    
+    ## 是否启用北极星的 LoadBalancer
+    spring.cloud.polaris.loadbalancer.enabled=true
+    #spring.cloud.polaris.loadbalancer.discoveryType=POLARIS
+    #spring.cloud.polaris.loadbalancer.strategy=random
+    
+    ## 是否启用北极星服务路由能力
+    spring.cloud.polaris.router.enabled=true
+    # 是否启用北极星的自定义路由能力
+    spring.cloud.polaris.router.rule-router.enabled=true
+    # 是否启用北极星的元数据路由能力
+    spring.cloud.polaris.router.metadata-router.enabled=true
+    # 是否启用北极星的就近路由能力
+    spring.cloud.polaris.router.nearby-router.enabled=true
+    
+    ## 是否启用北极星的服务限流能力
+    spring.cloud.polaris.ratelimit.enabled=false
+    # 设置触发限流时的提示信息
+    # spring.cloud.polaris.ratelimit.rejectRequestTips=""
+    # 设置触发限流时的响应码
+    spring.cloud.polaris.ratelimit.rejectHttpCode=429
+    # 设置限流匀速排队最大排队时间
+    spring.cloud.polaris.ratelimit.maxQueuingTime=1000
+    
+    ## 是否启用优雅上下线功能
+    spring.cloud.polaris.lossless.enabled=true
+    spring.cloud.polaris.lossless.port=28080
+    spring.cloud.polaris.lossless.delayRegisterInterval=30000
+    
+    ## RPC 调用增强
+    spring.cloud.tencent.rpc-enhancement.enabled=true
+    # 开启 RPC 调用结果上报
+    spring.cloud.tencent.rpc-enhancement.reporter.enabled=true
+    
+    # 配置北极星监控指标上报
+    spring.cloud.polaris.stat.enabled=false
+    # 指标上报监听端口
+    spring.cloud.polaris.stat.port=0
+    # 指标上报暴露的 http path
+    spring.cloud.polaris.stat.path=/metrics
+    
+    # 地域信息
+    spring.cloud.tencent.metadata.content.region=""
+    spring.cloud.tencent.metadata.content.zone=""
+    spring.cloud.tencent.metadata.content.campus=""
+
+  spring-cloud2021-default-properties: |+
     # 应用名称
     spring.application.name={{ .MicroserviceName }}
     # 配置北极星服务端地址
@@ -54,9 +114,9 @@ data:
     # 指标上报监听端口
     spring.cloud.polaris.stat.port=0
     # 指标上报暴露的 http path
-    spring.cloud.polaris.stat.path=/metrics
+    spring.cloud.polaris.stat.path=/metrics  
 
-  spring-cloud2021-default-properties: |+
+  spring-cloud2020-default-properties: |+
     # 应用名称
     spring.application.name={{ .MicroserviceName }}
     # 配置北极星服务端地址
