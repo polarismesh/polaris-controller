@@ -340,6 +340,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 
 			sidecarMeshConfig := injectConf.MeshInjectConf
 			sidecarDnsConfig := injectConf.DnsInjectConf
+			sidecarJavaagentConfig := injectConf.JavaAgentInjectConf
 			meshConfig := injectConf.MeshConf
 			valuesConfig := injectConf.ValuesConf
 
@@ -348,8 +349,8 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			wh.sidecarMeshTemplateVersion = sidecarTemplateVersionHash(sidecarMeshConfig.Template)
 			wh.sidecarDnsConfig = sidecarDnsConfig
 			wh.sidecarDnsTemplateVersion = sidecarTemplateVersionHash(sidecarDnsConfig.Template)
-			wh.sidecarJavaAgentConfig = sidecarDnsConfig
-			wh.sidecarJavaAgentTemplateVersion = sidecarTemplateVersionHash(sidecarDnsConfig.Template)
+			wh.sidecarJavaAgentConfig = sidecarJavaagentConfig
+			wh.sidecarJavaAgentTemplateVersion = sidecarTemplateVersionHash(sidecarJavaagentConfig.Template)
 
 			wh.valuesConfig = valuesConfig
 			wh.meshConfig = meshConfig
