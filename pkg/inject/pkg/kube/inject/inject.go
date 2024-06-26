@@ -613,11 +613,11 @@ func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarT
 	temp := template.New("inject")
 	t, err := temp.Funcs(funcMap).Parse(tmplStr)
 	if err != nil {
-		log.InjectScope().Infof("Failed to parse template: %v %v\n", err, tmplStr)
+		log.InjectScope().Errorf("Failed to parse template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 	if err := t.Execute(&tmpl, &data); err != nil {
-		log.InjectScope().Infof("Invalid template: %v %v\n", err, tmplStr)
+		log.InjectScope().Errorf("Invalid template: %v %v\n", err, tmplStr)
 		return bytes.Buffer{}, err
 	}
 
