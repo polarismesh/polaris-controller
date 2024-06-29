@@ -91,9 +91,23 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	}
+	// if val, ok := annonations[customJavaAgentVersion]; ok {
+	//     add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
+	//     opt.ExternalInfo[customJavaAgentVersion] = val
+	// }
+
+	// 获取默认的 Java Agent 版本
+	defaultJavaAgentVersion := oldImageInfo[1]
+	// 检查客户的 Java Agent 版本是否与默认版本一致
+	isCustomVersionSameAsDefault := false
 	if val, ok := annonations[customJavaAgentVersion]; ok {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
 		opt.ExternalInfo[customJavaAgentVersion] = val
+		if val == defaultJavaAgentVersion {
+			isCustomVersionSameAsDefault = true
+		}
+	} else {
+		isCustomVersionSameAsDefault = true
 	}
 
 	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
@@ -101,13 +115,13 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if !ok {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
-		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFramework)
+		// return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFramework)
 	}
 	frameworkVersion, ok := annonations[customJavaAgentPluginFrameworkVersion]
 	if !ok {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
 			pod.Namespace, pod.Name)
-		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFrameworkVersion)
+		// return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFrameworkVersion)
 	}
 
 	pluginType := frameworkName + frameworkVersion
@@ -158,16 +172,34 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
+	// if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+	//     customProperties := map[string]string{}
+	//     if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+	//         return err
+	//     }
+	//     // 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+	//     for k, v := range customProperties {
+	//         defaultProperties[k] = v
+	//     }
+	// }
+
 	if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
 		customProperties := map[string]string{}
 		if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
 			return err
 		}
-		// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
-		for k, v := range customProperties {
-			defaultProperties[k] = v
+
+		if !isCustomVersionSameAsDefault {
+			// 如果客户的 Java Agent 版本与默认版本不一致，则合并默认配置和客户配置
+			for k, v := range customProperties {
+				defaultProperties[k] = v
+			}
+		} else {
+			// 如果客户的 Java Agent 版本与默认版本一致，则只使用客户配置
+			defaultProperties = customProperties
 		}
 	}
+
 	exportAgentPluginConf := ""
 	for key, value := range defaultProperties {
 		exportAgentPluginConf += fmt.Sprintf("%s=%s\n", key, value)
