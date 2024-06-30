@@ -117,10 +117,13 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
 			Value: frameworkVersion,
 		})
+	} else {
+		pluginType = "spring-cloud2023"
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_PLUGIN_TYPE",
+			Value: pluginType,
+		})
 	}
-	// } else {
-	//     pluginType = "spring-cloud2023"
-	// }
 
 	// kubeClient := opt.KubeClient
 	// pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
@@ -128,11 +131,21 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	// if err != nil {
 	//     return err
 	// }
-	defaultProperties := map[string]string{
+	defaultParam := map[string]string{
 		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
 		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
 		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
 	}
+
+	defaultProperties := make(map[string]string)
+
+	// 格式化 MicroserviceName
+	microserviceName := fmt.Sprintf("spring.application.name={{ .%s }}", defaultParam["MicroserviceName"])
+	defaultProperties["MicroserviceName"] = microserviceName
+
+	// 格式化 PolarisServerIP 和 PolarisDiscoverPort
+	polarisAddress := fmt.Sprintf("spring.cloud.polaris.address=grpc\\://{{ .%s }}\\:{{ .%s }}", defaultParam["PolarisServerIP"], defaultParam["PolarisDiscoverPort"])
+	defaultProperties["PolarisAddress"] = polarisAddress
 
 	// tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
 	// if err != nil {
