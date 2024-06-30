@@ -15,17 +15,10 @@
 package javaagent
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-	"text/template"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
@@ -33,6 +26,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Java Agent 场景下的特殊 annonations 信息
@@ -91,6 +85,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	}
+
 	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
 		opt.ExternalInfo[customJavaAgentVersion] = val
@@ -122,42 +117,44 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
 			Value: frameworkVersion,
 		})
-	} else {
-		pluginType = "spring-cloud2022"
 	}
+	// } else {
+	//     pluginType = "spring-cloud2023"
+	// }
 
-	kubeClient := opt.KubeClient
-	pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
-		"plugin-default.properties", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	defaultParam := map[string]string{
+	// kubeClient := opt.KubeClient
+	// pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+	//     "plugin-default.properties", metav1.GetOptions{})
+	// if err != nil {
+	//     return err
+	// }
+	defaultProperties := map[string]string{
 		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
 		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
 		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
 	}
-	tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
-	if err != nil {
-		return err
-	}
-	buf := new(bytes.Buffer)
-	if err := tpl.Execute(buf, defaultParam); err != nil {
-		return err
-	}
-	defaultProperties := map[string]string{}
-	scanner := bufio.NewScanner(strings.NewReader(buf.String()))
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// 注释不放在 defaultProperties 中
-		if !strings.HasPrefix(line, "#") {
-			kvs := strings.Split(line, "=")
-			if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
-				defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
-			}
-		}
-	}
+
+	// tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+	// if err != nil {
+	//     return err
+	// }
+	// buf := new(bytes.Buffer)
+	// if err := tpl.Execute(buf, defaultParam); err != nil {
+	//     return err
+	// }
+	// defaultProperties := map[string]string{}
+	// scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+	// scanner.Split(bufio.ScanLines)
+	// for scanner.Scan() {
+	//     line := scanner.Text()
+	//     // 注释不放在 defaultProperties 中
+	//     if !strings.HasPrefix(line, "#") {
+	//         kvs := strings.Split(line, "=")
+	//         if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+	//             defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+	//         }
+	//     }
+	// }
 
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
