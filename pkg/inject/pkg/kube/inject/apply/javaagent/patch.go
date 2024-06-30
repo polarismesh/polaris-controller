@@ -114,22 +114,16 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Name:  "JAVA_AGENT_PLUGIN_TYPE",
 			Value: pluginType,
 		})
-	} else {
-		pluginType = "spring-cloud2022"
-	}
-
-	if frameworkName != "" {
 		add.Env = append(add.Env, corev1.EnvVar{
 			Name:  "JAVA_AGENT_FRAMEWORK_NAME",
 			Value: frameworkName,
 		})
-	}
-
-	if frameworkVersion != "" {
 		add.Env = append(add.Env, corev1.EnvVar{
 			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
 			Value: frameworkVersion,
 		})
+	} else {
+		pluginType = "spring-cloud2022"
 	}
 
 	kubeClient := opt.KubeClient
