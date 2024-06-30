@@ -91,52 +91,47 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	}
-	if val, ok := annonations[customJavaAgentVersion]; ok {
+	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
 		opt.ExternalInfo[customJavaAgentVersion] = val
 	}
 
-	// // 获取默认的 Java Agent 版本
-	// defaultJavaAgentVersion := oldImageInfo[1]
-	// // 检查客户的 Java Agent 版本是否与默认版本一致
-	// isCustomVersionSameAsDefault := false
-	// if val, ok := annonations[customJavaAgentVersion]; ok {
-	// 	add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
-	// 	opt.ExternalInfo[customJavaAgentVersion] = val
-	// 	if val == defaultJavaAgentVersion {
-	// 		isCustomVersionSameAsDefault = true
-	// 	}
-	// } else {
-	// 	isCustomVersionSameAsDefault = true
-	// }
-
-	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
-	frameworkName, ok := annonations[customJavaAgentPluginFramework]
-	if !ok {
+	frameworkName, frameworkNameOk := annonations[customJavaAgentPluginFramework]
+	if !frameworkNameOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
-		// return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFramework)
 	}
-	frameworkVersion, ok := annonations[customJavaAgentPluginFrameworkVersion]
-	if !ok {
+
+	frameworkVersion, frameworkVersionOk := annonations[customJavaAgentPluginFrameworkVersion]
+	if !frameworkVersionOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
 			pod.Namespace, pod.Name)
-		// return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFrameworkVersion)
 	}
 
 	pluginType := frameworkName + frameworkVersion
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_PLUGIN_TYPE",
-		Value: pluginType,
-	})
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_FRAMEWORK_NAME",
-		Value: frameworkName,
-	})
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
-		Value: frameworkVersion,
-	})
+	if frameworkName != "" && frameworkVersion != "" {
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_PLUGIN_TYPE",
+			Value: pluginType,
+		})
+	} else {
+		pluginType = "spring-cloud2022"
+	}
+
+	if frameworkName != "" {
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_FRAMEWORK_NAME",
+			Value: frameworkName,
+		})
+	}
+
+	if frameworkVersion != "" {
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
+			Value: frameworkVersion,
+		})
+	}
+
 	kubeClient := opt.KubeClient
 	pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
 		"plugin-default.properties", metav1.GetOptions{})
