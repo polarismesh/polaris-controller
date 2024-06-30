@@ -84,7 +84,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 
 func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) error {
 	annonations := pod.Annotations
-	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v image: %s",
+	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v image: %s 111111111111111",
 		pod.Namespace, pod.Name, pod.Annotations, add.Image)
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
