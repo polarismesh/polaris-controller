@@ -150,6 +150,24 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		"PolarisConfigPort":   strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
 	}
 
+	add.Env = append(add.Env,
+		corev1.EnvVar{
+			Name:  "POLARIS_SERVER_IP",
+			Value: defaultParam["PolarisServerIP"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_DISCOVER_PORT",
+			Value: defaultParam["PolarisDiscoverPort"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_CONFIG_PORT",
+			Value: defaultParam["PolarisConfigIP"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_CONFIG_PORT",
+			Value: defaultParam["PolarisConfigPort"],
+		},
+	)
 	defaultProperties := make(map[string]string)
 	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
 	if val, ok := annonations[customJavaAgentVersion]; ok && (validVersions[val] && val != "") {
@@ -179,22 +197,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 				}
 			}
 		}
-	} else {
-		// 格式化 MicroserviceName
-		microserviceNameKey := "spring.application.name"
-		microserviceNameValue := fmt.Sprintf("%s", defaultParam["MicroserviceName"])
-		defaultProperties[microserviceNameKey] = microserviceNameValue
-
-		// 格式化 PolarisServerIP 和 PolarisDiscoverPort
-		polarisAddressKey := "spring.cloud.polaris.address"
-		polarisAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisServerIP"], defaultParam["PolarisDiscoverPort"])
-		defaultProperties[polarisAddressKey] = polarisAddressValue
-
-		polarisConfigAddressKey := "spring.cloud.polaris.address"
-		polarisConfigAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisConfigIP"], defaultParam["PolarisConfigPort"])
-		defaultProperties[polarisConfigAddressKey] = polarisConfigAddressValue
 	}
-
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
 	if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
