@@ -96,12 +96,8 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		pod.Namespace, pod.Name, pod.Annotations, add.Image)
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
-	var imageHasBeenChanged bool
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
-		if oldImageInfo[1] != "latest" {
-			imageHasBeenChanged = true
-		}
 	}
 	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
@@ -168,36 +164,36 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	)
 	defaultProperties := make(map[string]string)
 	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
-	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
-		if _, valid := oldAgentVersions[val]; valid || imageHasBeenChanged {
-			kubeClient := opt.KubeClient
-			pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
-				"plugin-default.properties", metav1.GetOptions{})
-			if err != nil {
-				return err
-			}
-			tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
-			if err != nil {
-				return err
-			}
-			buf := new(bytes.Buffer)
-			if err := tpl.Execute(buf, defaultParam); err != nil {
-				return err
-			}
-			scanner := bufio.NewScanner(strings.NewReader(buf.String()))
-			scanner.Split(bufio.ScanLines)
-			for scanner.Scan() {
-				line := scanner.Text()
-				// 注释不放在 defaultProperties 中
-				if !strings.HasPrefix(line, "#") {
-					kvs := strings.Split(line, "=")
-					if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
-						defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
-					}
+	newImageInfo := strings.Split(add.Image, ":")
+	if _, valid := oldAgentVersions[newImageInfo[1]]; valid {
+		kubeClient := opt.KubeClient
+		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+			"plugin-default.properties", metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+		if err != nil {
+			return err
+		}
+		buf := new(bytes.Buffer)
+		if err := tpl.Execute(buf, defaultParam); err != nil {
+			return err
+		}
+		scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// 注释不放在 defaultProperties 中
+			if !strings.HasPrefix(line, "#") {
+				kvs := strings.Split(line, "=")
+				if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+					defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
 				}
 			}
 		}
 	}
+
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
 	if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
