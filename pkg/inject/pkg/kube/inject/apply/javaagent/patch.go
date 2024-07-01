@@ -42,23 +42,13 @@ const (
 	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
 )
 
-var validVersions = map[string]bool{
-	"1.7.0-RC4":         true,
-	"1.7.0-RC3":         true,
-	"1.7.0-RC2":         true,
-	"1.7.0-RC1":         true,
-	"1.6.1":             true,
-	"1.6.0":             true,
-	"1.5.0":             true,
-	"1.2.0-nacos-1.3.0": true,
-	"1.2.0-nacos-2.1.0": true,
-	"1.2.0-nacos-1.3.1": true,
-	"1.2.0-dubbox-2.x":  true,
-	"v1.0.4":            true,
-	"v1.0.3":            true,
-	"v1.0.2":            true,
-	"v1.0.1":            true,
-	"v1.0.0":            true,
+var oldAgentVersions = map[string]struct{}{
+	"1.7.0-RC4": {},
+	"1.7.0-RC3": {},
+	"1.7.0-RC2": {},
+	"1.7.0-RC1": {},
+	"1.6.1":     {},
+	"1.6.0":     {},
 }
 
 const (
@@ -156,6 +146,10 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Value: defaultParam["PolarisServerIP"],
 		},
 		corev1.EnvVar{
+			Name:  "POLARIS_DISCOVER_IP",
+			Value: defaultParam["PolarisServerIP"],
+		},
+		corev1.EnvVar{
 			Name:  "POLARIS_DISCOVER_PORT",
 			Value: defaultParam["PolarisDiscoverPort"],
 		},
@@ -170,33 +164,36 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	)
 	defaultProperties := make(map[string]string)
 	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
-	if val, ok := annonations[customJavaAgentVersion]; ok && (validVersions[val] && val != "") {
-		kubeClient := opt.KubeClient
-		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
-			"plugin-default.properties", metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
-		if err != nil {
-			return err
-		}
-		buf := new(bytes.Buffer)
-		if err := tpl.Execute(buf, defaultParam); err != nil {
-			return err
-		}
-		scanner := bufio.NewScanner(strings.NewReader(buf.String()))
-		scanner.Split(bufio.ScanLines)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// 注释不放在 defaultProperties 中
-			if !strings.HasPrefix(line, "#") {
-				kvs := strings.Split(line, "=")
-				if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
-					defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
+		if _, valid := oldAgentVersions[val]; valid {
+			kubeClient := opt.KubeClient
+			pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+				"plugin-default.properties", metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+			if err != nil {
+				return err
+			}
+			buf := new(bytes.Buffer)
+			if err := tpl.Execute(buf, defaultParam); err != nil {
+				return err
+			}
+			scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+			scanner.Split(bufio.ScanLines)
+			for scanner.Scan() {
+				line := scanner.Text()
+				// 注释不放在 defaultProperties 中
+				if !strings.HasPrefix(line, "#") {
+					kvs := strings.Split(line, "=")
+					if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+						defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+					}
 				}
 			}
 		}
+
 	}
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
