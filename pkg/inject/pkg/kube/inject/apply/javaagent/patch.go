@@ -24,15 +24,14 @@ import (
 	"strings"
 	"text/template"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/base"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Java Agent 场景下的特殊 annonations 信息
@@ -42,6 +41,15 @@ const (
 	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
 	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
 )
+
+var oldAgentVersions = map[string]struct{}{
+	"1.7.0-RC4": {},
+	"1.7.0-RC3": {},
+	"1.7.0-RC2": {},
+	"1.7.0-RC1": {},
+	"1.6.1":     {},
+	"1.6.0":     {},
+}
 
 const (
 	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
@@ -91,67 +99,97 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	}
-	if val, ok := annonations[customJavaAgentVersion]; ok {
+	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
 		opt.ExternalInfo[customJavaAgentVersion] = val
 	}
 
-	// 需要将用户的框架信息注入到 javaagent-init 中，用于初始化相关的配置文件信息
-	frameworkName, ok := annonations[customJavaAgentPluginFramework]
-	if !ok {
+	frameworkName, frameworkNameOk := annonations[customJavaAgentPluginFramework]
+	if !frameworkNameOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
-		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFramework)
 	}
-	frameworkVersion, ok := annonations[customJavaAgentPluginFrameworkVersion]
-	if !ok {
+
+	frameworkVersion, frameworkVersionOk := annonations[customJavaAgentPluginFrameworkVersion]
+	if !frameworkVersionOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
 			pod.Namespace, pod.Name)
-		return fmt.Errorf("pod annonations not set %s", customJavaAgentPluginFrameworkVersion)
 	}
 
 	pluginType := frameworkName + frameworkVersion
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_PLUGIN_TYPE",
-		Value: pluginType,
-	})
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_FRAMEWORK_NAME",
-		Value: frameworkName,
-	})
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
-		Value: frameworkVersion,
-	})
-	kubeClient := opt.KubeClient
-	pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
-		"plugin-default.properties", metav1.GetOptions{})
-	if err != nil {
-		return err
+	if frameworkName != "" && frameworkVersion != "" {
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_PLUGIN_TYPE",
+			Value: pluginType,
+		})
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_FRAMEWORK_NAME",
+			Value: frameworkName,
+		})
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
+			Value: frameworkVersion,
+		})
 	}
+
 	defaultParam := map[string]string{
 		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
 		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
 		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
+		"PolarisConfigIP":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
+		"PolarisConfigPort":   strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
 	}
-	tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
-	if err != nil {
-		return err
-	}
-	buf := new(bytes.Buffer)
-	if err := tpl.Execute(buf, defaultParam); err != nil {
-		return err
-	}
-	defaultProperties := map[string]string{}
-	scanner := bufio.NewScanner(strings.NewReader(buf.String()))
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// 注释不放在 defaultProperties 中
-		if !strings.HasPrefix(line, "#") {
-			kvs := strings.Split(line, "=")
-			if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
-				defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+
+	add.Env = append(add.Env,
+		corev1.EnvVar{
+			Name:  "POLARIS_SERVER_IP",
+			Value: defaultParam["PolarisServerIP"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_DISCOVER_IP",
+			Value: defaultParam["PolarisServerIP"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_DISCOVER_PORT",
+			Value: defaultParam["PolarisDiscoverPort"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_CONFIG_PORT",
+			Value: defaultParam["PolarisConfigIP"],
+		},
+		corev1.EnvVar{
+			Name:  "POLARIS_CONFIG_PORT",
+			Value: defaultParam["PolarisConfigPort"],
+		},
+	)
+	defaultProperties := make(map[string]string)
+	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
+	newImageInfo := strings.Split(add.Image, ":")
+	if _, valid := oldAgentVersions[newImageInfo[1]]; valid {
+		kubeClient := opt.KubeClient
+		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+			"plugin-default.properties", metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+		if err != nil {
+			return err
+		}
+		buf := new(bytes.Buffer)
+		if err := tpl.Execute(buf, defaultParam); err != nil {
+			return err
+		}
+		scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// 注释不放在 defaultProperties 中
+			if !strings.HasPrefix(line, "#") {
+				kvs := strings.Split(line, "=")
+				if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+					defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+				}
 			}
 		}
 	}
@@ -168,6 +206,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			defaultProperties[k] = v
 		}
 	}
+
 	exportAgentPluginConf := ""
 	for key, value := range defaultProperties {
 		exportAgentPluginConf += fmt.Sprintf("%s=%s\n", key, value)
