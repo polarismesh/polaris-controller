@@ -15,10 +15,14 @@
 package javaagent
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
@@ -27,6 +31,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Java Agent 场景下的特殊 annonations 信息
@@ -36,6 +41,25 @@ const (
 	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
 	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
 )
+
+var validVersions = map[string]bool{
+	"1.7.0-RC4":         true,
+	"1.7.0-RC3":         true,
+	"1.7.0-RC2":         true,
+	"1.7.0-RC1":         true,
+	"1.6.1":             true,
+	"1.6.0":             true,
+	"1.5.0":             true,
+	"1.2.0-nacos-1.3.0": true,
+	"1.2.0-nacos-2.1.0": true,
+	"1.2.0-nacos-1.3.1": true,
+	"1.2.0-dubbox-2.x":  true,
+	"v1.0.4":            true,
+	"v1.0.3":            true,
+	"v1.0.2":            true,
+	"v1.0.1":            true,
+	"v1.0.0":            true,
+}
 
 const (
 	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
@@ -85,7 +109,6 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
 	}
-
 	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
 		opt.ExternalInfo[customJavaAgentVersion] = val
@@ -127,15 +150,44 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 
 	defaultProperties := make(map[string]string)
 
-	// 格式化 MicroserviceName
-	microserviceNameKey := "spring.application.name"
-	microserviceNameValue := fmt.Sprintf("%s", defaultParam["MicroserviceName"])
-	defaultProperties[microserviceNameKey] = microserviceNameValue
+	if validVersions[annonations[customJavaAgentVersion]] {
+		kubeClient := opt.KubeClient
+		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
+			"plugin-default.properties", metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		tpl, err := template.New(pluginType).Parse(pluginCm.Data[nameOfPluginDefault(pluginType)])
+		if err != nil {
+			return err
+		}
+		buf := new(bytes.Buffer)
+		if err := tpl.Execute(buf, defaultParam); err != nil {
+			return err
+		}
+		scanner := bufio.NewScanner(strings.NewReader(buf.String()))
+		scanner.Split(bufio.ScanLines)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// 注释不放在 defaultProperties 中
+			if !strings.HasPrefix(line, "#") {
+				kvs := strings.Split(line, "=")
+				if len(kvs) == 2 && kvs[0] != "" && kvs[1] != "" {
+					defaultProperties[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+				}
+			}
+		}
+	} else {
+		// 格式化 MicroserviceName
+		microserviceNameKey := "spring.application.name"
+		microserviceNameValue := fmt.Sprintf("%s", defaultParam["MicroserviceName"])
+		defaultProperties[microserviceNameKey] = microserviceNameValue
 
-	// 格式化 PolarisServerIP 和 PolarisDiscoverPort
-	polarisAddressKey := "spring.cloud.polaris.address"
-	polarisAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisServerIP"], defaultParam["PolarisDiscoverPort"])
-	defaultProperties[polarisAddressKey] = polarisAddressValue
+		// 格式化 PolarisServerIP 和 PolarisDiscoverPort
+		polarisAddressKey := "spring.cloud.polaris.address"
+		polarisAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisServerIP"], defaultParam["PolarisDiscoverPort"])
+		defaultProperties[polarisAddressKey] = polarisAddressValue
+	}
 
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
