@@ -150,7 +150,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 
 	defaultProperties := make(map[string]string)
 
-	if validVersions[annonations[customJavaAgentVersion]] {
+	if val, ok := annonations[customJavaAgentVersion]; ok && (validVersions[val] && val != "") {
 		kubeClient := opt.KubeClient
 		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
 			"plugin-default.properties", metav1.GetOptions{})
