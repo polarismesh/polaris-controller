@@ -149,7 +149,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	}
 
 	defaultProperties := make(map[string]string)
-
+	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
 	if val, ok := annonations[customJavaAgentVersion]; ok && (validVersions[val] && val != "") {
 		kubeClient := opt.KubeClient
 		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
