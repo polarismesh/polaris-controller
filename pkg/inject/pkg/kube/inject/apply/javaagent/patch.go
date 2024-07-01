@@ -96,8 +96,12 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		pod.Namespace, pod.Name, pod.Annotations, add.Image)
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
+	var imageHasBeenChanged bool
 	if len(oldImageInfo) > 1 {
 		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
+		if oldImageInfo[1] != "latest" {
+			imageHasBeenChanged = true
+		}
 	}
 	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
@@ -165,7 +169,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	defaultProperties := make(map[string]string)
 	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
 	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
-		if _, valid := oldAgentVersions[val]; valid {
+		if _, valid := oldAgentVersions[val]; valid || imageHasBeenChanged {
 			kubeClient := opt.KubeClient
 			pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
 				"plugin-default.properties", metav1.GetOptions{})
@@ -193,7 +197,6 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 				}
 			}
 		}
-
 	}
 	// 查看用户是否自定义了相关配置信息
 	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
