@@ -146,6 +146,8 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
 		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
 		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
+		"PolarisConfigIP":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
+		"PolarisConfigPort":   strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
 	}
 
 	defaultProperties := make(map[string]string)
@@ -187,6 +189,10 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		polarisAddressKey := "spring.cloud.polaris.address"
 		polarisAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisServerIP"], defaultParam["PolarisDiscoverPort"])
 		defaultProperties[polarisAddressKey] = polarisAddressValue
+
+		polarisConfigAddressKey := "spring.cloud.polaris.address"
+		polarisConfigAddressValue := fmt.Sprintf("grpc\\://%s\\:%s", defaultParam["PolarisConfigIP"], defaultParam["PolarisConfigPort"])
+		defaultProperties[polarisConfigAddressKey] = polarisConfigAddressValue
 	}
 
 	// 查看用户是否自定义了相关配置信息
