@@ -52,7 +52,7 @@ var oldAgentVersions = map[string]struct{}{
 }
 
 const (
-    ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
+    ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
 )
 
 func init() {
@@ -242,7 +242,7 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
                 oldVal := envs[javaEnvIndex].Value
                 envs[javaEnvIndex] = corev1.EnvVar{
                     Name:  "JAVA_TOOL_OPTIONS",
-                    Value: oldVal + " " + fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
+                    Value: oldVal + " " + ActiveJavaAgentCmd,
                 }
             }
         }
@@ -250,7 +250,7 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
             // 注入 java agent 需要用到的参数信息
             container.Env = append(container.Env, corev1.EnvVar{
                 Name:  "JAVA_TOOL_OPTIONS",
-                Value: fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
+                Value: ActiveJavaAgentCmd,
             })
         }
 
