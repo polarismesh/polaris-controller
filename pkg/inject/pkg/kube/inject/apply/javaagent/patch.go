@@ -154,7 +154,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Value: defaultParam["PolarisDiscoverPort"],
 		},
 		corev1.EnvVar{
-			Name:  "POLARIS_CONFIG_PORT",
+			Name:  "POLARIS_CONFIG_IP",
 			Value: defaultParam["PolarisConfigIP"],
 		},
 		corev1.EnvVar{
