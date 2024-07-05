@@ -115,7 +115,7 @@ data:
     spring.cloud.tencent.rpc-enhancement.reporter.enabled=true
     
     ## 是否启用北极星的服务熔断能力
-    spring.cloud.polaris.circuitbreaker.enabled=true
+    spring.cloud.polaris.circuitbreaker.enabled=false
     
     # 配置北极星监控指标上报
     spring.cloud.polaris.stat.enabled=false
