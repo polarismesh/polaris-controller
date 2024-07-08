@@ -52,7 +52,8 @@ var oldAgentVersions = map[string]struct{}{
 }
 
 const (
-	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
+	ActiveJavaAgentCmd    = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
+	OldActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
 )
 
 func init() {
@@ -266,18 +267,32 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 			}
 			if javaEnvIndex != -1 {
 				oldVal := envs[javaEnvIndex].Value
-				envs[javaEnvIndex] = corev1.EnvVar{
-					Name:  "JAVA_TOOL_OPTIONS",
-					Value: oldVal + " " + ActiveJavaAgentCmd + javaToolOptionsValue,
+				if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+					envs[javaEnvIndex] = corev1.EnvVar{
+						Name:  "JAVA_TOOL_OPTIONS",
+						Value: oldVal + " " + ActiveJavaAgentCmd + javaToolOptionsValue,
+					}
+				} else {
+					envs[javaEnvIndex] = corev1.EnvVar{
+						Name:  "JAVA_TOOL_OPTIONS",
+						Value: oldVal + " " + fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
+					}
 				}
 			}
 		}
 		if javaEnvIndex == -1 {
 			// 注入 java agent 需要用到的参数信息
-			container.Env = append(container.Env, corev1.EnvVar{
-				Name:  "JAVA_TOOL_OPTIONS",
-				Value: ActiveJavaAgentCmd + javaToolOptionsValue,
-			})
+			if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+				container.Env = append(container.Env, corev1.EnvVar{
+					Name:  "JAVA_TOOL_OPTIONS",
+					Value: ActiveJavaAgentCmd + javaToolOptionsValue,
+				})
+			} else {
+				container.Env = append(container.Env, corev1.EnvVar{
+					Name:  "JAVA_TOOL_OPTIONS",
+					Value: fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
+				})
+			}
 		}
 
 		// container 需要新挂载磁盘
