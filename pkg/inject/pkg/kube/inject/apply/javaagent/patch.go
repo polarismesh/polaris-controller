@@ -43,6 +43,7 @@ const (
 )
 
 var oldAgentVersions = map[string]struct{}{
+	"1.7.0-RC5": {},
 	"1.7.0-RC4": {},
 	"1.7.0-RC3": {},
 	"1.7.0-RC2": {},
