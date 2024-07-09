@@ -43,6 +43,7 @@ const (
 )
 
 var oldAgentVersions = map[string]struct{}{
+	"1.7.0-RC5": {},
 	"1.7.0-RC4": {},
 	"1.7.0-RC3": {},
 	"1.7.0-RC2": {},
@@ -52,7 +53,8 @@ var oldAgentVersions = map[string]struct{}{
 }
 
 const (
-	ActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
+	ActiveJavaAgentCmd    = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
+	OldActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
 )
 
 func init() {
@@ -154,7 +156,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 			Value: defaultParam["PolarisDiscoverPort"],
 		},
 		corev1.EnvVar{
-			Name:  "POLARIS_CONFIG_PORT",
+			Name:  "POLARIS_CONFIG_IP",
 			Value: defaultParam["PolarisConfigIP"],
 		},
 		corev1.EnvVar{
@@ -192,30 +194,29 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 				}
 			}
 		}
-	}
-
-	// 查看用户是否自定义了相关配置信息
-	// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
-	if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
-		customProperties := map[string]string{}
-		if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
-			return err
+		// 查看用户是否自定义了相关配置信息
+		// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
+		if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+			customProperties := map[string]string{}
+			if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+				return err
+			}
+			// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+			for k, v := range customProperties {
+				defaultProperties[k] = v
+			}
 		}
-		// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
-		for k, v := range customProperties {
-			defaultProperties[k] = v
+
+		exportAgentPluginConf := ""
+		for key, value := range defaultProperties {
+			exportAgentPluginConf += fmt.Sprintf("%s=%s\n", key, value)
 		}
-	}
 
-	exportAgentPluginConf := ""
-	for key, value := range defaultProperties {
-		exportAgentPluginConf += fmt.Sprintf("%s=%s\n", key, value)
+		add.Env = append(add.Env, corev1.EnvVar{
+			Name:  "JAVA_AGENT_PLUGIN_CONF",
+			Value: exportAgentPluginConf,
+		})
 	}
-
-	add.Env = append(add.Env, corev1.EnvVar{
-		Name:  "JAVA_AGENT_PLUGIN_CONF",
-		Value: exportAgentPluginConf,
-	})
 	return nil
 }
 
@@ -223,14 +224,48 @@ func nameOfPluginDefault(v string) string {
 	return v + "-default-properties"
 }
 
+func updateJavaEnvVar(envVar corev1.EnvVar, cmd string, version string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name:  "JAVA_TOOL_OPTIONS",
+		Value: envVar.Value + " " + cmd + version,
+	}
+}
+
 func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode utils.SidecarMode, pod *corev1.Pod,
 	target []corev1.Container, basePath string) []inject.Rfc6902PatchOperation {
 
 	patchs := make([]inject.Rfc6902PatchOperation, 0, len(target))
 
+	annonations := pod.Annotations
+	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
+		opt.ExternalInfo[customJavaAgentVersion] = val
+	} else {
+		annonations[customJavaAgentVersion] = "latest"
+	}
+
+	defaultProperties := make(map[string]string)
+	var javaToolOptionsValue string
+
 	for index, container := range target {
 		envs := container.Env
 		javaEnvIndex := -1
+		if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+			if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+				customProperties := map[string]string{}
+				if properties != "" {
+					json.Unmarshal([]byte(properties), &customProperties)
+				}
+				// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+				for k, v := range customProperties {
+					defaultProperties[k] = v
+				}
+			}
+		}
+
+		for key, value := range defaultProperties {
+			javaToolOptionsValue += fmt.Sprintf(" -D%s=%s", key, value)
+		}
+
 		if len(envs) != 0 {
 			for i := range envs {
 				if envs[i].Name == "JAVA_TOOL_OPTIONS" {
@@ -239,19 +274,22 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 				}
 			}
 			if javaEnvIndex != -1 {
-				oldVal := envs[javaEnvIndex].Value
-				envs[javaEnvIndex] = corev1.EnvVar{
-					Name:  "JAVA_TOOL_OPTIONS",
-					Value: oldVal + " " + fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
+				if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], ActiveJavaAgentCmd, javaToolOptionsValue)
+				} else {
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
 				}
 			}
 		}
 		if javaEnvIndex == -1 {
 			// 注入 java agent 需要用到的参数信息
-			container.Env = append(container.Env, corev1.EnvVar{
-				Name:  "JAVA_TOOL_OPTIONS",
-				Value: fmt.Sprintf(ActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
-			})
+			var newEnvVar corev1.EnvVar
+			if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, ActiveJavaAgentCmd, javaToolOptionsValue)
+			} else {
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
+			}
+			container.Env = append(container.Env, newEnvVar)
 		}
 
 		// container 需要新挂载磁盘
