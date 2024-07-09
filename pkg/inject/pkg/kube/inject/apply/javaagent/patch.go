@@ -224,6 +224,13 @@ func nameOfPluginDefault(v string) string {
 	return v + "-default-properties"
 }
 
+func updateJavaEnvVar(envVar corev1.EnvVar, cmd string, version string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name:  "JAVA_TOOL_OPTIONS",
+		Value: envVar.Value + " " + cmd + version,
+	}
+}
+
 func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode utils.SidecarMode, pod *corev1.Pod,
 	target []corev1.Container, basePath string) []inject.Rfc6902PatchOperation {
 
@@ -267,33 +274,22 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 				}
 			}
 			if javaEnvIndex != -1 {
-				oldVal := envs[javaEnvIndex].Value
 				if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
-					envs[javaEnvIndex] = corev1.EnvVar{
-						Name:  "JAVA_TOOL_OPTIONS",
-						Value: oldVal + " " + ActiveJavaAgentCmd + javaToolOptionsValue,
-					}
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], ActiveJavaAgentCmd, javaToolOptionsValue)
 				} else {
-					envs[javaEnvIndex] = corev1.EnvVar{
-						Name:  "JAVA_TOOL_OPTIONS",
-						Value: oldVal + " " + fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
-					}
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
 				}
 			}
 		}
 		if javaEnvIndex == -1 {
 			// 注入 java agent 需要用到的参数信息
+			var newEnvVar corev1.EnvVar
 			if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
-				container.Env = append(container.Env, corev1.EnvVar{
-					Name:  "JAVA_TOOL_OPTIONS",
-					Value: ActiveJavaAgentCmd + javaToolOptionsValue,
-				})
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, ActiveJavaAgentCmd, javaToolOptionsValue)
 			} else {
-				container.Env = append(container.Env, corev1.EnvVar{
-					Name:  "JAVA_TOOL_OPTIONS",
-					Value: fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]),
-				})
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
 			}
+			container.Env = append(container.Env, newEnvVar)
 		}
 
 		// container 需要新挂载磁盘
