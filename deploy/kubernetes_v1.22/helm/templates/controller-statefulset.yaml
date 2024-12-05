@@ -41,7 +41,7 @@ spec:
               memory: {{ .Values.controller.limit.memory }}
           volumeMounts:
             - mountPath: /polaris-controller/log
-              name: log
+              name: logs
             - name: certs
               mountPath: /etc/polaris-inject/certs
               readOnly: true
