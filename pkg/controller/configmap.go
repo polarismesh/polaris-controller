@@ -282,6 +282,10 @@ func (p *PolarisController) onConfigMapDelete(cur interface{}) {
 }
 
 func (p *PolarisController) watchPolarisConfig() error {
+	log.SyncConfigScope().Infof("configSync status:%v", p.config.PolarisController.ConfigSync.Enable)
+	if !p.config.PolarisController.ConfigSync.Enable {
+		return nil
+	}
 	conn, err := grpc.Dial(polarisapi.PolarisConfigGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
