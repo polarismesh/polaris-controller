@@ -22,6 +22,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 )
 
 func NewExecutor(size int) *TaskExecutor {
@@ -130,6 +132,7 @@ func (w *worker) addDelay(delay time.Duration, f func(), isInterval bool) {
 		defer func() {
 			if err := recover(); err != nil {
 				// do nothing
+				log.Warnf("addDelay error:%+v", err)
 			}
 		}()
 		f()

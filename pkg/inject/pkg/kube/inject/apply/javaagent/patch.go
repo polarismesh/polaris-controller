@@ -24,14 +24,15 @@ import (
 	"strings"
 	"text/template"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/base"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Java Agent 场景下的特殊 annonations 信息
@@ -253,7 +254,10 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 			if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
 				customProperties := map[string]string{}
 				if properties != "" {
-					json.Unmarshal([]byte(properties), &customProperties)
+					if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+						log.InjectScope().Errorf("updateContainer for pod=[%s, %s] json error: %+v", pod.Namespace,
+							pod.Name, err)
+					}
 				}
 				// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
 				for k, v := range customProperties {

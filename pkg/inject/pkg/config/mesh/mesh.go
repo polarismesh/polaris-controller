@@ -15,7 +15,7 @@
 package mesh
 
 import (
-	"io/ioutil"
+	"os"
 
 	"github.com/hashicorp/go-multierror"
 	"gopkg.in/yaml.v2"
@@ -54,7 +54,9 @@ func DefaultMeshConfig() MeshConfig {
 // ApplyMeshConfig returns a new MeshConfig decoded from the
 // input YAML with the provided defaults applied to omitted configuration values.
 func ApplyMeshConfig(str string, defaultConfig MeshConfig) (*MeshConfig, error) {
-	yaml.Unmarshal([]byte(str), &defaultConfig)
+	if err := yaml.Unmarshal([]byte(str), &defaultConfig); err != nil {
+		return nil, err
+	}
 	return &defaultConfig, nil
 }
 
@@ -66,7 +68,7 @@ func ApplyMeshConfigDefaults(yaml string) (*MeshConfig, error) {
 
 // ReadMeshConfig gets mesh configuration from a config file
 func ReadMeshConfig(filename string) (*MeshConfig, error) {
-	yaml, err := ioutil.ReadFile(filename)
+	yaml, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, multierror.Prefix(err, "cannot read mesh config file")
 	}

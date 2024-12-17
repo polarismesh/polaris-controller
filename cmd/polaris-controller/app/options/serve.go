@@ -95,7 +95,9 @@ func RunServer(
 		defer close(stoppedCh)
 		<-stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), shutDownTimeout)
-		server.Shutdown(ctx)
+		if err := server.Shutdown(ctx); err != nil {
+			log.Warnf("server Shutdown error:%+v", err)
+		}
 		cancel()
 	}()
 

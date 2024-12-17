@@ -68,11 +68,11 @@ func (p *PolarisController) onNamespaceUpdate(old, cur interface{}) {
 	// 3. 无 sync -> 有 sync，将 ns 下 service、configmap 加入队列，标志为 polaris 要处理的，即添加
 	// 4. 有 sync -> 无 sync，将 ns 下 service、configmap 加入队列，标志为 polaris 不需要处理的，即删除
 
-	operation := OperationEmpty
 	if !isOldSync && !isCurSync {
 		// 情况 1
 		return
 	}
+	var operation Operation
 	if isCurSync {
 		// 情况 2、3
 		operation = OperationAdd

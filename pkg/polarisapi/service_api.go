@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"strconv"
@@ -92,8 +92,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 
-			_, body, times, err :=
-				polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+			_, body, times, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed request %s [%d/%d], err %v. (%s)", msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
@@ -207,8 +206,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			var response AddResponse
-			statusCode, body, times, err :=
-				polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+			statusCode, body, times, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
 
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed to request %s [%d/%d], err %v. (%s)",
@@ -365,8 +363,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 	return polarisErrors.GetError()
 }
 
-func dealUpdateInstanceResponse(response AddResponse, msg string,
-	i int, page int, polarisErrors *PErrors) {
+func dealUpdateInstanceResponse(response AddResponse, msg string, i int, page int, polarisErrors *PErrors) {
 	// 添加成功或者权限错误，都跳过
 	if response.Code == 200000 {
 		log.SyncNamingScope().Infof("Success add all %s [%d/%d], info %s.", msg, i+1, page, response.Info)
@@ -744,10 +741,8 @@ func splitArray(instances []Instance, size int) [][]Instance {
 }
 
 // polarisHttpRequest
-func polarisHttpRequest(
-	requestID string, method string,
-	url string, requestByte []byte) (int, []byte, time.Duration, error) {
-
+func polarisHttpRequest(requestID string, method string, url string, requestByte []byte) (int, []byte, time.Duration,
+	error) {
 	startTime := time.Now()
 	req, err := http.NewRequest(method, url, bytes.NewReader(requestByte))
 	if err != nil {
@@ -773,7 +768,7 @@ func polarisHttpRequest(
 
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
 		log.Errorf("Failed to get request %v", err)
@@ -803,7 +798,7 @@ func lookAccessToken() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("Failed to get request %v", err)
 		return "", err
