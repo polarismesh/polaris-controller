@@ -40,11 +40,11 @@ func (csm *CachedConfigFileMap) Delete(key string) {
 func (csm *CachedConfigFileMap) Load(key string) (value *v1.ConfigMap, ok bool) {
 	v, ok := csm.sm.Load(key)
 	if v != nil {
-		value, ok2 := v.(*v1.ConfigMap)
+		result, ok2 := v.(*v1.ConfigMap)
 		if !ok2 {
 			ok = false
 		}
-		return value, ok
+		return result, ok
 	}
 	return value, ok
 }

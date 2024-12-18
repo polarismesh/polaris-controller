@@ -539,7 +539,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 		}
 		if response.Code != ExistedResource {
 			log.SyncNamingScope().Errorf("Failed to create service %s %v", serviceMsg, response.Info)
-			return response, fmt.Errorf("create namespace failed: " + response.Info)
+			return response, fmt.Errorf("create namespace failed: %s", response.Info)
 		}
 	}
 
@@ -603,7 +603,7 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 		}
 		if response.Code != ExistedResource {
 			log.SyncNamingScope().Errorf("Failed to create service alias %s %v", serviceAliasMsg, response.Info)
-			return response, fmt.Errorf("create service alias failed: " + response.Info)
+			return response, fmt.Errorf("create service alias failed: %s", response.Info)
 		}
 	}
 
@@ -648,7 +648,7 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 			return statusCode, PutServicesResponse{}, err
 		}
 		log.SyncNamingScope().Errorf("Failed to update result %s %v", serviceMsg, response.Info)
-		return statusCode, response, fmt.Errorf("Put service failed: " + response.Info)
+		return statusCode, response, fmt.Errorf("Put service failed: %s ", response.Info)
 	}
 
 	return statusCode, response, nil
@@ -697,7 +697,7 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 		if response.Responses == nil || len(response.Responses) == 0 ||
 			response.Responses[0].Code != ExistedResource {
 			log.SyncNamingScope().Errorf("Failed to create namespace %s ,error response: %v", namespace, response)
-			return response, fmt.Errorf("create namespace failed: " + response.Info)
+			return response, fmt.Errorf("create namespace failed: %s", response.Info)
 		}
 	}
 

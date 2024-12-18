@@ -40,11 +40,11 @@ func (csm *CachedServiceMap) Delete(key string) {
 func (csm *CachedServiceMap) Load(key string) (value *v1.Service, ok bool) {
 	v, ok := csm.sm.Load(key)
 	if v != nil {
-		value, ok2 := v.(*v1.Service)
+		result, ok2 := v.(*v1.Service)
 		if !ok2 {
 			ok = false
 		}
-		return value, ok
+		return result, ok
 	}
 	return value, ok
 }
