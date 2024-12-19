@@ -192,7 +192,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		fmt.Sprintf("%s Current polaris instance is %v", serviceMsg, currentIPs),
 		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
 	}
-	log.SyncNamingScope().Infof(strings.Join(msg, "\n"))
+	log.SyncNamingScope().Info(strings.Join(msg, "\n"))
 
 	var addInsErr, deleteInsErr, updateInsErr error
 

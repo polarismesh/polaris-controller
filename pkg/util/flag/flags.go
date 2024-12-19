@@ -47,6 +47,7 @@ type IPVar struct {
 	Val *string
 }
 
+// nolint
 // Set sets the flag value
 func (v IPVar) Set(s string) error {
 	if len(s) == 0 {
@@ -83,6 +84,7 @@ type IPPortVar struct {
 	Val *string
 }
 
+// nolint
 // Set sets the flag value
 func (v IPPortVar) Set(s string) error {
 	if len(s) == 0 {

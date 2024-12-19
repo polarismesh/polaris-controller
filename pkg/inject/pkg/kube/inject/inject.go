@@ -255,6 +255,7 @@ func validateStatusPort(port string) error {
 	return nil
 }
 
+// nolint
 // validateUInt32 validates that the given annotation value is a positive integer.
 func validateUInt32(value string) error {
 	_, err := strconv.ParseUint(value, 10, 32)
@@ -825,6 +826,7 @@ func potentialPodName(metadata *metav1.ObjectMeta) string {
 	return ""
 }
 
+// nolint
 // rewriteCniPodSpec will check if values from the sidecar injector Helm
 // values need to be inserted as Pod annotations so the CNI will apply
 // the proper redirection rules.

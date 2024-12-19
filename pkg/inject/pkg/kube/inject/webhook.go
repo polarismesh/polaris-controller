@@ -21,8 +21,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -110,10 +111,10 @@ type InjectConfigInfo struct {
 
 // env will be used for other things besides meshConfig - when webhook is running in Istiod it can take advantage
 // of the config and endpoint cache.
-// nolint directives: interfacer
+// nolint
 func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesFile string) (*InjectConfigInfo, error) {
 	// 处理 polaris-sidecar mesh 模式的注入
-	meshData, err := ioutil.ReadFile(injectMeshFile)
+	meshData, err := os.ReadFile(injectMeshFile)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesF
 	}
 
 	// 处理 polaris-sidecar dns 模式的注入
-	dnsData, err := ioutil.ReadFile(injectDnsFile)
+	dnsData, err := os.ReadFile(injectDnsFile)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesF
 	}
 
 	// 处理 java-agent 模式的注入
-	javaAgentData, err := ioutil.ReadFile(injectJavaFile)
+	javaAgentData, err := os.ReadFile(injectJavaFile)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesF
 		return nil, err
 	}
 
-	valuesConfig, err := ioutil.ReadFile(valuesFile)
+	valuesConfig, err := os.ReadFile(valuesFile)
 	if err != nil {
 		return nil, err
 	}
@@ -285,17 +286,15 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 		defaultSidecarMode: p.DefaultSidecarMode,
 	}
 
-	var mux *http.ServeMux
 	if p.Mux != nil {
 		p.Mux.HandleFunc("/inject", wh.serveInject)
-		mux = p.Mux
 	} else {
 		wh.server = &http.Server{
 			Addr: fmt.Sprintf(":%v", p.Port),
 			// mtls disabled because apiserver webhook cert usage is still TBD.
 			TLSConfig: &tls.Config{GetCertificate: wh.getCert},
 		}
-		mux = http.NewServeMux()
+		mux := http.NewServeMux()
 		mux.HandleFunc("/inject", wh.serveInject)
 		wh.server.Handler = mux
 	}
@@ -366,7 +365,7 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			log.InjectScope().Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
-			if err := ioutil.WriteFile(wh.healthCheckFile, content, 0o644); err != nil {
+			if err := os.WriteFile(wh.healthCheckFile, content, 0o644); err != nil {
 				log.InjectScope().Errorf("Health check update of %q failed: %v", wh.healthCheckFile, err)
 			}
 		case <-stop:
@@ -409,6 +408,7 @@ func enableMtls(pod *corev1.Pod) bool {
 	return false
 }
 
+// nolint
 // addPolarisConfigToInitContainerEnv 将polaris-sidecar 的配置注入到init container中
 func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) error {
 	cfgTpl, err := wh.k8sClient.CoreV1().ConfigMaps(common.PolarisControllerNamespace).
@@ -447,9 +447,11 @@ func (wh *Webhook) addPolarisConfigToInitContainerEnv(add *corev1.Container) err
 	return nil
 }
 
+// nolint
 // currently we assume that polaris-security deploy into polaris-system namespace.
 const rootNamespace = "polaris-system"
 
+// nolint
 // ensureRootCertExist ensure that we have rootca pem secret in current namespace
 func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 	if !enableMtls(pod) {
@@ -504,6 +506,7 @@ func escapeJSONPointerValue(in string) string {
 	return strings.Replace(step, "/", "~1", -1)
 }
 
+// nolint
 // adds labels to the target spec, will not overwrite label's value if it already exists
 func addLabels(target map[string]string, added map[string]string) []Rfc6902PatchOperation {
 	patches := []Rfc6902PatchOperation{}
@@ -854,7 +857,7 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 	}
 	proxyCfg := wh.meshConfig.DefaultConfig
 	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata,
-		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg) // nolint: lll
+		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg)
 	if err != nil {
 		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
 		return toV1beta1AdmissionResponse(err)
@@ -1028,7 +1031,7 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	if r.Body != nil {
-		if data, err := ioutil.ReadAll(r.Body); err == nil {
+		if data, err := io.ReadAll(r.Body); err == nil {
 			body = data
 		}
 	}

@@ -46,7 +46,7 @@ func CreateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	if err != nil {
 		return ConfigResponse{}, err
 	}
-	if err := releaseConfigMap(req); err != nil {
+	if err = releaseConfigMap(req); err != nil {
 		return ConfigResponse{}, err
 	}
 	return resp, err
@@ -62,7 +62,7 @@ func UpdateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	if err != nil {
 		return ConfigResponse{}, err
 	}
-	if err := releaseConfigMap(req); err != nil {
+	if err = releaseConfigMap(req); err != nil {
 		return ConfigResponse{}, err
 	}
 	return resp, err

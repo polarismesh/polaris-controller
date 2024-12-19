@@ -293,7 +293,7 @@ func Configure(optionsMap map[string]*Options) error {
 
 			// capture gRPC logging
 			if options.LogGrpc {
-				grpclog.SetLogger(zapgrpc.NewLogger(captureLogger.WithOptions(zap.AddCallerSkip(2))))
+				grpclog.SetLoggerV2(zapgrpc.NewLogger(captureLogger.WithOptions(zap.AddCallerSkip(2))))
 			}
 		}
 	}

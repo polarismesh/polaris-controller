@@ -18,7 +18,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -239,8 +239,8 @@ func assignFlags(rootCmd *cobra.Command) {
 
 func closeGrpcLog() {
 	var (
-		infoW    = ioutil.Discard
-		warningW = ioutil.Discard
+		infoW    = io.Discard
+		warningW = io.Discard
 		errorW   = os.Stderr
 	)
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(infoW, warningW, errorW))

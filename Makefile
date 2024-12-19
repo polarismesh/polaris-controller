@@ -3,11 +3,11 @@ ORG = polarismesh
 REPO = polaris-controller
 SIDECAR_INIT_REPO = polaris-sidecar-init
 ENVOY_SIDECAR_INIT_REPO = polaris-envoy-bootstrap-generator
-IMAGE_TAG = v1.7.1
+IMAGE_TAG = v1.7.2
 PLATFORMS = linux/amd64,linux/arm64
 
 .PHONY: all
-all: build-amd64 build-arm64 build-multi-arch-image \
+all: fmt build-amd64 build-arm64 build-multi-arch-image \
  	 build-sidecar-init build-envoy-sidecar-init push-image
 
 .PHONY: build-amd64
@@ -49,3 +49,20 @@ clean:
 	rm -rf bin
 	rm -rf polaris-controller-release*
 
+.PHONY: fmt
+fmt:  ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: generate-multi-arch-image
+generate-multi-arch-image: fmt build-amd64 build-arm64
+	@echo "------------------"
+	@echo "--> Generate multi-arch docker image to registry for polaris-controller"
+	@echo "------------------"
+	@docker buildx build -f ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS) ./
+
+.PHONY: push-multi-arch-image
+push-multi-arch-image: generate-multi-arch-image
+	@echo "------------------"
+	@echo "--> Push multi-arch docker image to registry for polaris-controller"
+	@echo "------------------"
+	@docker image push $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS)

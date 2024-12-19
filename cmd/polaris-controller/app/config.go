@@ -16,7 +16,7 @@
 package app
 
 import (
-	"io/ioutil"
+	"os"
 
 	"gopkg.in/yaml.v2"
 
@@ -65,7 +65,7 @@ type controllerConfig struct {
 }
 
 func readConfFromFile() (*controllerConfig, error) {
-	buf, err := ioutil.ReadFile(MeshFile)
+	buf, err := os.ReadFile(MeshFile)
 	if err != nil {
 		log.Errorf("read file error, %v", err)
 		return nil, err

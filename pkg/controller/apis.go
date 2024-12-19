@@ -275,7 +275,8 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 		// ttl 默认是5s
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil {
-			ttl = 5
+			log.SyncNamingScope().Errorf("annotation 'polarismesh.cn/ttl' value: %s, converted to type int error %v",
+				ttlStr, err)
 		} else {
 			if ttl > 0 && ttl <= 60 {
 				healthCheck.Type = util.IntPtr(0)
@@ -317,10 +318,7 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 	}
 
 	if newMetadataStr == "" {
-		if isPolarisInstanceHasCustomMeta(oldMetadata) {
-			return true
-		}
-		return false
+		return isPolarisInstanceHasCustomMeta(oldMetadata)
 	}
 	newMetaMap := make(map[string]string)
 	err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)

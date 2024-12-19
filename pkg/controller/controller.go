@@ -285,10 +285,6 @@ func (p *PolarisController) process(t *Task) error {
 	return err
 }
 
-func (p *PolarisController) handleErr(err error, task *Task) {
-
-}
-
 // CounterPolarisService
 func (p *PolarisController) CounterPolarisService() {
 	serviceList, err := p.serviceLister.List(labels.Everything())
