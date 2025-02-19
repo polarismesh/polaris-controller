@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
@@ -91,6 +92,10 @@ func (p *podDataInfo) assignInjectMode(wh *Webhook) {
 // 检查pod的spec和annotations是否符合要求
 func (p *podDataInfo) checkPodData() (bool, error) {
 	pod := p.podObject
+	if err := validateAnnotations(p.injectMode, pod.GetAnnotations()); err != nil {
+		log.InjectScope().Errorf("[Webhook] injection failed due to invalid annotations: %v", err)
+		return false, err
+	}
 	if p.injectMode == utils.SidecarForMesh {
 		// If DNSPolicy is not ClusterFirst, the Envoy sidecar may not able to connect to polaris.
 		if pod.Spec.DNSPolicy != "" && pod.Spec.DNSPolicy != corev1.DNSClusterFirst {
@@ -98,10 +103,6 @@ func (p *podDataInfo) checkPodData() (bool, error) {
 				" connect to PolarisMesh Control Plane",
 				pod.Namespace+"/"+p.podName, corev1.DNSClusterFirst)
 			return false, nil
-		}
-		if err := validateMeshAnnotations(pod.GetAnnotations()); err != nil {
-			log.InjectScope().Errorf("[Webhook] injection failed due to invalid annotations: %v", err)
-			return false, err
 		}
 	}
 	return true, nil
@@ -152,6 +153,14 @@ func (p *podDataInfo) assignInjectAnnotations() {
 			envoyMetadata[k] = v
 		}
 		injectAnnotations[utils.SidecarEnvoyMetadata] = fmt.Sprintf("%q", toJSON(envoyMetadata))
+	} else {
+		// 注入workload的namespace和name
+		if _, ok := md.Annotations[utils.SidecarNamespaceName]; !ok {
+			injectAnnotations[utils.SidecarNamespaceName] = md.Namespace
+		}
+		if _, ok := md.Annotations[utils.SidecarServiceName]; !ok {
+			injectAnnotations[utils.SidecarServiceName] = p.workloadMeta.Name
+		}
 	}
 	p.injectedAnnotations = injectAnnotations
 }
@@ -167,8 +176,8 @@ type SidecarInjectionStatus struct {
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets"`
 }
 
-func (p *podDataInfo) getInjectStatus(version string, sic SidecarInjectionSpec) *SidecarInjectionStatus {
-	status := &SidecarInjectionStatus{Version: version}
+func (p *podDataInfo) addInjectStatusAnnotation(sic SidecarInjectionSpec) string {
+	status := &SidecarInjectionStatus{Version: p.injectTemplateVersion}
 	for _, c := range sic.InitContainers {
 		status.InitContainers = append(status.InitContainers, corev1.Container{
 			Name: c.Name,
@@ -189,5 +198,10 @@ func (p *podDataInfo) getInjectStatus(version string, sic SidecarInjectionSpec) 
 			Name: c.Name,
 		})
 	}
-	return status
+	statusAnnotationValue, _ := json.Marshal(status)
+	result := string(statusAnnotationValue)
+	if len(result) != 0 {
+		p.injectedAnnotations[annotation.SidecarStatus.Name] = result
+	}
+	return result
 }

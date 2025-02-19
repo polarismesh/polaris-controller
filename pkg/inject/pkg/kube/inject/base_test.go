@@ -11,7 +11,7 @@ import (
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
-func TestCommonInjectRequired(t *testing.T) {
+func TestRequireInject(t *testing.T) {
 	// 通用测试配置
 	defaultTemplate := &config.TemplateConfig{
 		NeverInjectSelector: []metav1.LabelSelector{{MatchLabels: map[string]string{
@@ -24,10 +24,35 @@ func TestCommonInjectRequired(t *testing.T) {
 	// 参考istio官方定义
 	// https://istio.io/latest/zh/docs/ops/common-problems/injection/
 	testCases := []struct {
-		name     string
-		podSetup func(*corev1.Pod, *config.TemplateConfig)
-		expected bool
+		name       string
+		podSetup   func(*corev1.Pod, *config.TemplateConfig)
+		injectMode utils.SidecarMode
+		expected   bool
 	}{
+		{
+			name: "mesh类型,当启用HostNetwork时无需注入",
+			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
+				p.Spec.HostNetwork = true
+			},
+			injectMode: utils.SidecarForMesh,
+			expected:   false,
+		},
+		{
+			name: "dns类型,当启用HostNetwork时无需注入",
+			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
+				p.Spec.HostNetwork = true
+			},
+			injectMode: utils.SidecarForDns,
+			expected:   false,
+		},
+		{
+			name: "javaagent,当启用HostNetwork时不影响注入",
+			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
+				p.Spec.HostNetwork = true
+			},
+			injectMode: utils.SidecarForJavaAgent,
+			expected:   true,
+		},
 		{
 			name: "在kube-system命名空间中跳过注入",
 			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
@@ -160,11 +185,12 @@ func TestCommonInjectRequired(t *testing.T) {
 
 			podInfo := &podDataInfo{
 				podObject:            pod,
+				injectMode:           tc.injectMode,
 				injectTemplateConfig: defaultTemplate,
 				podName:              pod.Name,
 			}
 
-			result := wh.commonInjectRequired(podInfo)
+			result := wh.requireInject(podInfo)
 			if result != tc.expected {
 				t.Errorf("%s: 期望 %v 但得到 %v", tc.name, tc.expected, result)
 			}

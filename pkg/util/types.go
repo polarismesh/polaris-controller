@@ -61,10 +61,17 @@ const (
 	// PolarisInjectionDisabled 关闭注入(黑名单功能)的标记值
 	PolarisInjectionDisabled = "disabled"
 
+	//TODO: add workload flag
+
 	// PolarisInjectModeLabelKeyJavaAgent 注入模式为 javaagent 的 pod label
 	PolarisInjectModeLabelKeyJavaAgent = "polarismesh.cn/javaagent"
 	// PolarisInjectModeLabelValueTrue 表示需要进行注入 的 pod label 的值
 	PolarisInjectModeLabelValueTrue = "true"
+	// javaagent类型的annotations的key
+	CustomJavaAgentVersion                = "polarismesh.cn/javaagentVersion"
+	CustomJavaAgentPluginFramework        = "polarismesh.cn/javaagentFrameworkName"
+	CustomJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
+	CustomJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
 )
 
 const (

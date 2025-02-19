@@ -37,10 +37,9 @@ import (
 
 // Java Agent 场景下的特殊 annonations 信息
 const (
-	customJavaAgentVersion                = "polarismesh.cn/javaagentVersion"
-	customJavaAgentPluginFramework        = "polarismesh.cn/javaagentFrameworkName"
-	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
-	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
+	envJavaAgentPluginType       = "JAVA_AGENT_PLUGIN_TYPE"
+	envJavaAgentFrameworkName    = "JAVA_AGENT_FRAMEWORK_NAME"
+	envJavaAgentFrameworkVersion = "JAVA_AGENT_FRAMEWORK_VERSION"
 )
 
 var oldAgentVersions = map[string]struct{}{
@@ -102,20 +101,20 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
 	if len(oldImageInfo) > 1 {
-		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
+		opt.ExternalInfo[utils.CustomJavaAgentVersion] = oldImageInfo[1]
 	}
-	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
+	if val, ok := annonations[utils.CustomJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
-		opt.ExternalInfo[customJavaAgentVersion] = val
+		opt.ExternalInfo[utils.CustomJavaAgentVersion] = val
 	}
 
-	frameworkName, frameworkNameOk := annonations[customJavaAgentPluginFramework]
+	frameworkName, frameworkNameOk := annonations[utils.CustomJavaAgentPluginFramework]
 	if !frameworkNameOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
 	}
 
-	frameworkVersion, frameworkVersionOk := annonations[customJavaAgentPluginFrameworkVersion]
+	frameworkVersion, frameworkVersionOk := annonations[utils.CustomJavaAgentPluginFrameworkVersion]
 	if !frameworkVersionOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
 			pod.Namespace, pod.Name)
@@ -124,26 +123,26 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	pluginType := frameworkName + frameworkVersion
 	if frameworkName != "" && frameworkVersion != "" {
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_PLUGIN_TYPE",
+			Name:  envJavaAgentPluginType,
 			Value: pluginType,
 		})
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_FRAMEWORK_NAME",
+			Name:  envJavaAgentFrameworkName,
 			Value: frameworkName,
 		})
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
+			Name:  envJavaAgentFrameworkVersion,
 			Value: frameworkVersion,
 		})
 	}
 
 	defaultParam := map[string]string{
-		"MicroserviceName": opt.Annotations[util.SidecarServiceName],
-		// TODO: 添加服务注册命名空间
-		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
-		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
-		"PolarisConfigIP":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
-		"PolarisConfigPort":   strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
+		"MicroserviceNamespace": opt.Annotations[util.SidecarNamespaceName],
+		"MicroserviceName":      opt.Annotations[util.SidecarServiceName],
+		"PolarisServerIP":       strings.Split(polarisapi.PolarisGrpc, ":")[0],
+		"PolarisDiscoverPort":   strings.Split(polarisapi.PolarisGrpc, ":")[1],
+		"PolarisConfigIP":       strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
+		"PolarisConfigPort":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
 	}
 
 	add.Env = append(add.Env,
@@ -200,7 +199,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 		}
 		// 查看用户是否自定义了相关配置信息
 		// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
-		if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+		if properties, ok := annonations[utils.CustomJavaAgentPluginConfig]; ok {
 			customProperties := map[string]string{}
 			if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
 				return err
@@ -241,10 +240,10 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 	patchs := make([]inject.Rfc6902PatchOperation, 0, len(target))
 
 	annonations := pod.Annotations
-	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
-		opt.ExternalInfo[customJavaAgentVersion] = val
+	if val, ok := annonations[utils.CustomJavaAgentVersion]; ok && val != "" {
+		opt.ExternalInfo[utils.CustomJavaAgentVersion] = val
 	} else {
-		annonations[customJavaAgentVersion] = "latest"
+		annonations[utils.CustomJavaAgentVersion] = "latest"
 	}
 
 	defaultProperties := make(map[string]string)
@@ -253,8 +252,8 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 	for index, container := range target {
 		envs := container.Env
 		javaEnvIndex := -1
-		if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
-			if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+		if _, valid := oldAgentVersions[annonations[utils.CustomJavaAgentVersion]]; !valid {
+			if properties, ok := annonations[utils.CustomJavaAgentPluginConfig]; ok {
 				customProperties := map[string]string{}
 				if properties != "" {
 					if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
@@ -281,20 +280,22 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 				}
 			}
 			if javaEnvIndex != -1 {
-				if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+				if _, valid := oldAgentVersions[annonations[utils.CustomJavaAgentVersion]]; !valid {
 					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], ActiveJavaAgentCmd, javaToolOptionsValue)
 				} else {
-					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd,
+						opt.ExternalInfo[utils.CustomJavaAgentVersion]), "")
 				}
 			}
 		}
 		if javaEnvIndex == -1 {
 			// 注入 java agent 需要用到的参数信息
 			var newEnvVar corev1.EnvVar
-			if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+			if _, valid := oldAgentVersions[annonations[utils.CustomJavaAgentVersion]]; !valid {
 				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, ActiveJavaAgentCmd, javaToolOptionsValue)
 			} else {
-				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd,
+					opt.ExternalInfo[utils.CustomJavaAgentVersion]), "")
 			}
 			container.Env = append(container.Env, newEnvVar)
 		}

@@ -7,14 +7,8 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/hashicorp/go-multierror"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/polarismesh/polaris-controller/common/log"
-	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config"
-	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // getPodPatch 处理 admission webhook 请求
@@ -98,7 +92,7 @@ func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
 
 	// set sidecar --concurrency
 	applyConcurrency(injectData.Containers)
-
+	injectStatus := p.addInjectStatusAnnotation(injectData)
 	// 生成POD修改的patch
 	opt := &PatchOptions{
 		Pod:          p.podObject,
@@ -112,133 +106,9 @@ func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
 	}
 	patchBytes, err := createPatch(opt)
 	if err != nil {
-		log.InjectScope().Errorf(fmt.Sprintf("AdmissionResponse: err=%v injectData=%v\n", err, injectData))
+		log.InjectScope().Errorf(fmt.Sprintf("AdmissionResponse: err=%v injectStatus:%s injectData=%v\n", err,
+			injectStatus, injectData))
 		return nil, err
 	}
 	return patchBytes, err
-}
-
-func (wh *Webhook) requireInject(p *podDataInfo) bool {
-	switch p.injectMode {
-	case utils.SidecarForMesh:
-		return wh.meshInjectRequired(p)
-	case utils.SidecarForJavaAgent, utils.SidecarForDns:
-		return wh.commonInjectRequired(p)
-	default:
-		return false
-	}
-}
-
-// 是否需要注入, 规则参考istio官方定义
-// https://istio.io/latest/zh/docs/ops/common-problems/injection/
-func (wh *Webhook) commonInjectRequired(p *podDataInfo) bool {
-	pod := p.podObject
-	templateConfig := p.injectTemplateConfig
-
-	if isIgnoredNamespace(pod.Namespace) {
-		return false
-	}
-
-	// annotations为最高优先级
-	injectionRequested, useDefaultPolicy := parseInjectionAnnotation(pod.GetAnnotations())
-	log.InjectScope().Infof("parseInjectionAnnotation for %s/%s: UseDefault=%v injectionRequested=%v",
-		pod.Namespace, pod.Name, useDefaultPolicy, injectionRequested)
-
-	// Labels为次优先级
-	if useDefaultPolicy {
-		injectionRequested, useDefaultPolicy = evaluateSelectors(pod, templateConfig, p.podName)
-		log.InjectScope().Infof("evaluateSelectors for %s/%s: UseDefault=%v injectionRequested=%v",
-			pod.Namespace, pod.Name, useDefaultPolicy, injectionRequested)
-	}
-
-	// Policy为最低优先级
-	required := determineInjectionRequirement(templateConfig.Policy, useDefaultPolicy, injectionRequested)
-	log.InjectScope().Infof("determineInjectionRequirement for %s/%s: Policy=%s UseDefault=%v Requested=%v Required=%v",
-		pod.Namespace, pod.Name, templateConfig.Policy, useDefaultPolicy, injectionRequested, required)
-
-	return required
-}
-
-func isIgnoredNamespace(namespace string) bool {
-	for _, ignored := range ignoredNamespaces {
-		if namespace == ignored {
-			return true
-		}
-	}
-	return false
-}
-
-// 解析Annotation, 用于注解位置的黑白名单功能
-func parseInjectionAnnotation(annotations map[string]string) (requested bool, useDefault bool) {
-	var value string
-	newFlag, newExists := annotations[utils.PolarisInjectionKey]
-	if newExists {
-		value = strings.ToLower(newFlag)
-	} else {
-		if flag, ok := annotations[annotation.SidecarInject.Name]; ok {
-			value = strings.ToLower(flag)
-		}
-	}
-	switch value {
-	case "y", "yes", "true", "on", "enable", "enabled":
-		// annotation白名单, 显示开启
-		return true, false
-	case "n", "no", "false", "off", "disable", "disabled":
-		// annotation黑名单, 显示关闭
-		return false, false
-	default: // including empty string
-		return false, true
-	}
-}
-
-// 检查label的黑白名单功能
-func evaluateSelectors(pod *corev1.Pod, config *config.TemplateConfig, podName string) (bool, bool) {
-	// Check NeverInject selectors first
-	if inject, ok := checkSelectors(pod, config.NeverInjectSelector, "NeverInjectSelector", podName, false); ok {
-		return inject, false
-	}
-
-	// Then check AlwaysInject selectors
-	if inject, ok := checkSelectors(pod, config.AlwaysInjectSelector, "AlwaysInjectSelector", podName, true); ok {
-		return inject, false
-	}
-
-	return false, true
-}
-
-func checkSelectors(pod *corev1.Pod, selectors []metav1.LabelSelector, selectorType string, podName string,
-	allowInject bool) (bool, bool) {
-	for _, selector := range selectors {
-		ls, err := metav1.LabelSelectorAsSelector(&selector)
-		if err != nil {
-			log.InjectScope().Warnf("Invalid %s: %v (%v)", selectorType, selector, err)
-			continue // Continue checking other selectors
-		}
-
-		if !ls.Empty() && ls.Matches(labels.Set(pod.Labels)) {
-			log.InjectScope().Infof("Pod %s/%s: %s matched labels %v",
-				pod.Namespace, podName, selectorType, pod.Labels)
-			return allowInject, true
-		}
-	}
-	return false, false
-}
-
-func determineInjectionRequirement(policy config.InjectionPolicy, useDefault bool, requested bool) bool {
-	switch policy {
-	case config.InjectionPolicyEnabled:
-		if useDefault {
-			return true
-		}
-		return requested
-	case config.InjectionPolicyDisabled:
-		if useDefault {
-			return false
-		}
-		return requested
-	default:
-		log.InjectScope().Errorf("Invalid injection policy: %s. Valid values: [%s, %s]",
-			policy, config.InjectionPolicyDisabled, config.InjectionPolicyEnabled)
-		return false
-	}
 }

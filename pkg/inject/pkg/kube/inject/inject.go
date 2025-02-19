@@ -27,6 +27,7 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 type annotationValidationFunc func(value string) error
@@ -59,12 +60,30 @@ var (
 		annotation.SidecarTrafficIncludeInboundPorts.Name:     ValidateIncludeInboundPorts,
 		annotation.SidecarTrafficExcludeInboundPorts.Name:     ValidateExcludeInboundPorts,
 		annotation.SidecarTrafficExcludeOutboundPorts.Name:    ValidateExcludeOutboundPorts,
+		utils.PolarisInjectionKey:                             alwaysValidFunc,
+	}
+
+	annotationRegistryForDns = map[string]annotationValidationFunc{
+		annotation.SidecarInject.Name: alwaysValidFunc,
+		annotation.SidecarStatus.Name: alwaysValidFunc,
+		utils.PolarisInjectionKey:     alwaysValidFunc,
+	}
+
+	annotationRegistryForJavaAgent = map[string]annotationValidationFunc{
+		utils.CustomJavaAgentVersion:                alwaysValidFunc,
+		utils.CustomJavaAgentPluginFramework:        alwaysValidFunc,
+		utils.CustomJavaAgentPluginFrameworkVersion: alwaysValidFunc,
+		utils.CustomJavaAgentPluginConfig:           alwaysValidFunc,
+		annotation.SidecarInject.Name:               alwaysValidFunc,
+		annotation.SidecarStatus.Name:               alwaysValidFunc,
+		utils.PolarisInjectionKey:                   alwaysValidFunc,
 	}
 )
 
-func validateMeshAnnotations(annotations map[string]string) (err error) {
+func validateAnnotations(injectMode utils.SidecarMode, annotations map[string]string) (err error) {
+	annotationRegistry := getAnnotationRegistry(injectMode)
 	for name, value := range annotations {
-		if v, ok := annotationRegistryForMesh[name]; ok {
+		if v, ok := annotationRegistry[name]; ok {
 			if e := v(value); e != nil {
 				err = multierror.Append(err, fmt.Errorf("invalid value '%s' for annotation '%s': %v", value, name, e))
 			}
@@ -103,115 +122,149 @@ type SidecarTemplateData struct {
 	Values         map[string]interface{}
 }
 
-func (wh *Webhook) meshInjectRequired(p *podDataInfo) bool {
-	podSpec := &p.podObject.Spec
-	metadata := &p.podObject.ObjectMeta
+// 是否需要注入, 规则参考istio官方定义
+// https://istio.io/latest/zh/docs/ops/common-problems/injection/
+func (wh *Webhook) requireInject(p *podDataInfo) bool {
+	pod := p.podObject
 	templateConfig := p.injectTemplateConfig
-	podName := p.podName
-	// Skip injection when host networking is enabled. The problem is
-	// that the iptable changes are assumed to be within the pod when,
-	// in fact, they are changing the routing at the host level. This
-	// often results in routing failures within a node which can
-	// affect the network provider within the cluster causing
-	// additional pod failures.
-	if podSpec.HostNetwork {
+
+	if pod.Spec.HostNetwork && (p.injectMode == utils.SidecarForMesh || p.injectMode == utils.SidecarForDns) {
 		return false
 	}
 
-	// skip special kubernetes system namespaces
-	for _, namespace := range ignoredNamespaces {
-		if metadata.Namespace == namespace {
-			return false
+	if isIgnoredNamespace(pod.Namespace) {
+		return false
+	}
+
+	annotations := pod.GetAnnotations()
+	annotationStr := buildAnnotationLogString(p.injectMode, annotations)
+	// annotations为最高优先级
+	injectionRequested, useDefaultPolicy := parseInjectionAnnotation(pod.GetAnnotations())
+	log.InjectScope().Infof("parseInjectionAnnotation for %s/%s: UseDefault=%v injectionRequested=%v annotations=%s",
+		pod.Namespace, pod.Name, useDefaultPolicy, injectionRequested, annotationStr)
+
+	// Labels为次优先级
+	if useDefaultPolicy {
+		injectionRequested, useDefaultPolicy = evaluateSelectors(pod, templateConfig, p.podName)
+		log.InjectScope().Infof("evaluateSelectors for %s/%s: UseDefault=%v injectionRequested=%v",
+			pod.Namespace, pod.Name, useDefaultPolicy, injectionRequested)
+	}
+
+	// Policy为最低优先级
+	required := determineInjectionRequirement(templateConfig.Policy, useDefaultPolicy, injectionRequested)
+	log.InjectScope().Infof("determineInjectionRequirement for %s/%s: Policy=%s UseDefault=%v Requested=%v Required=%v",
+		pod.Namespace, pod.Name, templateConfig.Policy, useDefaultPolicy, injectionRequested, required)
+
+	return required
+}
+
+func isIgnoredNamespace(namespace string) bool {
+	for _, ignored := range ignoredNamespaces {
+		if namespace == ignored {
+			return true
 		}
 	}
+	return false
+}
 
-	annos := metadata.GetAnnotations()
-	if annos == nil {
-		annos = map[string]string{}
+// 解析Annotation, 用于注解位置的黑白名单功能
+func parseInjectionAnnotation(annotations map[string]string) (requested bool, useDefault bool) {
+	var value string
+	newFlag, newExists := annotations[utils.PolarisInjectionKey]
+	if newExists {
+		value = strings.ToLower(newFlag)
+	} else {
+		if flag, ok := annotations[annotation.SidecarInject.Name]; ok {
+			value = strings.ToLower(flag)
+		}
 	}
-
-	var useDefault bool
-	var inject bool
-	switch strings.ToLower(annos[annotation.SidecarInject.Name]) {
-	// http://yaml.org/type/bool.html
+	switch value {
 	case "y", "yes", "true", "on", "enable", "enabled":
-		inject = true
+		// annotation白名单, 显示开启
+		return true, false
 	case "n", "no", "false", "off", "disable", "disabled":
-		inject = false
-	case "":
-		useDefault = true
+		// annotation黑名单, 显示关闭
+		return false, false
+	default: // including empty string
+		return false, true
+	}
+}
+
+// 检查label的黑白名单功能
+func evaluateSelectors(pod *corev1.Pod, config *config.TemplateConfig, podName string) (bool, bool) {
+	// Check NeverInject selectors first
+	if inject, ok := checkSelectors(pod, config.NeverInjectSelector, "NeverInjectSelector", podName, false); ok {
+		return inject, false
 	}
 
-	// If an annotation is not explicitly given, check the LabelSelectors, starting with NeverInject
-	if useDefault {
-		for _, neverSelector := range templateConfig.NeverInjectSelector {
-			selector, err := metav1.LabelSelectorAsSelector(&neverSelector)
-			if err != nil {
-				log.InjectScope().Warnf("Invalid selector for NeverInjectSelector: %v (%v)", neverSelector, err)
-			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				log.InjectScope().Infof("Explicitly disabling injection for pod %s/%s due to pod labels "+
-					"matching NeverInjectSelector templateConfig map entry.", metadata.Namespace, podName)
-				inject = false
-				useDefault = false
-				break
-			}
-		}
+	// Then check AlwaysInject selectors
+	if inject, ok := checkSelectors(pod, config.AlwaysInjectSelector, "AlwaysInjectSelector", podName, true); ok {
+		return inject, false
 	}
 
-	// If there's no annotation nor a NeverInjectSelector, check the AlwaysInject one
-	if useDefault {
-		for _, alwaysSelector := range templateConfig.AlwaysInjectSelector {
-			selector, err := metav1.LabelSelectorAsSelector(&alwaysSelector)
-			if err != nil {
-				log.InjectScope().Warnf("Invalid selector for AlwaysInjectSelector: %v (%v)", alwaysSelector, err)
-			} else if !selector.Empty() && selector.Matches(labels.Set(metadata.Labels)) {
-				log.InjectScope().Infof("Explicitly enabling injection for pod %s/%s due to pod labels "+
-					" matching AlwaysInjectSelector templateConfig map entry.", metadata.Namespace, podName)
-				inject = true
-				useDefault = false
-				break
-			}
+	return false, true
+}
+
+func checkSelectors(pod *corev1.Pod, selectors []metav1.LabelSelector, selectorType string, podName string,
+	allowInject bool) (bool, bool) {
+	for _, selector := range selectors {
+		ls, err := metav1.LabelSelectorAsSelector(&selector)
+		if err != nil {
+			log.InjectScope().Warnf("Invalid %s: %v (%v)", selectorType, selector, err)
+			continue // Continue checking other selectors
+		}
+
+		if !ls.Empty() && ls.Matches(labels.Set(pod.Labels)) {
+			log.InjectScope().Infof("Pod %s/%s: %s matched labels %v",
+				pod.Namespace, podName, selectorType, pod.Labels)
+			return allowInject, true
 		}
 	}
+	return false, false
+}
 
-	var required bool
-	switch templateConfig.Policy {
-	default: // InjectionPolicyOff
-		log.InjectScope().Errorf("Illegal value for autoInject:%s, must be one of [%s,%s]. Auto injection disabled!",
-			templateConfig.Policy, config.InjectionPolicyDisabled, config.InjectionPolicyEnabled)
-		required = false
-	case config.InjectionPolicyDisabled:
-		if useDefault {
-			required = false
-		} else {
-			required = inject
-		}
+func determineInjectionRequirement(policy config.InjectionPolicy, useDefault bool, requested bool) bool {
+	switch policy {
 	case config.InjectionPolicyEnabled:
 		if useDefault {
-			required = true
-		} else {
-			required = inject
+			return true
 		}
+		return requested
+	case config.InjectionPolicyDisabled:
+		if useDefault {
+			return false
+		}
+		return requested
+	default:
+		log.InjectScope().Errorf("Invalid injection policy: %s. Valid values: [%s, %s]",
+			policy, config.InjectionPolicyDisabled, config.InjectionPolicyEnabled)
+		return false
 	}
+}
 
-	// Build a log message for the annotations.
-	annotationStr := ""
-	for name := range annotationRegistryForMesh {
-		value, ok := annos[name]
+// buildAnnotationLogString 构建注解日志字符串，格式为"key:value key2:value2"
+func buildAnnotationLogString(injectMode utils.SidecarMode, annotations map[string]string) string {
+	registry := getAnnotationRegistry(injectMode)
+	var buf strings.Builder
+	for name := range registry {
+		value, ok := annotations[name]
 		if !ok {
 			value = "(unset)"
 		}
-		annotationStr += fmt.Sprintf("%s:%s ", name, value)
+		buf.WriteString(fmt.Sprintf("%s:%s ", name, value))
 	}
+	return strings.TrimSpace(buf.String())
+}
 
-	log.InjectScope().Infof("Sidecar injection for %v/%v: namespacePolicy:%v useDefault:%v inject:%v required:%v %s",
-		metadata.Namespace,
-		podName,
-		templateConfig.Policy,
-		useDefault,
-		inject,
-		required,
-		annotationStr)
-
-	return required
+func getAnnotationRegistry(injectMode utils.SidecarMode) map[string]annotationValidationFunc {
+	var registry map[string]annotationValidationFunc
+	switch injectMode {
+	case utils.SidecarForMesh:
+		registry = annotationRegistryForMesh
+	case utils.SidecarForDns:
+		registry = annotationRegistryForDns
+	case utils.SidecarForJavaAgent:
+		registry = annotationRegistryForJavaAgent
+	}
+	return registry
 }
