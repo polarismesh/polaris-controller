@@ -15,62 +15,98 @@
 package mesh
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/hashicorp/go-multierror"
 	"gopkg.in/yaml.v2"
 )
 
-type MeshConfig struct {
-	DefaultConfig *DefaultConfig `yaml:"defaultConfig"`
+// MeshEnvoyConfig mesh 注入配置, envoy sidecar当前有用到
+type MeshEnvoyConfig struct {
+	defaultConfig *DefaultConfig `yaml:"DefaultConfig"`
 }
 
-func (m *MeshConfig) Clone() *MeshConfig {
-	copyData := &MeshConfig{
-		DefaultConfig: &DefaultConfig{
-			ProxyMetadata: map[string]string{},
-		},
-	}
-
-	for k, v := range m.DefaultConfig.ProxyMetadata {
-		copyData.DefaultConfig.ProxyMetadata[k] = v
-	}
-	return copyData
-}
-
+// DefaultConfig 存储北极星proxy默认配置和用户自定义配置
 type DefaultConfig struct {
-	ProxyMetadata map[string]string `yaml:"proxyMetadata"`
+	proxyMetadata map[string]string `yaml:"proxyMetadata"`
 }
 
-// DefaultMeshConfig configuration
-func DefaultMeshConfig() MeshConfig {
-	return MeshConfig{
-		DefaultConfig: &DefaultConfig{
-			ProxyMetadata: map[string]string{},
-		},
-	}
-}
-
-// ApplyMeshConfig returns a new MeshConfig decoded from the
-// input YAML with the provided defaults applied to omitted configuration values.
-func ApplyMeshConfig(str string, defaultConfig MeshConfig) (*MeshConfig, error) {
-	if err := yaml.Unmarshal([]byte(str), &defaultConfig); err != nil {
-		return nil, err
-	}
-	return &defaultConfig, nil
-}
-
-// ApplyMeshConfigDefaults returns a new MeshConfig decoded from the
-// input YAML with defaults applied to omitted configuration values.
-func ApplyMeshConfigDefaults(yaml string) (*MeshConfig, error) {
-	return ApplyMeshConfig(yaml, DefaultMeshConfig())
-}
-
-// ReadMeshConfig gets mesh configuration from a config file
-func ReadMeshConfig(filename string) (*MeshConfig, error) {
-	yaml, err := os.ReadFile(filename)
+// ReadMeshEnvoyConfig 读取mesh envoy sidecar注入配置
+func ReadMeshEnvoyConfig(filename string) (*MeshEnvoyConfig, error) {
+	yamlBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, multierror.Prefix(err, "cannot read mesh config file")
 	}
-	return ApplyMeshConfigDefaults(string(yaml))
+	defaultConfig := &MeshEnvoyConfig{
+		defaultConfig: &DefaultConfig{
+			proxyMetadata: map[string]string{},
+		},
+	}
+	if err = yaml.Unmarshal(yamlBytes, defaultConfig); err != nil {
+		return nil, err
+	}
+	return defaultConfig, nil
+}
+
+// GetDefaultConfig 获取默认配置
+func (ic *MeshEnvoyConfig) GetDefaultConfig() *DefaultConfig {
+	if ic == nil {
+		return nil
+	}
+	return ic.defaultConfig
+}
+
+// SetDefaultConfig 设置默认配置
+func (ic *MeshEnvoyConfig) SetDefaultConfig(config *DefaultConfig) {
+	if ic == nil {
+		return
+	}
+	ic.defaultConfig = config
+}
+
+// GetProxyMetadata 获取 proxy 元数据
+func (dc *DefaultConfig) GetProxyMetadata() map[string]string {
+	if dc == nil {
+		return nil
+	}
+	return dc.proxyMetadata
+}
+
+// SetProxyMetadataWithKV 设置 proxy 元数据
+func (dc *MeshEnvoyConfig) SetProxyMetadataWithKV(k, v string) {
+	if dc == nil {
+		return
+	}
+	dc.defaultConfig.proxyMetadata[k] = v
+}
+
+// String 返回 MeshEnvoyConfig 的字符串表示
+func (ic *MeshEnvoyConfig) String() string {
+	if ic == nil {
+		return "MeshEnvoyConfig{nil}"
+	}
+
+	var defaultConfig string
+	if ic.defaultConfig == nil {
+		defaultConfig = "nil"
+	} else {
+		defaultConfig = ic.defaultConfig.String()
+	}
+
+	return fmt.Sprintf("MeshEnvoyConfig{DefaultConfig: %s}", defaultConfig)
+}
+
+// String 返回 DefaultConfig 的字符串表示
+func (dc *DefaultConfig) String() string {
+	if dc == nil {
+		return "DefaultConfig{nil}"
+	}
+
+	metadata := "nil"
+	if dc.proxyMetadata != nil {
+		metadata = fmt.Sprintf("%v", dc.proxyMetadata)
+	}
+
+	return fmt.Sprintf("DefaultConfig{proxyMetadata: %s}", metadata)
 }

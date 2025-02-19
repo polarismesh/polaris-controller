@@ -21,3 +21,39 @@ webhooks:
     namespaceSelector:
       matchLabels:
         polaris-injection: enabled
+  - name: ns.injector.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled
+  - name: allowlist.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    objectSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled

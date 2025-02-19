@@ -56,6 +56,8 @@ var oldAgentVersions = map[string]struct{}{
 const (
 	ActiveJavaAgentCmd    = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
 	OldActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
+
+	javaagentInitContainer = "polaris-javaagent-init"
 )
 
 func init() {
@@ -75,7 +77,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 		pod := req.Option.Pod
 		added := req.External
 		for index, add := range added {
-			if add.Name == "polaris-javaagent-init" {
+			if add.Name == javaagentInitContainer {
 				log.InjectScope().Infof("begin deal polaris-javaagent-init inject for pod=[%s, %s]", pod.Namespace, pod.Name)
 				if err := pb.handleJavaAgentInit(req.Option, pod, &add); err != nil {
 					log.InjectScope().Errorf("handle polaris-javaagent-init inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
@@ -136,7 +138,8 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	}
 
 	defaultParam := map[string]string{
-		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
+		"MicroserviceName": opt.Annotations[util.SidecarServiceName],
+		// TODO: 添加服务注册命名空间
 		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
 		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
 		"PolarisConfigIP":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],

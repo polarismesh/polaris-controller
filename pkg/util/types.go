@@ -48,9 +48,23 @@ const (
 	// SidecarBindPort xds metadata key when node is run in sidecar mode
 	SidecarBindPort = "sidecar.polarismesh.cn/bindPorts"
 	// SidecarEnvoyMetadata
-	SidecarEnvoyMetadata = "sidecar.polarismesh.cn/envoyMetadata"
+	SidecarEnvoyMetadata       = "sidecar.polarismesh.cn/envoyMetadata"
+	SidecarEnvoyInjectKey      = "sidecar.polarismesh.cn/openOnDemand"
+	SidecarEnvoyInjectProxyKey = "OPEN_DEMAND"
 
 	PolarisSidecarModeLabel = "polaris-sidecar-mode"
+
+	// PolarisInjectionKey 标记是否开启注入
+	PolarisInjectionKey = "polarismesh.cn/inject"
+	// PolarisInjectionEnabled 开启注入(白名单功能)的标记值
+	PolarisInjectionEnabled = "enabled"
+	// PolarisInjectionDisabled 关闭注入(黑名单功能)的标记值
+	PolarisInjectionDisabled = "disabled"
+
+	// PolarisInjectModeLabelKeyJavaAgent 注入模式为 javaagent 的 pod label
+	PolarisInjectModeLabelKeyJavaAgent = "polarismesh.cn/javaagent"
+	// PolarisInjectModeLabelValueTrue 表示需要进行注入 的 pod label 的值
+	PolarisInjectModeLabelValueTrue = "true"
 )
 
 const (

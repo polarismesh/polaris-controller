@@ -81,6 +81,7 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 	return pb.PodPatchBuilder.PatchContainer(req)
 }
 
+// handlePolarisSidecarEnvInject 处理polaris-sidecar容器的环境变量
 func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) (bool, error) {
 
 	err := pb.ensureRootCertExist(opt.KubeClient, pod)

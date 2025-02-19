@@ -37,6 +37,7 @@ polaris:
   server:
     address: #POLARIS_HOST#
     token: #POLARIS_TOKEN#
+    operator: #POLARIS_OPERATOR#
   sync:
     service:
       mode: all
