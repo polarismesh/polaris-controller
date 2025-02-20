@@ -112,6 +112,10 @@ func (p *podDataInfo) checkPodData() (bool, error) {
 func (p *podDataInfo) assignInjectAnnotations() {
 	md := p.podObject.ObjectMeta
 	injectAnnotations := map[string]string{}
+	// Add all additional injected annotations
+	for k, v := range p.injectTemplateConfig.InjectedAnnotations {
+		injectAnnotations[k] = v
+	}
 	if p.injectMode == utils.SidecarForMesh {
 		// 设置需要注入到 envoy 的 md
 		// 强制开启 XDS On-Demand 能力

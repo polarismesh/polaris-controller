@@ -20,10 +20,11 @@ func TestRequireInject(t *testing.T) {
 			utils.InjectAdmissionKey: utils.InjectAdmissionValueDisabled}}},
 		AlwaysInjectSelector: []metav1.LabelSelector{{MatchLabels: map[string]string{
 			utils.InjectAdmissionKey: utils.InjectAdmissionValueEnabled}}},
-		Policy: config.InjectionPolicyEnabled,
+		InjectedAnnotations: map[string]string{utils.AnnotationKeyWorkloadNamespaceAsServiceNamespace: utils.InjectionValueTrue},
+		Policy:              config.InjectionPolicyEnabled,
 	}
-	str, _ := json.Marshal(defaultTemplate.NeverInjectSelector)
-	log.Printf("defaultTemplate.NeverInjectSelector: %s", str)
+	str, _ := json.Marshal(defaultTemplate)
+	log.Printf("defaultTemplate: %s", str)
 
 	// 参考istio官方定义
 	// https://istio.io/latest/zh/docs/ops/common-problems/injection/
