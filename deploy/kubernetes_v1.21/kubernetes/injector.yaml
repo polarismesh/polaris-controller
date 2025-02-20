@@ -30,7 +30,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |
       containers:
@@ -113,7 +113,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |
       initContainers:
@@ -156,7 +156,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |+
       containers:

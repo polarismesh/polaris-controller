@@ -1,6 +1,8 @@
 package inject
 
 import (
+	"encoding/json"
+	"log"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,11 +17,13 @@ func TestRequireInject(t *testing.T) {
 	// 通用测试配置
 	defaultTemplate := &config.TemplateConfig{
 		NeverInjectSelector: []metav1.LabelSelector{{MatchLabels: map[string]string{
-			utils.PolarisInjectionKey: utils.PolarisInjectionDisabled}}},
+			utils.InjectAdmissionKey: utils.InjectAdmissionValueDisabled}}},
 		AlwaysInjectSelector: []metav1.LabelSelector{{MatchLabels: map[string]string{
-			utils.PolarisInjectionKey: utils.PolarisInjectionEnabled}}},
+			utils.InjectAdmissionKey: utils.InjectAdmissionValueEnabled}}},
 		Policy: config.InjectionPolicyEnabled,
 	}
+	str, _ := json.Marshal(defaultTemplate.NeverInjectSelector)
+	log.Printf("defaultTemplate.NeverInjectSelector: %s", str)
 
 	// 参考istio官方定义
 	// https://istio.io/latest/zh/docs/ops/common-problems/injection/
@@ -77,14 +81,14 @@ func TestRequireInject(t *testing.T) {
 		{
 			name: "Label黑名单,当匹配NeverInjectSelector时不注入",
 			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionDisabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueDisabled}
 			},
 			expected: false,
 		},
 		{
 			name: "Label白名单功能,当匹配AlwaysInjectSelector时注入",
 			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionEnabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueEnabled}
 			},
 			expected: true,
 		},
@@ -106,7 +110,7 @@ func TestRequireInject(t *testing.T) {
 			name: "Annotation白名单,Label黑名单,注入",
 			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
 				p.Annotations = map[string]string{annotation.SidecarInject.Name: "true"}
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionDisabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueDisabled}
 			},
 			expected: true,
 		},
@@ -122,7 +126,7 @@ func TestRequireInject(t *testing.T) {
 			name: "Annotation黑名单,Label白名单,不注入",
 			podSetup: func(p *corev1.Pod, _ *config.TemplateConfig) {
 				p.Annotations = map[string]string{annotation.SidecarInject.Name: "false"}
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionEnabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueEnabled}
 			},
 			expected: false,
 		},
@@ -137,7 +141,7 @@ func TestRequireInject(t *testing.T) {
 		{
 			name: "Label白名单功能,Policy黑名单,注入",
 			podSetup: func(p *corev1.Pod, defaultTemplate *config.TemplateConfig) {
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionEnabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueEnabled}
 				defaultTemplate.Policy = config.InjectionPolicyDisabled
 			},
 			expected: true,
@@ -145,7 +149,7 @@ func TestRequireInject(t *testing.T) {
 		{
 			name: "Label黑名单,Policy白名单,不注入",
 			podSetup: func(p *corev1.Pod, defaultTemplate *config.TemplateConfig) {
-				p.Labels = map[string]string{utils.PolarisInjectionKey: utils.PolarisInjectionDisabled}
+				p.Labels = map[string]string{utils.InjectAdmissionKey: utils.InjectAdmissionValueDisabled}
 				defaultTemplate.Policy = config.InjectionPolicyEnabled
 			},
 			expected: false,

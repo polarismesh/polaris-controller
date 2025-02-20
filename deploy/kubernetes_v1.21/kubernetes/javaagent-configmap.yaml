@@ -16,7 +16,7 @@ data:
     # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
     spring.cloud.discovery.enabled=true
     # 配置服务注册发现的命名空间信息
-    spring.cloud.polaris.discovery.namespace=default
+    spring.cloud.polaris.discovery.namespace={{ .MicroserviceNamespace }}
     # 启用从北极星
     spring.cloud.polaris.discovery.enabled=true
     spring.cloud.polaris.discovery.register=true
@@ -76,7 +76,7 @@ data:
     # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
     spring.cloud.discovery.enabled=true
     # 配置服务注册发现的命名空间信息
-    spring.cloud.polaris.discovery.namespace=default
+    spring.cloud.polaris.discovery.namespace={{ .MicroserviceNamespace }}
     # 启用从北极星
     spring.cloud.polaris.discovery.enabled=true
     spring.cloud.polaris.discovery.register=true
@@ -139,7 +139,7 @@ data:
     # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
     spring.cloud.discovery.enabled=true
     # 配置服务注册发现的命名空间信息
-    spring.cloud.polaris.discovery.namespace=default
+    spring.cloud.polaris.discovery.namespace={{ .MicroserviceNamespace }}
     # 启用从北极星
     spring.cloud.polaris.discovery.enabled=true
     spring.cloud.polaris.discovery.register=true
@@ -189,7 +189,7 @@ data:
     # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
     spring.cloud.discovery.enabled=true
     # 配置服务注册发现的命名空间信息
-    spring.cloud.polaris.discovery.namespace=default
+    spring.cloud.polaris.discovery.namespace={{ .MicroserviceNamespace }}
     # 启用从北极星
     spring.cloud.polaris.discovery.enabled=true
     spring.cloud.polaris.discovery.register=true
@@ -239,7 +239,7 @@ data:
     # 启用 Java Agent 的 Spring Cloud Tencent 注册发现能力
     spring.cloud.discovery.enabled=true
     # 配置服务注册发现的命名空间信息
-    spring.cloud.polaris.discovery.namespace=default
+    spring.cloud.polaris.discovery.namespace={{ .MicroserviceNamespace }}
     # 启用从北极星
     spring.cloud.polaris.discovery.enabled=true
     spring.cloud.polaris.discovery.register=true

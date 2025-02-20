@@ -144,6 +144,9 @@ func (p *podDataInfo) assignInjectAnnotations() {
 			if val, ok := md.Labels["app"]; ok {
 				injectAnnotations[utils.SidecarServiceName] = val
 				envoyMetadata[utils.SidecarServiceName] = val
+			} else {
+				injectAnnotations[utils.SidecarServiceName] = p.workloadMeta.Name
+				envoyMetadata[utils.SidecarServiceName] = p.workloadMeta.Name
 			}
 		} else {
 			envoyMetadata[utils.SidecarServiceName] = svcName

@@ -41,14 +41,14 @@ func getInjectMode(wh *Webhook, p *podDataInfo) utils.SidecarMode {
 
 // isJavaAgentMode checks if the pod should use Java agent injection mode
 func isJavaAgentMode(annotations map[string]string) bool {
-	val, ok := annotations[utils.PolarisInjectModeLabelKeyJavaAgent]
-	return ok && val == utils.PolarisInjectModeLabelValueTrue
+	val, ok := annotations[utils.AnnotationKeyInjectJavaAgent]
+	return ok && val == utils.InjectionValueTrue
 }
 
 // isMeshMode checks if the pod should use Mesh injection mode
 func isMeshMode(annotations map[string]string) bool {
 	val, ok := annotations[utils.SidecarEnvoyInjectKey]
-	return ok && val == utils.PolarisInjectModeLabelValueTrue
+	return ok && val == utils.InjectionValueTrue
 }
 
 // hasSidecarModeAnnotation checks if the pod has custom sidecar mode annotation

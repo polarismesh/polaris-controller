@@ -60,23 +60,23 @@ var (
 		annotation.SidecarTrafficIncludeInboundPorts.Name:     ValidateIncludeInboundPorts,
 		annotation.SidecarTrafficExcludeInboundPorts.Name:     ValidateExcludeInboundPorts,
 		annotation.SidecarTrafficExcludeOutboundPorts.Name:    ValidateExcludeOutboundPorts,
-		utils.PolarisInjectionKey:                             alwaysValidFunc,
+		utils.InjectAdmissionKey:                              alwaysValidFunc,
 	}
 
 	annotationRegistryForDns = map[string]annotationValidationFunc{
 		annotation.SidecarInject.Name: alwaysValidFunc,
 		annotation.SidecarStatus.Name: alwaysValidFunc,
-		utils.PolarisInjectionKey:     alwaysValidFunc,
+		utils.InjectAdmissionKey:      alwaysValidFunc,
 	}
 
 	annotationRegistryForJavaAgent = map[string]annotationValidationFunc{
-		utils.CustomJavaAgentVersion:                alwaysValidFunc,
-		utils.CustomJavaAgentPluginFramework:        alwaysValidFunc,
-		utils.CustomJavaAgentPluginFrameworkVersion: alwaysValidFunc,
-		utils.CustomJavaAgentPluginConfig:           alwaysValidFunc,
-		annotation.SidecarInject.Name:               alwaysValidFunc,
-		annotation.SidecarStatus.Name:               alwaysValidFunc,
-		utils.PolarisInjectionKey:                   alwaysValidFunc,
+		utils.AnnotationKeyJavaAgentVersion:                alwaysValidFunc,
+		utils.AnnotationKeyJavaAgentPluginFramework:        alwaysValidFunc,
+		utils.AnnotationKeyJavaAgentPluginFrameworkVersion: alwaysValidFunc,
+		utils.AnnotationKeyJavaAgentPluginConfig:           alwaysValidFunc,
+		annotation.SidecarInject.Name:                      alwaysValidFunc,
+		annotation.SidecarStatus.Name:                      alwaysValidFunc,
+		utils.InjectAdmissionKey:                           alwaysValidFunc,
 	}
 )
 
@@ -170,7 +170,7 @@ func isIgnoredNamespace(namespace string) bool {
 // 解析Annotation, 用于注解位置的黑白名单功能
 func parseInjectionAnnotation(annotations map[string]string) (requested bool, useDefault bool) {
 	var value string
-	newFlag, newExists := annotations[utils.PolarisInjectionKey]
+	newFlag, newExists := annotations[utils.InjectAdmissionKey]
 	if newExists {
 		value = strings.ToLower(newFlag)
 	} else {
@@ -215,8 +215,7 @@ func checkSelectors(pod *corev1.Pod, selectors []metav1.LabelSelector, selectorT
 		}
 
 		if !ls.Empty() && ls.Matches(labels.Set(pod.Labels)) {
-			log.InjectScope().Infof("Pod %s/%s: %s matched labels %v",
-				pod.Namespace, podName, selectorType, pod.Labels)
+			log.InjectScope().Infof("Pod %s/%s: %s matched labels %v", pod.Namespace, podName, selectorType, pod.Labels)
 			return allowInject, true
 		}
 	}
