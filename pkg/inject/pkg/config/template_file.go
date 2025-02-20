@@ -52,6 +52,7 @@ func loadConfig(p TemplateFileConfig) (*InjectConfigInfo, error) {
 	log.InjectScope().Infof("[MESH] Policy: %v", meshConf.Policy)
 	log.InjectScope().Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
+	log.InjectScope().Infof("[MESH] InjectedAnnotations: %v", meshConf.InjectedAnnotations)
 	log.InjectScope().Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
 
 	// 读取 dns 模式的配置模板
@@ -68,6 +69,7 @@ func loadConfig(p TemplateFileConfig) (*InjectConfigInfo, error) {
 	log.InjectScope().Infof("[DNS] Policy: %v", dnsConf.Policy)
 	log.InjectScope().Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
+	log.InjectScope().Infof("[DNS] InjectedAnnotations: %v", dnsConf.InjectedAnnotations)
 	log.InjectScope().Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
 
 	// 读取 javaagent 模式的配置模板
@@ -81,8 +83,10 @@ func loadConfig(p TemplateFileConfig) (*InjectConfigInfo, error) {
 		return nil, err
 	}
 	log.InjectScope().Infof("[JavaAgent] New inject configuration: sha256sum %x", sha256.Sum256(javaAgentData))
+	log.InjectScope().Infof("[JavaAgent] Policy: %v", javaAgentConf.Policy)
 	log.InjectScope().Infof("[JavaAgent] AlwaysInjectSelector: %v", javaAgentConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[JavaAgent] NeverInjectSelector: %v", javaAgentConf.NeverInjectSelector)
+	log.InjectScope().Infof("[JavaAgent] InjectedAnnotations: %v", javaAgentConf.InjectedAnnotations)
 	log.InjectScope().Infof("[JavaAgent] Template: |\n  %v", strings.Replace(javaAgentConf.Template, "\n", "\n  ", -1))
 
 	// 读取 values

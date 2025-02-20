@@ -29,7 +29,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/howeyc/fsnotify"
+	"github.com/fsnotify/fsnotify"
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -116,7 +116,7 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 	// symlink updates of k8s ConfigMaps volumes.
 	for _, file := range p.TemplateFileConfig.GetWatchList() {
 		watchDir, _ := filepath.Split(file)
-		if err := watcher.Watch(watchDir); err != nil {
+		if err := watcher.Add(watchDir); err != nil {
 			return nil, fmt.Errorf("could not watch %v: %v", file, err)
 		}
 	}
@@ -177,13 +177,13 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			if err := wh.templateConfig.UpdateTemplateConfig(wh.templateFileConfig); err != nil {
 				log.InjectScope().Errorf("UpdateTemplateConfig failed: %v", err)
 			}
-		case event := <-wh.watcher.Event:
+		case event := <-wh.watcher.Events:
 			log.InjectScope().Infof("Injector watch update: %+v", event)
 			// use a timer to debounce configuration updates
-			if (event.IsModify() || event.IsCreate()) && timerC == nil {
+			if (event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0) && timerC == nil {
 				timerC = time.After(watchDebounceDelay)
 			}
-		case err := <-wh.watcher.Error:
+		case err := <-wh.watcher.Errors:
 			log.InjectScope().Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
