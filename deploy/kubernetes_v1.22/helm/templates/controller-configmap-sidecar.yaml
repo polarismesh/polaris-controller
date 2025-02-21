@@ -98,7 +98,7 @@ data:
     template: |
       initContainers:
       - name: polaris-javaagent-init
-        image: polarismesh/polaris-javaagent-init:#JAVA_AGENT_INIT#
+        image: {{ include "polaris-controller.sidecar.javaagent.image" . }}
         imagePullPolicy: Always
         env:
           - name: JAVA_AGENT_DIR
