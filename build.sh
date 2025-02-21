@@ -26,7 +26,11 @@ else
 fi
 workdir=$(dirname $(realpath $0))
 
-sed -i "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
+if [ "$(uname)" == "Darwin" ]; then
+    sed -i "" "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
+else
+    sed -i "s/##VERSION##/$version/g" "$workdir"/deploy/variables.txt
+fi
 cat "$workdir"/deploy/variables.txt
 
 function replaceVar() {

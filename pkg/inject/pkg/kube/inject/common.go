@@ -1,6 +1,5 @@
 package inject
 
-import "C"
 import (
 	"context"
 	"strings"
