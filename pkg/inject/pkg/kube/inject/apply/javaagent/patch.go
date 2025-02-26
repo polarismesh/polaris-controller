@@ -280,7 +280,8 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, pod *corev1
 	}
 
 	defaultProperties := make(map[string]string)
-	defaultProperties[ServiceNameValueFromKey], defaultProperties[ServiceNamespaceValueFromKey] = getServiceNamespaceAndName(opt)
+	defaultProperties[ServiceNamespaceValueFromKey], defaultProperties[ServiceNameValueFromKey] =
+		getServiceNamespaceAndName(opt)
 	var javaToolOptionsValue string
 
 	for index, container := range target {
