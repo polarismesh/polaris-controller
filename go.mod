@@ -31,7 +31,13 @@ require (
 
 require (
 	github.com/polarismesh/specification v1.4.2-alpha.6
+	github.com/stretchr/testify v1.8.2
 	google.golang.org/protobuf v1.33.0
+)
+
+require (
+	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 )
 
 require (
