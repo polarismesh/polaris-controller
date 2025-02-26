@@ -287,26 +287,24 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, pod *corev1
 	for index, container := range target {
 		envs := container.Env
 		javaEnvIndex := -1
-		if _, valid := oldAgentVersions[annonations[utils.AnnotationKeyJavaAgentVersion]]; !valid {
-			if properties, ok := annonations[utils.AnnotationKeyJavaAgentPluginConfig]; ok {
-				customProperties := map[string]string{}
-				if properties != "" {
-					if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
-						log.InjectScope().Errorf("updateContainer for pod=[%s, %s] json error: %+v", pod.Namespace,
-							pod.Name, err)
+		if properties, ok := annonations[utils.AnnotationKeyJavaAgentPluginConfig]; ok {
+			customProperties := map[string]string{}
+			if properties != "" {
+				if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+					log.InjectScope().Errorf("updateContainer for pod=[%s, %s] json error: %+v", pod.Namespace,
+						pod.Name, err)
+				}
+			}
+			// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+			for k, v := range customProperties {
+				if existsValue, exists := defaultProperties[k]; exists {
+					if existsValue != v {
+						log.InjectScope().Errorf("updateContainer for pod=[%s, %s] customProperties[%s]=%s, "+
+							"replace defaultProperties[%s]=%s", pod.Namespace, pod.Name, k, v, k, existsValue)
 					}
 				}
-				// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
-				for k, v := range customProperties {
-					if existsValue, exists := defaultProperties[k]; exists {
-						if existsValue != v {
-							log.InjectScope().Errorf("updateContainer for pod=[%s, %s] customProperties[%s]=%s, "+
-								"replace defaultProperties[%s]=%s", pod.Namespace, pod.Name, k, v, k, existsValue)
-						}
-					}
-					// 当和默认初始化配置存在冲突时，使用用户自定义配置
-					defaultProperties[k] = v
-				}
+				// 当和默认初始化配置存在冲突时，使用用户自定义配置
+				defaultProperties[k] = v
 			}
 		}
 
@@ -323,10 +321,11 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, pod *corev1
 			}
 			// 环境变量 JAVA_TOOL_OPTIONS 已经存在, 往里面追加参数
 			if javaEnvIndex != -1 {
-				// RC5版本之后,不再需要javaagentVersion注解,并使用JAVA_TOOL_OPTIONS的参数传递自定义配置
+				// RC5之后的版本,不再需要javaagentVersion注解,自动识别版本号
 				if _, valid := oldAgentVersions[annonations[utils.AnnotationKeyJavaAgentVersion]]; !valid {
 					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], ActiveJavaAgentCmd, javaToolOptionsValue)
 				} else {
+					// RC5之前的版本,需要注入javaagentVersion注解,在-javaagent参数里面指定版本号
 					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd,
 						opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion]), "")
 				}
