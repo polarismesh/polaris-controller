@@ -24,12 +24,12 @@ import (
 
 // MeshEnvoyConfig mesh 注入配置, envoy sidecar当前有用到
 type MeshEnvoyConfig struct {
-	defaultConfig *DefaultConfig `yaml:"defaultConfig"`
+	DefaultConfig *DefaultConfig `yaml:"DefaultConfig"`
 }
 
 // DefaultConfig 存储北极星proxy默认配置和用户自定义配置
 type DefaultConfig struct {
-	proxyMetadata map[string]string `yaml:"proxyMetadata"`
+	ProxyMetadata map[string]string `yaml:"ProxyMetadata"`
 }
 
 // ReadMeshEnvoyConfig 读取mesh envoy sidecar注入配置
@@ -39,8 +39,8 @@ func ReadMeshEnvoyConfig(filename string) (*MeshEnvoyConfig, error) {
 		return nil, multierror.Prefix(err, "cannot read mesh config file")
 	}
 	defaultConfig := &MeshEnvoyConfig{
-		defaultConfig: &DefaultConfig{
-			proxyMetadata: map[string]string{},
+		DefaultConfig: &DefaultConfig{
+			ProxyMetadata: map[string]string{},
 		},
 	}
 	if err = yaml.Unmarshal(yamlBytes, defaultConfig); err != nil {
@@ -54,7 +54,7 @@ func (ic *MeshEnvoyConfig) GetDefaultConfig() *DefaultConfig {
 	if ic == nil {
 		return nil
 	}
-	return ic.defaultConfig
+	return ic.DefaultConfig
 }
 
 // SetDefaultConfig 设置默认配置
@@ -62,7 +62,7 @@ func (ic *MeshEnvoyConfig) SetDefaultConfig(config *DefaultConfig) {
 	if ic == nil {
 		return
 	}
-	ic.defaultConfig = config
+	ic.DefaultConfig = config
 }
 
 // GetProxyMetadata 获取 proxy 元数据
@@ -70,7 +70,7 @@ func (dc *DefaultConfig) GetProxyMetadata() map[string]string {
 	if dc == nil {
 		return nil
 	}
-	return dc.proxyMetadata
+	return dc.ProxyMetadata
 }
 
 // SetProxyMetadataWithKV 设置 proxy 元数据
@@ -78,7 +78,7 @@ func (dc *MeshEnvoyConfig) SetProxyMetadataWithKV(k, v string) {
 	if dc == nil {
 		return
 	}
-	dc.defaultConfig.proxyMetadata[k] = v
+	dc.DefaultConfig.ProxyMetadata[k] = v
 }
 
 // String 返回 MeshEnvoyConfig 的字符串表示
@@ -88,10 +88,10 @@ func (ic *MeshEnvoyConfig) String() string {
 	}
 
 	var defaultConfig string
-	if ic.defaultConfig == nil {
+	if ic.DefaultConfig == nil {
 		defaultConfig = "nil"
 	} else {
-		defaultConfig = ic.defaultConfig.String()
+		defaultConfig = ic.DefaultConfig.String()
 	}
 
 	return fmt.Sprintf("MeshEnvoyConfig{DefaultConfig: %s}", defaultConfig)
@@ -104,9 +104,9 @@ func (dc *DefaultConfig) String() string {
 	}
 
 	metadata := "nil"
-	if dc.proxyMetadata != nil {
-		metadata = fmt.Sprintf("%v", dc.proxyMetadata)
+	if dc.ProxyMetadata != nil {
+		metadata = fmt.Sprintf("%v", dc.ProxyMetadata)
 	}
 
-	return fmt.Sprintf("DefaultConfig{proxyMetadata: %s}", metadata)
+	return fmt.Sprintf("DefaultConfig{ProxyMetadata: %s}", metadata)
 }
