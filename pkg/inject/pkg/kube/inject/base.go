@@ -39,7 +39,7 @@ func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
 	values := map[string]interface{}{}
 	valuesConfig := wh.templateConfig.GetValuesConfig()
 	if err := yaml.Unmarshal([]byte(wh.templateConfig.GetValuesConfig()), &values); err != nil {
-		log.InjectScope().Infof("[Webhook] failed to parse values config: %v [%v]\n", err, valuesConfig)
+		log.InjectScope().Errorf("[Webhook] failed to parse values config: %v [%v]\n", err, valuesConfig)
 		return nil, multierror.Prefix(err, "could not parse configuration values:")
 	}
 	metadataCopy := p.podObject.ObjectMeta.DeepCopy()

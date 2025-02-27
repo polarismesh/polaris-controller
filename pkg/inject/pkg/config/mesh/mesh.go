@@ -24,7 +24,7 @@ import (
 
 // MeshEnvoyConfig mesh 注入配置, envoy sidecar当前有用到
 type MeshEnvoyConfig struct {
-	defaultConfig *DefaultConfig `yaml:"DefaultConfig"`
+	defaultConfig *DefaultConfig `yaml:"defaultConfig"`
 }
 
 // DefaultConfig 存储北极星proxy默认配置和用户自定义配置
