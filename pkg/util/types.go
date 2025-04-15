@@ -50,7 +50,7 @@ const (
 	// SidecarEnvoyMetadata
 	SidecarEnvoyMetadata       = "sidecar.polarismesh.cn/envoyMetadata"
 	SidecarEnvoyInjectKey      = "sidecar.polarismesh.cn/openOnDemand"
-	SidecarEnvoyInjectProxyKey = "OPEN_DEMAND"
+	SidecarEnvoyInjectProxyKey = "openDemand"
 
 	PolarisSidecarModeLabel = "polaris-sidecar-mode"
 

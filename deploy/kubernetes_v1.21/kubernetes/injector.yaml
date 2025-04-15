@@ -256,7 +256,7 @@ data:
         - name: CLUSTER_NAME
           value: {{.ProxyConfig.ProxyMetadata.clusterName}}
         - name: OPEN_DEMAND
-          value: {{.ProxyConfig.ProxyMetadata.opemDemand}}
+          value: {{.ProxyConfig.ProxyMetadata.openDemand}}
         volumeMounts:
           - mountPath: /var/lib/data
             name: envoy-bootstrap
