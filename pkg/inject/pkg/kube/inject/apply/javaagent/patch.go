@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -317,9 +318,17 @@ func (pb *PodPatchBuilder) updateContainer(req *inject.OperateContainerRequest) 
 			}
 		}
 
-		// 将配置转成-D参数, 并追加到JAVA_TOOL_OPTIONS
+		// 提取键到切片
+		keys := make([]string, 0, len(defaultProperties))
+		for k := range defaultProperties {
+			keys = append(keys, k)
+		}
+		// 排序（按字母升序）
+		sort.Strings(keys)
+		// 按顺序遍历, 将配置转成-D参数, 并追加到JAVA_TOOL_OPTIONS
 		var javaToolOptionsValue string
-		for key, value := range defaultProperties {
+		for _, key := range keys {
+			value := defaultProperties[key]
 			javaToolOptionsValue += fmt.Sprintf(" -D%s=%s", key, value)
 		}
 		if len(envs) != 0 {

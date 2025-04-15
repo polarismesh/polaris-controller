@@ -73,7 +73,7 @@ func TestUpdateContainer(t *testing.T) {
 				Annotations:  map[string]string{},
 				Pod:          &corev1.Pod{},
 			},
-			expectedCmd: "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar -Dspring.cloud.polaris.discovery.namespace=test-ns -Dspring.application.name=test-workload",
+			expectedCmd: "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar -Dspring.application.name=test-workload -Dspring.cloud.polaris.discovery.namespace=test-ns",
 			expectMount: true,
 		},
 		{
@@ -101,7 +101,7 @@ func TestUpdateContainer(t *testing.T) {
 				Annotations:  map[string]string{},
 				Pod:          &corev1.Pod{},
 			},
-			expectedCmd: "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar -Dspring.cloud.polaris.discovery.namespace=custom-ns -Dspring.application.name=custom-service",
+			expectedCmd: "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar -Dspring.application.name=custom-service -Dspring.cloud.polaris.discovery.namespace=custom-ns",
 			expectMount: true,
 		},
 	}
