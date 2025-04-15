@@ -29,7 +29,8 @@ type PolarisControllerOptions struct {
 
 // ServiceSync 服务同步相关配置
 type ServiceSync struct {
-	Mode          string `yaml:"mode"`
+	Mode string `yaml:"mode"`
+	// deprecated, use SyncMode instead
 	ServerAddress string `yaml:"serverAddress"`
 	// 以下配置仅 polaris-server 开启 console auth
 	// 调用 polaris-server OpenAPI 的凭据
@@ -40,15 +41,9 @@ type ServiceSync struct {
 	Enable bool `yaml:"enable"`
 }
 
-// ConfigSync 服务同步相关配置
+// ConfigSync 配置同步相关配置
 type ConfigSync struct {
-	Mode          string `yaml:"mode"`
-	ServerAddress string `yaml:"serverAddress"`
-	// 以下配置仅 polaris-server 开启 console auth
-	// 调用 polaris-server OpenAPI 的凭据
-	PolarisAccessToken string `yaml:"accessToken"`
-	// Operator 用于数据同步的帐户ID
-	Operator string `yaml:"operator"`
+	Mode string `yaml:"mode"`
 	// AllowDelete 允许向 Polaris 发起删除操作
 	AllowDelete bool `yaml:"allowDelete"`
 	// SyncDirection 配置同步方向, kubernetesToPolaris/polarisToKubernetes/both

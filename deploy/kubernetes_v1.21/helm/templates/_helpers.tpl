@@ -56,6 +56,13 @@ Get specific image for sidecar init container
 {{- end -}}
 
 {{/*
+Get specific image for javaagent init container
+*/}}
+{{- define "polaris-controller.sidecar.javaagent.image" -}}
+{{- printf "%s:%s" .Values.sidecar.javaagent.image.repo .Values.sidecar.javaagent.image.tag -}}
+{{- end -}}
+
+{{/*
 Get specific image for sidecar init container
 */}}
 {{- define "polaris-controller.sidecar.istio.image" -}}

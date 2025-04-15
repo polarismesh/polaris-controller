@@ -48,6 +48,7 @@ import (
 	"github.com/polarismesh/polaris-controller/common"
 	"github.com/polarismesh/polaris-controller/common/log"
 	polarisController "github.com/polarismesh/polaris-controller/pkg/controller"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config"
 	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject"
 	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/javaagent"
 	_ "github.com/polarismesh/polaris-controller/pkg/inject/pkg/kube/inject/apply/mesh"
@@ -68,7 +69,7 @@ const (
 	DnsConfigFile       = "/etc/polaris-inject/inject/dns-config"
 	JavaAgentConfigFile = "/etc/polaris-inject/inject/java-agent-config"
 	ValuesFile          = "/etc/polaris-inject/inject/values"
-	MeshFile            = "/etc/polaris-inject/config/mesh"
+	BootstrapConfigFile = "/etc/polaris-inject/config/mesh"
 	CertFile            = "/etc/polaris-inject/certs/cert.pem"
 	KeyFile             = "/etc/polaris-inject/certs/key.pem"
 )
@@ -186,8 +187,7 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	if flags.polarisServerAddress != "" {
 		polarisServerAddress = flags.polarisServerAddress
 	} else {
-		// 启动参数没有指定，取 mesh config 中的地址
-		polarisServerAddress = config.ServiceSync.ServerAddress
+		polarisServerAddress = config.getPolarisServerAddress()
 	}
 	// 去除前后的空格字符
 	polarisServerAddress = strings.TrimSpace(polarisServerAddress)
@@ -196,9 +196,8 @@ func initControllerConfig(s *options.KubeControllerManagerOptions) {
 	polarisapi.PolarisConfigGrpc = polarisServerAddress + ":8093"
 	log.Infof("[Manager] polaris http address %s, discover grpc address %s, config grpc address %s",
 		polarisapi.PolarisHttpURL, polarisapi.PolarisGrpc, polarisapi.PolarisConfigGrpc)
-	// 设置北极星开启鉴权之后，需要使用的访问token
-	polarisapi.PolarisAccessToken = config.ServiceSync.PolarisAccessToken
-	polarisapi.PolarisOperator = config.ServiceSync.Operator
+	polarisapi.PolarisAccessToken = config.getPolarisAccessToken()
+	polarisapi.PolarisOperator = config.getPolarisOperator()
 
 	// 2. 配置 polaris 同步模式
 	if s.PolarisController.SyncMode == "" {
@@ -247,15 +246,18 @@ func closeGrpcLog() {
 }
 
 func initPolarisSidecarInjector(c *options.CompletedConfig) error {
-	parameters := inject.WebhookParameters{
-		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+	templateFilePath := config.TemplateFileConfig{
 		MeshConfigFile:      MeshConfigFile,
 		DnsConfigFile:       DnsConfigFile,
 		JavaAgentConfigFile: JavaAgentConfigFile,
 		ValuesFile:          ValuesFile,
-		MeshFile:            MeshFile,
+		BootstrapConfigFile: BootstrapConfigFile,
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
+	}
+	parameters := inject.WebhookParameters{
+		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+		TemplateFileConfig:  templateFilePath,
 		Port:                flags.injectPort,
 		HealthCheckInterval: 3 * time.Second,
 		HealthCheckFile:     "/tmp/health",

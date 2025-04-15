@@ -17,7 +17,6 @@ package inject
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -27,12 +26,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
-	gyaml "github.com/ghodss/yaml"
-	"github.com/howeyc/fsnotify"
+	"github.com/fsnotify/fsnotify"
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -47,7 +44,7 @@ import (
 	"github.com/polarismesh/polaris-controller/common"
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/inject/api/annotation"
-	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config/mesh"
+	"github.com/polarismesh/polaris-controller/pkg/inject/pkg/config"
 	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
@@ -70,116 +67,15 @@ const (
 // Webhook implements a mutating webhook for automatic proxy injection.
 type Webhook struct {
 	defaultSidecarMode utils.SidecarMode
-	mu                 sync.RWMutex
-
-	// envoy mesh 场景下的 sidecar 注入配置
-	sidecarMeshConfig          *Config
-	sidecarMeshTemplateVersion string
-	// dns 场景下的 sidecar 注入配置
-	sidecarDnsConfig          *Config
-	sidecarDnsTemplateVersion string
-	// java agent 场景下的注入配置
-	sidecarJavaAgentConfig          *Config
-	sidecarJavaAgentTemplateVersion string
-	meshConfig                      *mesh.MeshConfig
-	valuesConfig                    string
+	templateConfig     *config.SafeTemplateConfig
+	templateFileConfig config.TemplateFileConfig
 
 	healthCheckInterval time.Duration
 	healthCheckFile     string
 
-	server              *http.Server
-	meshFile            string
-	meshConfigFile      string
-	dnsConfigFile       string
-	javaAgentConfigFile string
-	valuesFile          string
-	watcher             *fsnotify.Watcher
-	certFile            string
-	keyFile             string
-	cert                *tls.Certificate
-
+	server    *http.Server
+	watcher   *fsnotify.Watcher
 	k8sClient kubernetes.Interface
-}
-
-type InjectConfigInfo struct {
-	MeshInjectConf      *Config
-	DnsInjectConf       *Config
-	JavaAgentInjectConf *Config
-	MeshConf            *mesh.MeshConfig
-	ValuesConf          string
-}
-
-// env will be used for other things besides meshConfig - when webhook is running in Istiod it can take advantage
-// of the config and endpoint cache.
-// nolint
-func loadConfig(injectMeshFile, injectDnsFile, injectJavaFile, meshFile, valuesFile string) (*InjectConfigInfo, error) {
-	// 处理 polaris-sidecar mesh 模式的注入
-	meshData, err := os.ReadFile(injectMeshFile)
-	if err != nil {
-		return nil, err
-	}
-	var meshConf Config
-	if err := gyaml.Unmarshal(meshData, &meshConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject mesh config file %s", string(meshData))
-		return nil, err
-	}
-
-	// 处理 polaris-sidecar dns 模式的注入
-	dnsData, err := os.ReadFile(injectDnsFile)
-	if err != nil {
-		return nil, err
-	}
-	var dnsConf Config
-	if err := gyaml.Unmarshal(dnsData, &dnsConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject dns config file %s", string(dnsData))
-		return nil, err
-	}
-
-	// 处理 java-agent 模式的注入
-	javaAgentData, err := os.ReadFile(injectJavaFile)
-	if err != nil {
-		return nil, err
-	}
-	var javaAgentConf Config
-	if err := gyaml.Unmarshal(javaAgentData, &javaAgentConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject java-agent config file %s", string(dnsData))
-		return nil, err
-	}
-
-	valuesConfig, err := os.ReadFile(valuesFile)
-	if err != nil {
-		return nil, err
-	}
-
-	meshConfig, err := mesh.ReadMeshConfig(meshFile)
-	if err != nil {
-		return nil, err
-	}
-
-	log.InjectScope().Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
-	log.InjectScope().Infof("[MESH] Policy: %v", meshConf.Policy)
-	log.InjectScope().Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
-	log.InjectScope().Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
-	log.InjectScope().Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
-
-	log.InjectScope().Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
-	log.InjectScope().Infof("[DNS] Policy: %v", dnsConf.Policy)
-	log.InjectScope().Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
-	log.InjectScope().Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
-	log.InjectScope().Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
-
-	log.InjectScope().Infof("[JavaAgent] New inject configuration: sha256sum %x", sha256.Sum256(javaAgentData))
-	log.InjectScope().Infof("[JavaAgent] AlwaysInjectSelector: %v", javaAgentConf.AlwaysInjectSelector)
-	log.InjectScope().Infof("[JavaAgent] NeverInjectSelector: %v", javaAgentConf.NeverInjectSelector)
-	log.InjectScope().Infof("[JavaAgent] Template: |\n  %v", strings.Replace(javaAgentConf.Template, "\n", "\n  ", -1))
-
-	return &InjectConfigInfo{
-		MeshInjectConf:      &meshConf,
-		DnsInjectConf:       &dnsConf,
-		JavaAgentInjectConf: &javaAgentConf,
-		MeshConf:            meshConfig,
-		ValuesConf:          string(valuesConfig),
-	}, nil
 }
 
 // WebhookParameters configures parameters for the sidecar injection
@@ -188,25 +84,8 @@ type WebhookParameters struct {
 	// DefaultSidecarMode polaris-sidecar 默认的运行模式
 	DefaultSidecarMode utils.SidecarMode
 
-	// MeshConfigFile 处理 polaris-sidecar 运行模式为 mesh 的配置文件
-	MeshConfigFile string
-
-	// DnsConfigFile 处理 polaris-sidecar 运行模式为 dns 的配置文件
-	DnsConfigFile string
-
-	// JavaAgentConfigFile 处理运行模式为 javaagent 的配置文件
-	JavaAgentConfigFile string
-
-	ValuesFile string
-
-	// MeshFile is the path to the mesh configuration file.
-	MeshFile string
-
-	// CertFile is the path to the x509 certificate for https.
-	CertFile string
-
-	// KeyFile is the path to the x509 private key matching `CertFile`.
-	KeyFile string
+	// TemplateFileConfig 模板配置文件位置
+	TemplateFileConfig config.TemplateFileConfig
 
 	// Port is the webhook port, e.g. typically 443 for https.
 	Port int
@@ -229,61 +108,31 @@ type WebhookParameters struct {
 
 // NewWebhook creates a new instance of a mutating webhook for automatic sidecar injection.
 func NewWebhook(p WebhookParameters) (*Webhook, error) {
-	// TODO: pass a pointer to mesh config from Pilot bootstrap, no need to watch and load 2 times
-	// This is needed before we implement advanced merging / patching of mesh config
-	injectConf, err := loadConfig(p.MeshConfigFile, p.DnsConfigFile,
-		p.JavaAgentConfigFile, p.MeshFile, p.ValuesFile)
-
-	if err != nil {
-		return nil, err
-	}
-	pair, err := tls.LoadX509KeyPair(p.CertFile, p.KeyFile)
-	if err != nil {
-		return nil, err
-	}
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO 直接监听 configmap
 	// watch the parent directory of the target files so we can catch
 	// symlink updates of k8s ConfigMaps volumes.
-	for _, file := range []string{p.MeshConfigFile, p.DnsConfigFile, p.MeshFile, p.CertFile, p.KeyFile} {
-		if file == p.MeshFile {
-			continue
-		}
+	for _, file := range p.TemplateFileConfig.GetWatchList() {
 		watchDir, _ := filepath.Split(file)
-		if err := watcher.Watch(watchDir); err != nil {
+		if err := watcher.Add(watchDir); err != nil {
 			return nil, fmt.Errorf("could not watch %v: %v", file, err)
 		}
 	}
-
+	templateConfig, err := config.NewTemplateConfig(p.TemplateFileConfig)
+	if err != nil {
+		log.InjectScope().Errorf("NewTemplateConfig failed: %v", err)
+		return nil, err
+	}
 	wh := &Webhook{
-		sidecarMeshConfig:               injectConf.MeshInjectConf,
-		sidecarMeshTemplateVersion:      sidecarTemplateVersionHash(injectConf.MeshInjectConf.Template),
-		sidecarDnsConfig:                injectConf.DnsInjectConf,
-		sidecarDnsTemplateVersion:       sidecarTemplateVersionHash(injectConf.DnsInjectConf.Template),
-		sidecarJavaAgentConfig:          injectConf.JavaAgentInjectConf,
-		sidecarJavaAgentTemplateVersion: sidecarTemplateVersionHash(injectConf.JavaAgentInjectConf.Template),
-		meshConfig:                      injectConf.MeshConf,
-		meshConfigFile:                  p.MeshConfigFile,
-		dnsConfigFile:                   p.DnsConfigFile,
-		javaAgentConfigFile:             p.JavaAgentConfigFile,
-		valuesFile:                      p.ValuesFile,
-		valuesConfig:                    injectConf.ValuesConf,
-		meshFile:                        p.MeshFile,
-		watcher:                         watcher,
-		healthCheckInterval:             p.HealthCheckInterval,
-		healthCheckFile:                 p.HealthCheckFile,
-		certFile:                        p.CertFile,
-		keyFile:                         p.KeyFile,
-		cert:                            &pair,
-
-		// 新增查询 k8s 资源的操作者
-		k8sClient:          p.Client,
-		defaultSidecarMode: p.DefaultSidecarMode,
+		templateConfig:      templateConfig,
+		templateFileConfig:  p.TemplateFileConfig,
+		watcher:             watcher,
+		healthCheckInterval: p.HealthCheckInterval,
+		healthCheckFile:     p.HealthCheckFile,
+		k8sClient:           p.Client,
+		defaultSidecarMode:  p.DefaultSidecarMode,
 	}
 
 	if p.Mux != nil {
@@ -292,7 +141,7 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 		wh.server = &http.Server{
 			Addr: fmt.Sprintf(":%v", p.Port),
 			// mtls disabled because apiserver webhook cert usage is still TBD.
-			TLSConfig: &tls.Config{GetCertificate: wh.getCert},
+			TLSConfig: &tls.Config{GetCertificate: wh.templateConfig.GetCert},
 		}
 		mux := http.NewServeMux()
 		mux.HandleFunc("/inject", wh.serveInject)
@@ -325,43 +174,16 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 		select {
 		case <-timerC:
 			timerC = nil
-			injectConf, err := loadConfig(wh.meshConfigFile, wh.dnsConfigFile, wh.javaAgentConfigFile, wh.meshFile, wh.valuesFile)
-			if err != nil {
-				log.InjectScope().Errorf("update error: %v", err)
-				break
+			if err := wh.templateConfig.UpdateTemplateConfig(wh.templateFileConfig); err != nil {
+				log.InjectScope().Errorf("UpdateTemplateConfig failed: %v", err)
 			}
-
-			pair, err := tls.LoadX509KeyPair(wh.certFile, wh.keyFile)
-			if err != nil {
-				log.InjectScope().Errorf("reload cert error: %v", err)
-				break
-			}
-
-			sidecarMeshConfig := injectConf.MeshInjectConf
-			sidecarDnsConfig := injectConf.DnsInjectConf
-			sidecarJavaagentConfig := injectConf.JavaAgentInjectConf
-			meshConfig := injectConf.MeshConf
-			valuesConfig := injectConf.ValuesConf
-
-			wh.mu.Lock()
-			wh.sidecarMeshConfig = sidecarMeshConfig
-			wh.sidecarMeshTemplateVersion = sidecarTemplateVersionHash(sidecarMeshConfig.Template)
-			wh.sidecarDnsConfig = sidecarDnsConfig
-			wh.sidecarDnsTemplateVersion = sidecarTemplateVersionHash(sidecarDnsConfig.Template)
-			wh.sidecarJavaAgentConfig = sidecarJavaagentConfig
-			wh.sidecarJavaAgentTemplateVersion = sidecarTemplateVersionHash(sidecarJavaagentConfig.Template)
-
-			wh.valuesConfig = valuesConfig
-			wh.meshConfig = meshConfig
-			wh.cert = &pair
-			wh.mu.Unlock()
-		case event := <-wh.watcher.Event:
+		case event := <-wh.watcher.Events:
 			log.InjectScope().Infof("Injector watch update: %+v", event)
 			// use a timer to debounce configuration updates
-			if (event.IsModify() || event.IsCreate()) && timerC == nil {
+			if (event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0) && timerC == nil {
 				timerC = time.After(watchDebounceDelay)
 			}
-		case err := <-wh.watcher.Error:
+		case err := <-wh.watcher.Errors:
 			log.InjectScope().Errorf("Watcher error: %v", err)
 		case <-healthC:
 			content := []byte(`ok`)
@@ -372,12 +194,6 @@ func (wh *Webhook) Run(stop <-chan struct{}) {
 			return
 		}
 	}
-}
-
-func (wh *Webhook) getCert(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-	wh.mu.Lock()
-	defer wh.mu.Unlock()
-	return wh.cert, nil
 }
 
 // It would be great to use https://github.com/mattbaird/jsonpatch to
@@ -582,29 +398,17 @@ func updateAnnotation(target map[string]string, added map[string]string) (patch 
 	return patch
 }
 
-func (wh *Webhook) createPatch(sidecarMode utils.SidecarMode, pod *corev1.Pod, prevStatus *SidecarInjectionStatus, annotations map[string]string, sic *SidecarInjectionSpec,
-	workloadName string,
-) ([]byte, error) {
-
+func createPatch(opt *PatchOptions) ([]byte, error) {
+	sidecarMode := opt.SidecarMode
+	pod := opt.Pod
+	prevStatus := opt.PrevStatus
+	sic := opt.Sic
+	annotations := opt.Annotations
 	var patch []Rfc6902PatchOperation
 
 	patchBuilder, ok := _PatchBuilders[utils.ParseSidecarModeName(sidecarMode)]
 	if !ok {
 		return nil, errors.NewInternalError(fmt.Errorf("sidecar-mode %+v not found target patch builder", sidecarMode))
-	}
-	if sidecarMode != utils.SidecarForMesh {
-		delete(annotations, utils.SidecarEnvoyMetadata)
-	}
-
-	opt := &PatchOptions{
-		Pod:          pod,
-		KubeClient:   wh.k8sClient,
-		PrevStatus:   prevStatus,
-		SidecarMode:  sidecarMode,
-		WorkloadName: workloadName,
-		Sic:          sic,
-		Annotations:  annotations,
-		ExternalInfo: map[string]string{},
 	}
 
 	// Remove any containers previously injected by kube-inject using
@@ -778,117 +582,31 @@ func toV1beta1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
 
 func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	req := ar.Request
-	var pod corev1.Pod
-	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
+	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
+	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
+	// 解析原始对象
+	podInfo, err := assignPodDataInfo(req.Object.Raw, req.Namespace, wh)
+	if err != nil {
 		handleError(fmt.Sprintf("Could not unmarshal raw object: %v %s", err,
 			string(req.Object.Raw)))
 		return toV1beta1AdmissionResponse(err)
 	}
-
-	sidecarMode := wh.getSidecarMode(req.Namespace, &pod)
-
-	// Deal with potential empty fields, e.g., when the pod is created by a deployment
-	podName := potentialPodName(&pod.ObjectMeta)
-	if pod.ObjectMeta.Namespace == "" {
-		pod.ObjectMeta.Namespace = req.Namespace
+	log.InjectScope().Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v "+
+		"UserInfo=%v", req.Kind, req.Namespace, req.Name, podInfo.podName, req.UID, req.Operation, req.UserInfo)
+	// 获取准入注入patch
+	patchBytes, err := wh.getPodPatch(podInfo)
+	if err != nil {
+		handleError(fmt.Sprintf("Could not get admission patch: %v", err))
+		return toV1beta1AdmissionResponse(err)
 	}
-
-	log.InjectScope().Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
-		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
-	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
-
-	config := wh.sidecarMeshConfig
-	tempVersion := wh.sidecarMeshTemplateVersion
-	if sidecarMode == utils.SidecarForDns {
-		config = wh.sidecarDnsConfig
-		tempVersion = wh.sidecarDnsTemplateVersion
-	}
-	if sidecarMode == utils.SidecarForJavaAgent {
-		config = wh.sidecarJavaAgentConfig
-		tempVersion = wh.sidecarJavaAgentTemplateVersion
-	}
-
-	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		log.InjectScope().Infof("Skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+	// 跳过注入
+	if patchBytes == nil {
+		log.InjectScope().Infof("[Webhook] skipping %s/%s due to empty patchBytes", req.Namespace, podInfo.podName)
 		return &v1beta1.AdmissionResponse{
 			Allowed: true,
 		}
 	}
-	// try to capture more useful namespace/name info for deployments, etc.
-	// TODO(dougreid): expand to enable lookup of OWNERs recursively a la kubernetesenv
-	deployMeta := pod.ObjectMeta.DeepCopy()
-	deployMeta.Namespace = req.Namespace
-
-	typeMetadata := &metav1.TypeMeta{
-		Kind:       "Pod",
-		APIVersion: "v1",
-	}
-
-	if len(pod.GenerateName) > 0 {
-		// if the pod name was generated (or is scheduled for generation), we can begin an investigation into the controlling reference for the pod.
-		var controllerRef metav1.OwnerReference
-		controllerFound := false
-		for _, ref := range pod.GetOwnerReferences() {
-			if *ref.Controller {
-				controllerRef = ref
-				controllerFound = true
-				break
-			}
-		}
-		if controllerFound {
-			typeMetadata.APIVersion = controllerRef.APIVersion
-			typeMetadata.Kind = controllerRef.Kind
-
-			// heuristic for deployment detection
-			if typeMetadata.Kind == "ReplicaSet" && strings.HasSuffix(controllerRef.Name, pod.Labels["pod-template-hash"]) {
-				name := strings.TrimSuffix(controllerRef.Name, "-"+pod.Labels["pod-template-hash"])
-				deployMeta.Name = name
-				typeMetadata.Kind = "Deployment"
-			} else {
-				deployMeta.Name = controllerRef.Name
-			}
-		}
-	}
-
-	if deployMeta.Name == "" {
-		// if we haven't been able to extract a deployment name, then just give it the pod name
-		deployMeta.Name = pod.Name
-	}
-	proxyCfg := wh.meshConfig.DefaultConfig
-	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata,
-		deployMeta, &pod.Spec, &pod.ObjectMeta, proxyCfg)
-	if err != nil {
-		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
-		return toV1beta1AdmissionResponse(err)
-	}
-	// 不需要做任何 POD 修改操作
-	if spec == nil {
-		reviewResponse := v1beta1.AdmissionResponse{
-			Allowed: true,
-		}
-		return &reviewResponse
-	}
-
-	if len(annotations) == 0 {
-		annotations = map[string]string{}
-	}
-	if len(iStatus) != 0 {
-		annotations[annotation.SidecarStatus.Name] = iStatus
-	}
-	// Add all additional injected annotations
-	for k, v := range config.InjectedAnnotations {
-		annotations[k] = v
-	}
-
-	patchBytes, err := wh.createPatch(sidecarMode, &pod, injectionStatus(&pod), annotations, spec, deployMeta.Name)
-	if err != nil {
-		handleError(fmt.Sprintf("AdmissionResponse: err=%v spec=%v\n", err, spec))
-		return toV1beta1AdmissionResponse(err)
-	}
-
 	log.InjectScope().Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
-
 	reviewResponse := v1beta1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
@@ -903,120 +621,31 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 // inject istio 核心准入注入逻辑
 func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	req := ar.Request
-	var pod corev1.Pod
-	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
+	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
+	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
+	// 解析原始对象
+	podInfo, err := assignPodDataInfo(req.Object.Raw, req.Namespace, wh)
+	if err != nil {
 		handleError(fmt.Sprintf("Could not unmarshal raw object: %v %s", err,
 			string(req.Object.Raw)))
 		return toV1AdmissionResponse(err)
 	}
-
-	sidecarMode := wh.getSidecarMode(req.Namespace, &pod)
-
-	// Deal with potential empty fields, e.g., when the pod is created by a deployment
-	podName := potentialPodName(&pod.ObjectMeta)
-	if pod.ObjectMeta.Namespace == "" {
-		pod.ObjectMeta.Namespace = req.Namespace
+	log.InjectScope().Infof("AdmissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v "+
+		"UserInfo=%v", req.Kind, req.Namespace, req.Name, podInfo.podName, req.UID, req.Operation, req.UserInfo)
+	// 获取准入注入patch
+	patchBytes, err := wh.getPodPatch(podInfo)
+	if err != nil {
+		handleError(fmt.Sprintf("Could not get admission patch: %v", err))
+		return toV1AdmissionResponse(err)
 	}
-
-	log.InjectScope().Infof("[Webhook] admissionReview for Kind=%v Namespace=%v Name=%v (%v) UID=%v Rfc6902PatchOperation=%v UserInfo=%v",
-		req.Kind, req.Namespace, req.Name, podName, req.UID, req.Operation, req.UserInfo)
-	log.InjectScope().Infof("[Webhook] object: %v", string(req.Object.Raw))
-	log.InjectScope().Infof("[Webhook] oldObject: %v", string(req.OldObject.Raw))
-
-	config := wh.sidecarMeshConfig
-	tempVersion := wh.sidecarMeshTemplateVersion
-	if sidecarMode == utils.SidecarForDns {
-		config = wh.sidecarDnsConfig
-		tempVersion = wh.sidecarDnsTemplateVersion
-	}
-	if sidecarMode == utils.SidecarForJavaAgent {
-		config = wh.sidecarJavaAgentConfig
-		tempVersion = wh.sidecarJavaAgentTemplateVersion
-	}
-
-	if !wh.injectRequired(ignoredNamespaces, config, &pod.Spec, &pod.ObjectMeta) {
-		log.InjectScope().Infof("[Webhook] skipping %s/%s due to policy check", pod.ObjectMeta.Namespace, podName)
+	// 跳过注入
+	if patchBytes == nil {
+		log.InjectScope().Infof("[Webhook] skipping %s/%s due to empty patchBytes", req.Namespace, podInfo.podName)
 		return &v1.AdmissionResponse{
 			Allowed: true,
 		}
 	}
-
-	// try to capture more useful namespace/name info for deployments, etc.
-	// TODO(dougreid): expand to enable lookup of OWNERs recursively a la kubernetesenv
-	deployMeta := pod.ObjectMeta.DeepCopy()
-	deployMeta.Namespace = req.Namespace
-
-	typeMetadata := &metav1.TypeMeta{
-		Kind:       "Pod",
-		APIVersion: "v1",
-	}
-
-	if len(pod.GenerateName) > 0 {
-		// if the pod name was generated (or is scheduled for generation), we can begin an investigation into the controlling reference for the pod.
-		var controllerRef metav1.OwnerReference
-		controllerFound := false
-		for _, ref := range pod.GetOwnerReferences() {
-			if *ref.Controller {
-				controllerRef = ref
-				controllerFound = true
-				break
-			}
-		}
-		if controllerFound {
-			typeMetadata.APIVersion = controllerRef.APIVersion
-			typeMetadata.Kind = controllerRef.Kind
-
-			// heuristic for deployment detection
-			if typeMetadata.Kind == "ReplicaSet" && strings.HasSuffix(controllerRef.Name, pod.Labels["pod-template-hash"]) {
-				name := strings.TrimSuffix(controllerRef.Name, "-"+pod.Labels["pod-template-hash"])
-				deployMeta.Name = name
-				typeMetadata.Kind = "Deployment"
-			} else {
-				deployMeta.Name = controllerRef.Name
-			}
-		}
-	}
-
-	if deployMeta.Name == "" {
-		// if we haven't been able to extract a deployment name, then just give it the pod name
-		deployMeta.Name = pod.Name
-	}
-
-	copyProxyCfg := wh.meshConfig.Clone()
-	spec, annotations, iStatus, err := InjectionData(config.Template, wh.valuesConfig, tempVersion, typeMetadata, deployMeta,
-		&pod.Spec, &pod.ObjectMeta, copyProxyCfg.DefaultConfig)
-	if err != nil {
-		handleError(fmt.Sprintf("Injection data: err=%v spec=%v\n", err, iStatus))
-		return toV1AdmissionResponse(err)
-	}
-	// 不需要做任何 POD 修改操作
-	if spec == nil {
-		reviewResponse := v1.AdmissionResponse{
-			Allowed: true,
-		}
-		return &reviewResponse
-	}
-
-	if len(annotations) == 0 {
-		annotations = map[string]string{}
-	}
-	if len(iStatus) != 0 {
-		annotations[annotation.SidecarStatus.Name] = iStatus
-	}
-
-	// Add all additional injected annotations
-	for k, v := range config.InjectedAnnotations {
-		annotations[k] = v
-	}
-
-	patchBytes, err := wh.createPatch(sidecarMode, &pod, injectionStatus(&pod), annotations, spec, deployMeta.Name)
-	if err != nil {
-		handleError(fmt.Sprintf("AdmissionResponse: err=%v spec=%v\n", err, spec))
-		return toV1AdmissionResponse(err)
-	}
-
-	log.InjectScope().Infof("[Webhook] admissionResponse: patch=%v\n", string(patchBytes))
-
+	log.InjectScope().Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
 	reviewResponse := v1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,

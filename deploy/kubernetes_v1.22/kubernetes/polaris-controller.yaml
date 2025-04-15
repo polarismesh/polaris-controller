@@ -51,6 +51,44 @@ webhooks:
     namespaceSelector:
       matchLabels:
         polaris-injection: enabled
+  # 命名空间范围自动注入，新命名格式
+  - name: ns.injector.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled
+  # 白名单功能, 支持按pod范围按需加载
+  - name: allowlist.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    objectSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled
 ---
 apiVersion: apps/v1
 kind: StatefulSet

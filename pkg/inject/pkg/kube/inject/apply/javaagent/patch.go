@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -37,10 +38,9 @@ import (
 
 // Java Agent 场景下的特殊 annonations 信息
 const (
-	customJavaAgentVersion                = "polarismesh.cn/javaagentVersion"
-	customJavaAgentPluginFramework        = "polarismesh.cn/javaagentFrameworkName"
-	customJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
-	customJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
+	envJavaAgentPluginType       = "JAVA_AGENT_PLUGIN_TYPE"
+	envJavaAgentFrameworkName    = "JAVA_AGENT_FRAMEWORK_NAME"
+	envJavaAgentFrameworkVersion = "JAVA_AGENT_FRAMEWORK_VERSION"
 )
 
 var oldAgentVersions = map[string]struct{}{
@@ -56,6 +56,8 @@ var oldAgentVersions = map[string]struct{}{
 const (
 	ActiveJavaAgentCmd    = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent/polaris-agent-core-bootstrap.jar"
 	OldActiveJavaAgentCmd = "-javaagent:/app/lib/.polaris/java_agent/polaris-java-agent-%s/polaris-agent-core-bootstrap.jar"
+
+	javaagentInitContainer = "polaris-javaagent-init"
 )
 
 func init() {
@@ -75,9 +77,9 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 		pod := req.Option.Pod
 		added := req.External
 		for index, add := range added {
-			if add.Name == "polaris-javaagent-init" {
+			if add.Name == javaagentInitContainer {
 				log.InjectScope().Infof("begin deal polaris-javaagent-init inject for pod=[%s, %s]", pod.Namespace, pod.Name)
-				if err := pb.handleJavaAgentInit(req.Option, pod, &add); err != nil {
+				if err := pb.handleJavaAgentInit(req, &add); err != nil {
 					log.InjectScope().Errorf("handle polaris-javaagent-init inject for pod=[%s, %s] failed: %v", pod.Namespace, pod.Name, err)
 				}
 			}
@@ -88,32 +90,34 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 		log.InjectScope().Infof("finish deal polaris-javaagent-init inject for pod=[%s, %s] added: %#v", pod.Namespace, pod.Name, added)
 		return pb.PodPatchBuilder.PatchContainer(req)
 	case inject.PatchType_Update:
-		return pb.updateContainer(req.Option, req.Option.SidecarMode, req.Option.Pod, req.Option.Pod.Spec.Containers, req.BasePath), nil
+		return pb.updateContainer(req), nil
 	}
 	return nil, nil
 }
 
-func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) error {
+func (pb *PodPatchBuilder) handleJavaAgentInit(req *inject.OperateContainerRequest, add *corev1.Container) error {
+	pod := req.Option.Pod
+	opt := req.Option
 	annonations := pod.Annotations
 	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v image: %s",
 		pod.Namespace, pod.Name, pod.Annotations, add.Image)
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
 	if len(oldImageInfo) > 1 {
-		opt.ExternalInfo[customJavaAgentVersion] = oldImageInfo[1]
+		opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion] = oldImageInfo[1]
 	}
-	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
+	if val, ok := annonations[utils.AnnotationKeyJavaAgentVersion]; ok && val != "" {
 		add.Image = fmt.Sprintf("%s:%s", oldImageInfo[0], val)
-		opt.ExternalInfo[customJavaAgentVersion] = val
+		opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion] = val
 	}
 
-	frameworkName, frameworkNameOk := annonations[customJavaAgentPluginFramework]
+	frameworkName, frameworkNameOk := annonations[utils.AnnotationKeyJavaAgentPluginFramework]
 	if !frameworkNameOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkName",
 			pod.Namespace, pod.Name)
 	}
 
-	frameworkVersion, frameworkVersionOk := annonations[customJavaAgentPluginFrameworkVersion]
+	frameworkVersion, frameworkVersionOk := annonations[utils.AnnotationKeyJavaAgentPluginFrameworkVersion]
 	if !frameworkVersionOk {
 		log.InjectScope().Warnf("handle polaris-javaagent-init inject for pod=[%s, %s] not found frameworkVersion",
 			pod.Namespace, pod.Name)
@@ -122,25 +126,26 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	pluginType := frameworkName + frameworkVersion
 	if frameworkName != "" && frameworkVersion != "" {
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_PLUGIN_TYPE",
+			Name:  envJavaAgentPluginType,
 			Value: pluginType,
 		})
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_FRAMEWORK_NAME",
+			Name:  envJavaAgentFrameworkName,
 			Value: frameworkName,
 		})
 		add.Env = append(add.Env, corev1.EnvVar{
-			Name:  "JAVA_AGENT_FRAMEWORK_VERSION",
+			Name:  envJavaAgentFrameworkVersion,
 			Value: frameworkVersion,
 		})
 	}
 
 	defaultParam := map[string]string{
-		"MicroserviceName":    opt.Annotations[util.SidecarServiceName],
-		"PolarisServerIP":     strings.Split(polarisapi.PolarisGrpc, ":")[0],
-		"PolarisDiscoverPort": strings.Split(polarisapi.PolarisGrpc, ":")[1],
-		"PolarisConfigIP":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
-		"PolarisConfigPort":   strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
+		"MicroserviceNamespace": getServiceNamespace(opt),
+		"MicroserviceName":      opt.Annotations[util.SidecarServiceName],
+		"PolarisServerIP":       strings.Split(polarisapi.PolarisGrpc, ":")[0],
+		"PolarisDiscoverPort":   strings.Split(polarisapi.PolarisGrpc, ":")[1],
+		"PolarisConfigIP":       strings.Split(polarisapi.PolarisConfigGrpc, ":")[0],
+		"PolarisConfigPort":     strings.Split(polarisapi.PolarisConfigGrpc, ":")[1],
 	}
 
 	add.Env = append(add.Env,
@@ -168,6 +173,7 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	defaultProperties := make(map[string]string)
 	// 判断是不是老版本，如果是老版本且客户填写的版本号不为空则走老的逻辑，否则走新的逻辑，只下发北极星的地址和端口信息
 	newImageInfo := strings.Split(add.Image, ":")
+	// RC5之前的版本走的逻辑, 向前兼容
 	if _, valid := oldAgentVersions[newImageInfo[1]]; valid {
 		kubeClient := opt.KubeClient
 		pluginCm, err := kubeClient.CoreV1().ConfigMaps(util.RootNamespace).Get(context.Background(),
@@ -195,15 +201,23 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 				}
 			}
 		}
-		// 查看用户是否自定义了相关配置信息
+		// 查看用户是否自定义了相关配置信息, 优先级最高
 		// 需要根据用户的自定义参数信息，将 agent 的特定 application.properties 文件注入到 javaagent-init 中
-		if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
+		if properties, ok := annonations[utils.AnnotationKeyJavaAgentPluginConfig]; ok {
 			customProperties := map[string]string{}
 			if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
 				return err
 			}
 			// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
 			for k, v := range customProperties {
+				if defaultValue, defaultExist := defaultProperties[k]; defaultExist {
+					if defaultValue != v {
+						log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] "+
+							"customProperties[%s]=%s should replace defaultProperties[%s]=%s",
+							pod.Namespace, pod.Name, k, v, k, defaultValue)
+					}
+				}
+				// 当和默认初始化配置存在冲突时，使用用户自定义配置
 				defaultProperties[k] = v
 			}
 		}
@@ -221,6 +235,33 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(opt *inject.PatchOptions, pod *co
 	return nil
 }
 
+func getDefaultProperties(opt *inject.PatchOptions) map[string]string {
+	defaultProperties := make(map[string]string)
+	if useWorkloadNS, ok := opt.Pod.Annotations[utils.AnnotationKeyWorkloadNamespaceAsServiceNamespace]; ok &&
+		useWorkloadNS == utils.InjectionValueTrue {
+		log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] useWorkloadNS=%s",
+			opt.Pod.Namespace, opt.Pod.Name, useWorkloadNS)
+		defaultProperties[ServiceNamespaceValueFromKey] = opt.Pod.Namespace
+	}
+	if useWorkloadName, ok := opt.Pod.Annotations[utils.AnnotationKeyWorkloadNameAsServiceName]; ok &&
+		useWorkloadName == utils.InjectionValueTrue {
+		log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] useWorkloadName=%s",
+			opt.Pod.Namespace, opt.Pod.Name, opt.WorkloadName)
+		defaultProperties[ServiceNameValueFromKey] = opt.WorkloadName
+	}
+	return defaultProperties
+}
+
+func getServiceNamespace(opt *inject.PatchOptions) string {
+	if useWorkloadNS, ok := opt.Pod.Annotations[utils.AnnotationKeyWorkloadNamespaceAsServiceNamespace]; ok &&
+		useWorkloadNS == utils.InjectionValueTrue {
+		log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] useWorkloadNS=%s",
+			opt.Pod.Namespace, opt.Pod.Name, useWorkloadNS)
+		return opt.Pod.Namespace
+	}
+	return "default"
+}
+
 func nameOfPluginDefault(v string) string {
 	return v + "-default-properties"
 }
@@ -232,44 +273,64 @@ func updateJavaEnvVar(envVar corev1.EnvVar, cmd string, version string) corev1.E
 	}
 }
 
-func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode utils.SidecarMode, pod *corev1.Pod,
-	target []corev1.Container, basePath string) []inject.Rfc6902PatchOperation {
+const (
+	ServiceNameValueFromKey      = "spring.application.name"
+	ServiceNamespaceValueFromKey = "spring.cloud.polaris.discovery.namespace"
+)
 
-	patchs := make([]inject.Rfc6902PatchOperation, 0, len(target))
+func (pb *PodPatchBuilder) updateContainer(req *inject.OperateContainerRequest) []inject.Rfc6902PatchOperation {
+	opt := req.Option
+	pod := req.Option.Pod
+	target := req.Option.Pod.Spec.Containers
+	basePath := req.BasePath
+	patches := make([]inject.Rfc6902PatchOperation, 0, len(target))
 
-	annonations := pod.Annotations
-	if val, ok := annonations[customJavaAgentVersion]; ok && val != "" {
-		opt.ExternalInfo[customJavaAgentVersion] = val
+	// 判断用户是否自定义了 javaagent 的版本
+	if val, ok := pod.Annotations[utils.AnnotationKeyJavaAgentVersion]; ok && val != "" {
+		opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion] = val
 	} else {
-		annonations[customJavaAgentVersion] = "latest"
+		pod.Annotations[utils.AnnotationKeyJavaAgentVersion] = "latest"
 	}
 
-	defaultProperties := make(map[string]string)
-	var javaToolOptionsValue string
-
+	// 初始化默认配置和用户自定义配置
+	defaultProperties := getDefaultProperties(opt)
 	for index, container := range target {
 		envs := container.Env
 		javaEnvIndex := -1
-		if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
-			if properties, ok := annonations[customJavaAgentPluginConfig]; ok {
-				customProperties := map[string]string{}
-				if properties != "" {
-					if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
-						log.InjectScope().Errorf("updateContainer for pod=[%s, %s] json error: %+v", pod.Namespace,
-							pod.Name, err)
+		if properties, ok := pod.Annotations[utils.AnnotationKeyJavaAgentPluginConfig]; ok {
+			customProperties := map[string]string{}
+			if properties != "" {
+				if err := json.Unmarshal([]byte(properties), &customProperties); err != nil {
+					log.InjectScope().Errorf("updateContainer for pod=[%s, %s] json error: %+v", pod.Namespace,
+						pod.Name, err)
+				}
+			}
+			// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
+			for k, v := range customProperties {
+				if existsValue, exists := defaultProperties[k]; exists {
+					if existsValue != v {
+						log.InjectScope().Errorf("updateContainer for pod=[%s, %s] customProperties[%s]=%s, "+
+							"replace defaultProperties[%s]=%s", pod.Namespace, pod.Name, k, v, k, existsValue)
 					}
 				}
-				// 先从 configmap 中获取 java-agent 不同 plugin-type 的默认配置信息
-				for k, v := range customProperties {
-					defaultProperties[k] = v
-				}
+				// 当和默认初始化配置存在冲突时，使用用户自定义配置
+				defaultProperties[k] = v
 			}
 		}
 
-		for key, value := range defaultProperties {
+		// 提取键到切片
+		keys := make([]string, 0, len(defaultProperties))
+		for k := range defaultProperties {
+			keys = append(keys, k)
+		}
+		// 排序（按字母升序）
+		sort.Strings(keys)
+		// 按顺序遍历, 将配置转成-D参数, 并追加到JAVA_TOOL_OPTIONS
+		var javaToolOptionsValue string
+		for _, key := range keys {
+			value := defaultProperties[key]
 			javaToolOptionsValue += fmt.Sprintf(" -D%s=%s", key, value)
 		}
-
 		if len(envs) != 0 {
 			for i := range envs {
 				if envs[i].Name == "JAVA_TOOL_OPTIONS" {
@@ -277,21 +338,27 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 					break
 				}
 			}
+			// 环境变量 JAVA_TOOL_OPTIONS 已经存在, 往里面追加参数
 			if javaEnvIndex != -1 {
-				if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+				// RC5之后的版本,不再需要javaagentVersion注解,自动识别版本号
+				if _, valid := oldAgentVersions[pod.Annotations[utils.AnnotationKeyJavaAgentVersion]]; !valid {
 					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], ActiveJavaAgentCmd, javaToolOptionsValue)
 				} else {
-					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
+					// RC5之前的版本,需要注入javaagentVersion注解,在-javaagent参数里面指定版本号
+					envs[javaEnvIndex] = updateJavaEnvVar(envs[javaEnvIndex], fmt.Sprintf(OldActiveJavaAgentCmd,
+						opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion]), "")
 				}
 			}
 		}
+		// 环境变量 JAVA_TOOL_OPTIONS 不存在, 新建
 		if javaEnvIndex == -1 {
 			// 注入 java agent 需要用到的参数信息
 			var newEnvVar corev1.EnvVar
-			if _, valid := oldAgentVersions[annonations[customJavaAgentVersion]]; !valid {
+			if _, valid := oldAgentVersions[pod.Annotations[utils.AnnotationKeyJavaAgentVersion]]; !valid {
 				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, ActiveJavaAgentCmd, javaToolOptionsValue)
 			} else {
-				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd, opt.ExternalInfo[customJavaAgentVersion]), "")
+				newEnvVar = updateJavaEnvVar(corev1.EnvVar{}, fmt.Sprintf(OldActiveJavaAgentCmd,
+					opt.ExternalInfo[utils.AnnotationKeyJavaAgentVersion]), "")
 			}
 			container.Env = append(container.Env, newEnvVar)
 		}
@@ -302,16 +369,15 @@ func (pb *PodPatchBuilder) updateContainer(opt *inject.PatchOptions, sidecarMode
 				Name:      "java-agent-dir",
 				MountPath: "/app/lib/.polaris/java_agent",
 			})
-
 		path := basePath
 		path += "/" + strconv.Itoa(index)
-		patchs = append(patchs, inject.Rfc6902PatchOperation{
+		patches = append(patches, inject.Rfc6902PatchOperation{
 			Op:    "replace",
 			Path:  path,
 			Value: container,
 		})
 	}
-	return patchs
+	return patches
 }
 
 func (pb *PodPatchBuilder) PatchVolumes(req *inject.OperateVolumesRequest) ([]inject.Rfc6902PatchOperation, error) {

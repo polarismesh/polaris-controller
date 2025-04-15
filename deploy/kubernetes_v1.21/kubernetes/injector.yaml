@@ -30,7 +30,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |
       containers:
@@ -113,7 +113,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |
       initContainers:
@@ -156,7 +156,7 @@ data:
       []
 
     neverInjectSelector:
-      []
+      [{"matchLabels":{"polarismesh.cn/inject":"disabled"}}]
 
     template: |+
       containers:
@@ -256,7 +256,7 @@ data:
         - name: CLUSTER_NAME
           value: {{.ProxyConfig.ProxyMetadata.clusterName}}
         - name: OPEN_DEMAND
-          value: {{.ProxyConfig.ProxyMetadata.opemDemand}}
+          value: {{.ProxyConfig.ProxyMetadata.openDemand}}
         volumeMounts:
           - mountPath: /var/lib/data
             name: envoy-bootstrap
@@ -353,5 +353,43 @@ webhooks:
     namespaceSelector:
       matchLabels:
         polaris-injection: enabled
+  # 命名空间范围自动注入，新命名格式
+  - name: ns.injector.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled
+  # 白名单功能, 支持按pod范围按需加载
+  - name: allowlist.polarismesh.cn
+    clientConfig:
+      service:
+        name: polaris-sidecar-injector
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: ""
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    objectSelector:
+      matchLabels:
+        polarismesh.cn/inject: enabled
 ---
 

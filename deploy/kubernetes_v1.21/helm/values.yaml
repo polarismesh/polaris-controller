@@ -31,12 +31,18 @@ sidecar:
     image:
       repo: polarismesh/polaris-envoy-bootstrap-generator
       tag: #CONTROLLER_VERSION#
+  javaagent:
+    image:
+      repo: polarismesh/polaris-javaagent-init
+      tag: #JAVA_AGENT_INIT#
+      pullPolicy: Always
 
 ## polaris server config
 polaris:
   server:
     address: #POLARIS_HOST#
     token: #POLARIS_TOKEN#
+    operator: #POLARIS_OPERATOR#
   sync:
     service:
       mode: all
