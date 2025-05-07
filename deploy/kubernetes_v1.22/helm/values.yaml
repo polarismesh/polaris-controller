@@ -40,9 +40,9 @@ sidecar:
 ## polaris server config
 polaris:
   server:
-    address: #POLARIS_HOST#
-    token: #POLARIS_TOKEN#
-    operator: #POLARIS_OPERATOR#
+    address: polaris.polaris-system
+    token: '' #POLARIS_TOKEN#
+    operator: '' #POLARIS_OPERATOR#
   sync:
     service:
       mode: all

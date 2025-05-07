@@ -64,9 +64,9 @@ data:
     # 北极星服务端地址
     serverAddress: {{ .Values.polaris.server.address }}
     # 北极星服务端token(北极星开启鉴权时需要配置)
-    accessToken: {{ .Values.polaris.server.token }}
+    accessToken: {{ required "polaris token is required" .Values.polaris.server.token }}
     # 北极星主账户ID
-    operator: {{ .Values.polaris.server.operator }}
+    operator: {{ required "polaris operator ID is required" .Values.polaris.server.operator }}
     # k8s cluster name
     clusterName: "{{ .Values.cluster.name }}"
     # polaris-sidecar 注入的默认启动模式, 可以配置 java-agent, mesh 或者 dns
