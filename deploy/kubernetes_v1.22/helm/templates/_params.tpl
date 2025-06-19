@@ -52,10 +52,10 @@ Define the cmd envs for the bootstrap init container.
 */}}
 {{- define "configmap-sidecar.bootstrap_envs" -}}
 - name: METADATA
-  value: "{{ "{{" }} index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata` {{ "}}" }}"
+  value: {{ "{{" }} index .ObjectMeta.Annotations `sidecar.polarismesh.cn/envoyMetadata` {{ "}}" }}
 {{ "{{" }}if ne ( index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`) "none"{{ "}}" }}
 - name: TLS_MODE
-  value: "{{ "{{" }}index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`{{ "}}" }}"
+  value: {{ "{{" }}index .ObjectMeta.Annotations `polarismesh.cn/tls-mode`{{ "}}" }}
 {{ "{{" }}end{{ "}}" }}
 - name: NAMESPACE
   valueFrom:
