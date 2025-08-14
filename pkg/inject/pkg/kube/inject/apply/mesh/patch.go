@@ -17,6 +17,7 @@ package mesh
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"strconv"
@@ -81,9 +82,24 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 	return pb.PodPatchBuilder.PatchContainer(req)
 }
 
+type SidecarConfig struct {
+	DnsDomainSuffix *string `json:"dns-domain-suffix"`
+	DnsTTL          *int    `json:"dns-ttl"`
+}
+
+func getSidecarConfig(data string) (*SidecarConfig, error) {
+	config := SidecarConfig{}
+	err := json.Unmarshal([]byte(data), &config)
+	if err != nil {
+		log.InjectScope().Errorf("getSidecarConfig failed: %v", err)
+		return nil, err
+	}
+	return &config, nil
+}
+
 // handlePolarisSidecarEnvInject 处理polaris-sidecar容器的环境变量
 func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) (bool, error) {
-
+	annotations := pod.Annotations
 	err := pb.ensureRootCertExist(opt.KubeClient, pod)
 	if err != nil {
 		return false, err
@@ -92,10 +108,20 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 	envMap[EnvSidecarPort] = strconv.Itoa(ValueListenPort)
 	envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(true)
 	if opt.SidecarMode == utils.SidecarForDns {
+		if sidecarConfig, ok := annotations[utils.AnnotationKeySidecarConfig]; ok {
+			config, err := getSidecarConfig(sidecarConfig)
+			if err != nil {
+				return false, err
+			}
+			if config.DnsDomainSuffix != nil {
+				envMap[EnvSidecarDnsSuffix] = *config.DnsDomainSuffix
+			}
+			if config.DnsTTL != nil {
+				envMap[EnvSidecarDnsTtl] = strconv.Itoa(*config.DnsTTL)
+			}
+		}
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
-		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(false)
-		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
 	} else {
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
