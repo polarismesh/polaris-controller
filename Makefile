@@ -1,9 +1,9 @@
-REGISTRY = ""
-ORG = polarismesh
+REGISTRY ?= ""
+ORG ?= polarismesh
 REPO = polaris-controller
 SIDECAR_INIT_REPO = polaris-sidecar-init
 ENVOY_SIDECAR_INIT_REPO = polaris-envoy-bootstrap-generator
-IMAGE_TAG = v1.7.3
+IMAGE_TAG ?= v1.7.3
 PLATFORMS = linux/amd64,linux/arm64
 
 .PHONY: all
