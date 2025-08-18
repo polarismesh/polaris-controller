@@ -1,5 +1,4 @@
 IMAGE_TAG ?= v2.1.0
-REGISTRY ?= ""
 ORG ?= polarismesh
 REPO = polaris-controller
 SIDECAR_INIT_REPO = polaris-sidecar-init
@@ -7,42 +6,13 @@ ENVOY_SIDECAR_INIT_REPO = polaris-envoy-bootstrap-generator
 PLATFORMS = linux/amd64,linux/arm64
 
 .PHONY: all
-all: fmt build-amd64 build-arm64 build-multi-arch-image \
- 	 build-sidecar-init build-envoy-sidecar-init push-image
+all: push-all-image
 
-.PHONY: build-amd64
-build-amd64:
-	@echo "------------------"
-	@echo "--> Building binary for polaris-controller (linux/amd64)"
-	@echo "------------------"
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o ./bin/amd64/polaris-controller ./cmd/polaris-controller/main.go
+.PHONY: push-all-image
+push-all-image: push-controller-image push-init-image
 
-.PHONY: build-arm64
-build-arm64:
-	@echo "------------------"
-	@echo "--> Building binary for polaris-controller (linux/arm64)"
-	@echo "------------------"
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o ./bin/arm64/polaris-controller ./cmd/polaris-controller/main.go
-
-.PHONY: build-multi-arch-image
-build-multi-arch-image:
-	@echo "------------------"
-	@echo "--> Building multi-arch docker image for polaris-controller"
-	@echo "------------------"
-	@docker buildx build -f ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS) --push ./
-
-.PHONY: build-sidecar-init
-build-sidecar-init:
-	docker build ./sidecar/polaris-sidecar-init -f ./sidecar/polaris-sidecar-init/Dockerfile -t $(REGISTRY)$(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
-
-.PHONY: build-envoy-sidecar-init
-build-envoy-sidecar-init:
-	docker build ./sidecar/envoy-bootstrap-config-generator -f ./sidecar/envoy-bootstrap-config-generator/Dockerfile -t $(REGISTRY)$(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
-
-.PHONY: push-image
-push-image:
-	docker push $(REGISTRY)$(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG)
-	docker push $(REGISTRY)$(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG)
+.PHONY: gen-all-image
+gen-all-image: gen-controller-image gen-init-image
 
 .PHONY: clean
 clean:
@@ -53,16 +23,58 @@ clean:
 fmt:  ## Run go fmt against code.
 	go fmt ./...
 
-.PHONY: generate-multi-arch-image
-generate-multi-arch-image: fmt build-amd64 build-arm64
+.PHONY: build-amd64
+build-amd64: clean fmt
+	@echo "------------------"
+	@echo "--> Building binary for polaris-controller (linux/amd64)"
+	@echo "------------------"
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o ./bin/amd64/polaris-controller ./cmd/polaris-controller/main.go
+
+.PHONY: build-arm64
+build-arm64: clean fmt
+	@echo "------------------"
+	@echo "--> Building binary for polaris-controller (linux/arm64)"
+	@echo "------------------"
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o ./bin/arm64/polaris-controller ./cmd/polaris-controller/main.go
+
+.PHONY: bin
+bin: build-amd64 build-arm64
+	@echo "------------------"
+	@echo "--> Building binary for polaris-controller"
+	@echo "------------------"
+
+.PHONY: gen-controller-image
+gen-controller-image: bin
 	@echo "------------------"
 	@echo "--> Generate multi-arch docker image to registry for polaris-controller"
 	@echo "------------------"
-	@docker buildx build -f ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS) ./
+	@docker buildx build ./ --file ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS)
 
-.PHONY: push-multi-arch-image
-push-multi-arch-image: generate-multi-arch-image
+.PHONY: push-controller-image
+push-controller-image: bin
 	@echo "------------------"
-	@echo "--> Push multi-arch docker image to registry for polaris-controller"
+	@echo "--> Building and push multi-arch docker image for polaris-controller"
 	@echo "------------------"
-	@docker image push $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS)
+	@docker buildx build ./ --file ./docker/Dockerfile --tag $(ORG)/$(REPO):$(IMAGE_TAG) --platform $(PLATFORMS) --push
+
+.PHONY: gen-init-image
+gen-init-image:
+	@echo "------------------"
+	@echo "--> Building multi-arch docker image for polaris-sidecar-init"
+	@echo "------------------"
+	@docker buildx build ./sidecar/polaris-sidecar-init --file ./sidecar/polaris-sidecar-init/Dockerfile --tag $(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG) --platform $(PLATFORMS)
+	@echo "------------------"
+	@echo "--> Building multi-arch docker image for envoy-bootstrap-config-generator"
+	@echo "------------------"
+	@docker buildx build ./sidecar/envoy-bootstrap-config-generator --file ./sidecar/envoy-bootstrap-config-generator/Dockerfile --tag $(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG) --platform $(PLATFORMS)
+
+.PHONY: push-init-image
+push-init-image:
+	@echo "------------------"
+	@echo "--> Building and push multi-arch docker image for polaris-sidecar-init"
+	@echo "------------------"
+	@docker buildx build ./sidecar/polaris-sidecar-init --file ./sidecar/polaris-sidecar-init/Dockerfile --tag $(ORG)/$(SIDECAR_INIT_REPO):$(IMAGE_TAG) --platform $(PLATFORMS) --push
+	@echo "------------------"
+	@echo "--> Building and push multi-arch docker image for envoy-bootstrap-config-generator"
+	@echo "------------------"
+	@docker buildx build ./sidecar/envoy-bootstrap-config-generator --file ./sidecar/envoy-bootstrap-config-generator/Dockerfile --tag $(ORG)/$(ENVOY_SIDECAR_INIT_REPO):$(IMAGE_TAG) --platform $(PLATFORMS) --push

@@ -13,7 +13,9 @@
 #  CONDITIONS OF ANY KIND, either express or implied. See the License for the
 #  specific language governing permissions and limitations under the License.
 
-FROM alpine:3.8
+FROM alpine:3.22
+
+ARG TARGETARCH
 
 RUN apk update upgrade && \
     apk add --no-cache bash util-linux
