@@ -83,8 +83,10 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 }
 
 type SidecarConfig struct {
-	DnsDomainSuffix *string `json:"dns-domain-suffix"`
-	DnsTTL          *int    `json:"dns-ttl"`
+	DnsDomainSuffix   *string `json:"dns-domain-suffix"`
+	DnsTTL            *int    `json:"dns-ttl"`
+	DnsRecurseEnabled *bool   `json:"dns-recurse"`
+	DnsRecurseTimeout *int    `json:"dns-recurse-timeout"`
 }
 
 func getSidecarConfig(data string) (*SidecarConfig, error) {
@@ -107,6 +109,8 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 	envMap := make(map[string]string)
 	envMap[EnvSidecarPort] = strconv.Itoa(ValueListenPort)
 	envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(true)
+	envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
+	envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
 	if opt.SidecarMode == utils.SidecarForDns {
 		if sidecarConfig, ok := annotations[utils.AnnotationKeySidecarConfig]; ok {
 			config, err := getSidecarConfig(sidecarConfig)
@@ -119,9 +123,13 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 			if config.DnsTTL != nil {
 				envMap[EnvSidecarDnsTtl] = strconv.Itoa(*config.DnsTTL)
 			}
+			if config.DnsRecurseEnabled != nil && *config.DnsRecurseEnabled == false {
+				envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(*config.DnsRecurseEnabled)
+			}
+			if config.DnsRecurseTimeout != nil && *config.DnsRecurseTimeout > 0 {
+				envMap[EnvSidecarRecurseTimeout] = strconv.Itoa(*config.DnsRecurseTimeout)
+			}
 		}
-		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
-		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
 	} else {
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
