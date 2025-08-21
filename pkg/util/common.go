@@ -15,6 +15,10 @@
 
 package util
 
+import (
+	"encoding/json"
+)
+
 // IntPtr 类型转换
 func IntPtr(v int) *int {
 	return &v
@@ -130,4 +134,13 @@ func Uint64(v uint64) *uint64 {
 // to store v and returns a pointer to it.
 func String(v string) *string {
 	return &v
+}
+
+// JsonString returns a JSON string representation of the given value.
+func JsonString(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

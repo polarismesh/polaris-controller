@@ -17,7 +17,6 @@ package mesh
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"strconv"
@@ -82,23 +81,6 @@ func (pb *PodPatchBuilder) PatchContainer(req *inject.OperateContainerRequest) (
 	return pb.PodPatchBuilder.PatchContainer(req)
 }
 
-type SidecarConfig struct {
-	DnsDomainSuffix   *string `json:"dns-domain-suffix"`
-	DnsTTL            *int    `json:"dns-ttl"`
-	DnsRecurseEnabled *bool   `json:"dns-recurse"`
-	DnsRecurseTimeout *int    `json:"dns-recurse-timeout"`
-}
-
-func getSidecarConfig(data string) (*SidecarConfig, error) {
-	config := SidecarConfig{}
-	err := json.Unmarshal([]byte(data), &config)
-	if err != nil {
-		log.InjectScope().Errorf("getSidecarConfig failed: %v", err)
-		return nil, err
-	}
-	return &config, nil
-}
-
 // handlePolarisSidecarEnvInject 处理polaris-sidecar容器的环境变量
 func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOptions, pod *corev1.Pod, add *corev1.Container) (bool, error) {
 	annotations := pod.Annotations
@@ -107,42 +89,35 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 		return false, err
 	}
 	envMap := make(map[string]string)
+	// 基础通用默认配置
+	envMap[EnvSidecarNamespace] = pod.GetNamespace()
+	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
 	envMap[EnvSidecarPort] = strconv.Itoa(ValueListenPort)
 	envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(true)
-	envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
-	envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
+	envMap[EnvSidecarLogLevel] = "info"
 	if opt.SidecarMode == utils.SidecarForDns {
-		if sidecarConfig, ok := annotations[utils.AnnotationKeySidecarConfig]; ok {
-			config, err := getSidecarConfig(sidecarConfig)
-			if err != nil {
-				return false, err
-			}
-			if config.DnsDomainSuffix != nil {
-				envMap[EnvSidecarDnsSuffix] = *config.DnsDomainSuffix
-			}
-			if config.DnsTTL != nil {
-				envMap[EnvSidecarDnsTtl] = strconv.Itoa(*config.DnsTTL)
-			}
-			if config.DnsRecurseEnabled != nil && *config.DnsRecurseEnabled == false {
-				envMap[EnvSidecarRecurseEnable] = strconv.FormatBool(*config.DnsRecurseEnabled)
-			}
-			if config.DnsRecurseTimeout != nil && *config.DnsRecurseTimeout > 0 {
-				envMap[EnvSidecarRecurseTimeout] = strconv.Itoa(*config.DnsRecurseTimeout)
-			}
-		}
+		// dns mode
+		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(true)
+		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(false)
+		envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
+
 	} else {
+		// mesh mode
 		envMap[EnvSidecarDnsEnable] = strconv.FormatBool(false)
 		envMap[EnvSidecarMeshEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarRLSEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMetricEnable] = strconv.FormatBool(true)
 		envMap[EnvSidecarMetricListenPort] = strconv.Itoa(ValueMetricListenPort)
+		if inject.EnableMtls(pod) {
+			envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
+		}
 	}
-	envMap[EnvSidecarLogLevel] = "info"
-	envMap[EnvSidecarNamespace] = pod.GetNamespace()
-	envMap[EnvPolarisAddress] = common.PolarisServerGrpcAddress
-	envMap[EnvSidecarDnsRouteLabels] = buildLabelsStr(pod.Labels)
-	if inject.EnableMtls(pod) {
-		envMap[EnvSidecarMtlsEnable] = strconv.FormatBool(true)
+	if sidecarConfig, ok := annotations[utils.AnnotationKeySidecarConfig]; ok {
+		config, err := getSidecarConfig(sidecarConfig)
+		if err != nil {
+			return false, err
+		}
+		fillEnv(envMap, config, opt.SidecarMode)
 	}
 	log.InjectScope().Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
 		pod.Namespace, pod.Name, utils.ParseSidecarModeName(opt.SidecarMode), envMap)
