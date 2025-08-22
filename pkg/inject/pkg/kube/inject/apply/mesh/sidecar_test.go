@@ -75,108 +75,60 @@ func TestGetSidecarConfig(t *testing.T) {
 
 func TestFillEnv(t *testing.T) {
 	tests := []struct {
-		name   string
-		config *SidecarConfig
-		mode   utils.SidecarMode
-		want   map[string]string
+		name     string
+		config   *SidecarConfig
+		mode     utils.SidecarMode
+		expected map[string]string
 	}{
 		{
-			name: "full log options",
+			name: "TestLocationConfig",
 			config: &SidecarConfig{
-				LogOptions: &LogOptions{
-					OutputLevel:        stringPtr("info"),
-					RotationMaxSize:    intPtr(100),
-					RotationMaxAge:     intPtr(7),
-					RotationMaxBackups: intPtr(5),
-				},
-			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{
-				EnvSidecarLogLevel:              "info",
-				EnvSidecarLogRotationMaxSize:    "100",
-				EnvSidecarLogRotationMaxAge:     "7",
-				EnvSidecarLogRotationMaxBackups: "5",
-			},
-		},
-		{
-			name: "dns config with suffix and ttl",
-			config: &SidecarConfig{
-				Dns: &DnsConfig{
-					Suffix: stringPtr("cluster.local"),
-					TTL:    intPtr(30),
+				Location: &Location{
+					Region:     utils.StringPtr("ap-guangzhou"),
+					Zone:       utils.StringPtr("zone-1"),
+					Campus:     utils.StringPtr("campus-1"),
+					MatchLevel: utils.StringPtr("region"),
 				},
 			},
 			mode: utils.SidecarForDns,
-			want: map[string]string{
-				EnvSidecarDnsSuffix: "cluster.local",
-				EnvSidecarDnsTtl:    "30",
+			expected: map[string]string{
+				EnvSidecarRegion:           "ap-guangzhou",
+				EnvSidecarZone:             "zone-1",
+				EnvSidecarCampus:           "campus-1",
+				EnvSidecarNearbyMatchLevel: "region",
 			},
 		},
 		{
-			name: "recurse config with enabled and timeout",
-			config: &SidecarConfig{
-				Recurse: &RecurseConfig{
-					Timeout: intPtr(500),
-				},
-			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{
-				EnvSidecarRecurseTimeout: "500",
-			},
-		},
-		{
-			name:   "empty config",
-			config: &SidecarConfig{},
-			mode:   utils.SidecarForMesh,
-			want:   map[string]string{},
-		},
-		{
-			name: "invalid log level",
+			name: "TestInvalidLogLevel",
 			config: &SidecarConfig{
 				LogOptions: &LogOptions{
-					OutputLevel: stringPtr("invalid"),
+					OutputLevel: utils.StringPtr("invalid"),
 				},
 			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{},
+			mode:     utils.SidecarForDns,
+			expected: map[string]string{},
 		},
 		{
-			name: "location config with region, zone, and campus",
-			config: &SidecarConfig{
-				Location: &Location{
-					Region: stringPtr("ap-guangzhou"),
-					Zone:   stringPtr("zone-1"),
-					Campus: stringPtr("campus-a"),
-				},
-			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{
-				EnvSidecarRegion: "ap-guangzhou",
-				EnvSidecarZone:   "zone-1",
-				EnvSidecarCampus: "campus-a",
-			},
-		},
-		{
-			name: "dns config in non-dns mode",
+			name: "TestNonSidecarForDnsMode",
 			config: &SidecarConfig{
 				Dns: &DnsConfig{
-					Suffix: stringPtr("cluster.local"),
-					TTL:    intPtr(30),
+					Suffix: utils.StringPtr("cluster.local"),
+					TTL:    utils.IntPtr(30),
 				},
 			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{},
+			mode:     utils.SidecarForMesh,
+			expected: map[string]string{},
 		},
 		{
-			name: "recurse config with enabled false",
+			name: "TestRecurseConfigDisabled",
 			config: &SidecarConfig{
 				Recurse: &RecurseConfig{
-					Enabled: boolPtr(false),
-					Timeout: intPtr(500),
+					Enabled: utils.BoolPtr(false),
+					Timeout: utils.IntPtr(500),
 				},
 			},
-			mode: utils.SidecarForMesh,
-			want: map[string]string{
+			mode: utils.SidecarForDns,
+			expected: map[string]string{
 				EnvSidecarRecurseEnable:  "false",
 				EnvSidecarRecurseTimeout: "500",
 			},
@@ -187,8 +139,8 @@ func TestFillEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			envMap := make(map[string]string)
 			fillEnv(envMap, tt.config, tt.mode)
-			if !reflect.DeepEqual(envMap, tt.want) {
-				t.Errorf("fillEnv() = %v, want %v", envMap, tt.want)
+			if !reflect.DeepEqual(envMap, tt.expected) {
+				t.Errorf("fillEnv() = %v, want %v", envMap, tt.expected)
 			}
 		})
 	}

@@ -32,9 +32,10 @@ const (
 	EnvSidecarNamespace                = "SIDECAR_NAMESPACE"
 	EnvSidecarRecurseEnable            = "SIDECAR_RECURSE_ENABLE"
 	EnvSidecarRecurseTimeout           = "SIDECAR_RECURSE_TIMEOUT"
-	EnvSidecarRegion                   = "REGION"
-	EnvSidecarZone                     = "ZONE"
-	EnvSidecarCampus                   = "CAMPUS"
+	EnvSidecarRegion                   = "SIDECAR_REGION"
+	EnvSidecarZone                     = "SIDECAR_ZONE"
+	EnvSidecarCampus                   = "SIDECAR_CAMPUS"
+	EnvSidecarNearbyMatchLevel         = "SIDECAR_NEARBY_MATCH_LEVEL"
 	EnvSidecarLogRotateOutputPath      = "SIDECAR_LOG_ROTATE_OUTPUT_PATH"
 	EnvSidecarLogErrorRotateOutputPath = "SIDECAR_LOG_ERROR_ROTATE_OUTPUT_PATH"
 	EnvSidecarLogRotationMaxSize       = "SIDECAR_LOG_ROTATION_MAX_SIZE"
@@ -81,9 +82,10 @@ type RecurseConfig struct {
 
 // Location 定义了polaris-sidecar的部署位置
 type Location struct {
-	Region *string `json:"region"`
-	Zone   *string `json:"zone"`
-	Campus *string `json:"campus"`
+	Region     *string `json:"region"`
+	Zone       *string `json:"zone"`
+	Campus     *string `json:"campus"`
+	MatchLevel *string `json:"match_level"`
 }
 
 type LogOptions struct {
@@ -105,23 +107,6 @@ func getSidecarConfig(data string) (*SidecarConfig, error) {
 }
 
 func fillEnv(envMap map[string]string, config *SidecarConfig, mode utils.SidecarMode) {
-	// log
-	if config.LogOptions != nil {
-		if config.LogOptions.OutputLevel != nil && *config.LogOptions.OutputLevel != "" {
-			if _, ok := stringToLevel[*config.LogOptions.OutputLevel]; ok {
-				envMap[EnvSidecarLogLevel] = *config.LogOptions.OutputLevel
-			}
-		}
-		if config.LogOptions.RotationMaxSize != nil && *config.LogOptions.RotationMaxSize > 0 {
-			envMap[EnvSidecarLogRotationMaxSize] = strconv.Itoa(*config.LogOptions.RotationMaxSize)
-		}
-		if config.LogOptions.RotationMaxAge != nil && *config.LogOptions.RotationMaxAge > 0 {
-			envMap[EnvSidecarLogRotationMaxAge] = strconv.Itoa(*config.LogOptions.RotationMaxAge)
-		}
-		if config.LogOptions.RotationMaxBackups != nil && *config.LogOptions.RotationMaxBackups > 0 {
-			envMap[EnvSidecarLogRotationMaxBackups] = strconv.Itoa(*config.LogOptions.RotationMaxBackups)
-		}
-	}
 	// dns config
 	if mode == utils.SidecarForDns && config.Dns != nil {
 		if config.Dns.Suffix != nil {
@@ -151,7 +136,35 @@ func fillEnv(envMap map[string]string, config *SidecarConfig, mode utils.Sidecar
 		if config.Location.Campus != nil {
 			envMap[EnvSidecarCampus] = *config.Location.Campus
 		}
+		if config.Location.MatchLevel != nil {
+			if _, ok := stringToMatchLevel[*config.Location.MatchLevel]; ok {
+				envMap[EnvSidecarNearbyMatchLevel] = *config.Location.MatchLevel
+			}
+		}
 	}
+	// log
+	if config.LogOptions != nil {
+		if config.LogOptions.OutputLevel != nil && *config.LogOptions.OutputLevel != "" {
+			if _, ok := stringToLevel[*config.LogOptions.OutputLevel]; ok {
+				envMap[EnvSidecarLogLevel] = *config.LogOptions.OutputLevel
+			}
+		}
+		if config.LogOptions.RotationMaxSize != nil && *config.LogOptions.RotationMaxSize > 0 {
+			envMap[EnvSidecarLogRotationMaxSize] = strconv.Itoa(*config.LogOptions.RotationMaxSize)
+		}
+		if config.LogOptions.RotationMaxAge != nil && *config.LogOptions.RotationMaxAge > 0 {
+			envMap[EnvSidecarLogRotationMaxAge] = strconv.Itoa(*config.LogOptions.RotationMaxAge)
+		}
+		if config.LogOptions.RotationMaxBackups != nil && *config.LogOptions.RotationMaxBackups > 0 {
+			envMap[EnvSidecarLogRotationMaxBackups] = strconv.Itoa(*config.LogOptions.RotationMaxBackups)
+		}
+	}
+}
+
+var stringToMatchLevel = map[string]bool{
+	"region": true,
+	"zone":   true,
+	"campus": true,
 }
 
 var stringToLevel = map[string]bool{
