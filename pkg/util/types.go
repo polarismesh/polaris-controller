@@ -72,6 +72,9 @@ const (
 	AnnotationKeyJavaAgentPluginFramework        = "polarismesh.cn/javaagentFrameworkName"
 	AnnotationKeyJavaAgentPluginFrameworkVersion = "polarismesh.cn/javaagentFrameworkVersion"
 	AnnotationKeyJavaAgentPluginConfig           = "polarismesh.cn/javaagentConfig"
+
+	// AnnotationKeySidecarConfig 注入模式为 sidecar 的标记
+	AnnotationKeySidecarConfig = "polarismesh.cn/sidecarConfig"
 )
 
 const (
