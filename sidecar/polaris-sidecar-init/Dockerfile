@@ -13,20 +13,18 @@
 #  CONDITIONS OF ANY KIND, either express or implied. See the License for the
 #  specific language governing permissions and limitations under the License.
 
-FROM alpine:3.22
+FROM alpine:3.22.6
 
 ARG TARGETARCH
 
 # Copy Startup Script
 COPY start.sh /start.sh
 
-# Install IP Tables & fix permissions
+# Upgrade base packages (busybox/openssl/musl) then install IP Tables
 RUN apk update \
-    && apk add tzdata \
-    && apk add --no-cache bash \
-    && apk add curl \
-    && apk add iptables --no-cache > /dev/null && \
-    chmod +x /start.sh
+    && apk upgrade --no-cache \
+    && apk add --no-cache tzdata bash curl iptables \
+    && chmod +x /start.sh
 
 WORKDIR /
 
