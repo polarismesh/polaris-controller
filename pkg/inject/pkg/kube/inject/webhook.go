@@ -730,5 +730,5 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleError(message string) {
-	log.InjectScope().Errorf(message)
+	log.InjectScope().Error(message)
 }

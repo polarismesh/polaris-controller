@@ -106,8 +106,8 @@ func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
 	}
 	patchBytes, err := createPatch(opt)
 	if err != nil {
-		log.InjectScope().Errorf(fmt.Sprintf("AdmissionResponse: err=%v injectStatus:%s injectData=%v\n", err,
-			injectStatus, injectData))
+		log.InjectScope().Errorf("AdmissionResponse: err=%v injectStatus:%s injectData=%v\n", err,
+			injectStatus, injectData)
 		return nil, err
 	}
 	return patchBytes, err

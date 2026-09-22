@@ -29,15 +29,17 @@ jobs:
   golangci:
     strategy:
       matrix:
-        go-version: [ "1.21" ]
+        go-version: [ "1.26.8" ]
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
       - uses: actions/checkout@v3
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3.6.0
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
-          # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
-          version: latest
+          # Must be built with a Go version >= the one targeted in go.mod, otherwise config loading fails.
+          version: v2.13.2
           args: --timeout=30m
