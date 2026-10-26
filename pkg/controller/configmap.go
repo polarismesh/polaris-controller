@@ -58,7 +58,6 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 
 	namespaces := task.Namespace
 	name := task.Name
-	op := task.Operation
 
 	configMap, err := p.configMapLister.ConfigMaps(namespaces).Get(name)
 
@@ -74,27 +73,20 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 		// 查询原 ConfigMap 是啥，删除对应实例
 		processError := p.processDeleteConfigMap(cachedConfigMap)
 		if processError != nil {
-			// 如果处理有失败的，那就入队列重新处理
+			// 由 handleTask 统一退避重试。
 			p.eventRecorder.Eventf(cachedConfigMap, v1.EventTypeWarning, polarisEvent, "Delete polaris ConfigMap failed %v",
 				processError)
-			p.enqueueConfigMap(task, cachedConfigMap, string(op))
 			return processError
 		}
 		p.configFileCache.Delete(task.Key())
 	case err != nil:
 		log.SyncConfigScope().Errorf("Unable to retrieve ConfigMap %v from store: %v", task.Key(), err)
-		p.enqueueConfigMap(task, nil, string(op))
+		return err
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建 ConfigMap
 		// 2. 更新 ConfigMap
-		operationConfigMap := configMap
-
-		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 ConfigMap 打上 sync 标签
-		if op == OperationAdd && p.IsPolarisConfigMap(operationConfigMap) {
-			operationConfigMap = configMap.DeepCopy()
-			metav1.SetMetaDataAnnotation(&operationConfigMap.ObjectMeta, util.PolarisSync, util.IsEnableSync)
-		}
+		operationConfigMap := configMap.DeepCopy()
 		if _, ok := operationConfigMap.Annotations[util.PolarisConfigGroup]; !ok {
 			groupName := p.config.PolarisController.ClusterName
 			if p.config.PolarisController.ConfigSync.DefaultGroup != "" {
@@ -122,7 +114,8 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 				return processError
 			}
 		}
-		p.configFileCache.Store(task.Key(), configMap)
+		// 删除时仍需要创建/更新请求使用的默认 group，缓存处理后的独立副本。
+		p.configFileCache.Store(task.Key(), operationConfigMap)
 	}
 	return nil
 }
@@ -247,7 +240,6 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 		// 原来就是北极星类型的，增加cache
 		task.Operation = OperationUpdate
 		p.enqueueConfigMap(task, oldCm, "Update")
-		p.configFileCache.Store(task.Key(), oldCm)
 	} else if curIsPolaris {
 		task.Operation = OperationAdd
 		// 原来不是北极星的，新增是北极星的，入队列

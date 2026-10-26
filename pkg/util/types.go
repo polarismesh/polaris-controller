@@ -20,7 +20,8 @@ const (
 )
 
 const (
-	PolarisSync             = "polarismesh.cn/sync"
+	PolarisSync = "polarismesh.cn/sync"
+	// PolarisEnableRegister 是历史同步注解；sync 缺失时等价于 sync=true。
 	PolarisEnableRegister   = "polarismesh.cn/enableRegister"
 	PolarisAliasNamespace   = "polarismesh.cn/aliasNamespace"
 	PolarisAliasService     = "polarismesh.cn/aliasService"

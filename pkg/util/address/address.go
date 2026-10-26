@@ -80,7 +80,7 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 		indexPort := fmt.Sprintf("%s-%d", tmpReadyIndex, port.Port)
 		tmpWeight := defaultWeight
 		if w, ok := indexPortMap[indexPort]; ok {
-			if w >= 0 || w <= 100 {
+			if w >= 0 && w <= 100 {
 				tmpWeight = w
 			}
 		}

@@ -20,7 +20,6 @@ import (
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // resyncWorker 定时对账
@@ -32,7 +31,7 @@ func (p *PolarisController) resyncWorker() {
 	}
 
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
-		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+		v, ok := p.serviceCache.Load(key)
 		if !ok {
 			task := &Task{
 				Namespace:  value.GetNamespace(),
@@ -52,12 +51,12 @@ func (p *PolarisController) resyncWorker() {
 	// 只有开启了 SyncConfigMap 才会触发相关任务
 	if p.AllowSyncFromConfigMap() {
 		p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
-			v, ok := p.configFileCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+			v, ok := p.configFileCache.Load(key)
 			if !ok {
 				task := &Task{
 					Namespace:  value.GetNamespace(),
 					Name:       value.GetName(),
-					ObjectType: KubernetesService,
+					ObjectType: KubernetesConfigMap,
 					Rsync:      true,
 				}
 				p.enqueueConfigMap(task, value, "Add")

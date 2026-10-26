@@ -115,13 +115,7 @@ const (
 	polarisControllerName       = "polaris-controller"
 	maxRetries                  = 10
 	metricPolarisControllerName = "polaris_controller"
-	noAllow                     = "false"
 	polarisEvent                = "PolarisRegister"
-
-	// ResourceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
-	// 后续处理流程 syncService 方法中，通过这个字段判断是否要删除服务实例
-	ResourceKeyFlagAdd    = "add"
-	ResourceKeyFlagDelete = "delete"
 )
 
 // NewPolarisController
@@ -306,10 +300,15 @@ func (p *PolarisController) CounterPolarisService() {
 // MetricTracker
 func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(time.Second * 30)
-	for range ticker.C {
-		p.CounterPolarisService()
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			p.CounterPolarisService()
+		}
 	}
-	<-stopCh
 }
 
 // IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
@@ -341,6 +340,11 @@ func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
 	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
 		return sync == util.IsEnableSync
+	}
+	// enableRegister 是历史兼容的同步开关：仅在 sync 缺失时生效。
+	// 存量 Service 只设置该注解，且依赖 controller 正常注册实例。
+	if svc.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
+		return true
 	}
 	ns, err := p.namespaceLister.Get(svc.Namespace)
 	if err != nil {
@@ -403,7 +407,7 @@ func (p *PolarisController) insertTask(t *Task) {
 func (p *PolarisController) handleTask(f func(t *Task) error) bool {
 	val, shutdown := p.queue.Get()
 	if shutdown {
-		return shutdown
+		return false
 	}
 	defer p.queue.Done(val)
 	task := val.(*Task)

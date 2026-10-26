@@ -18,6 +18,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/rand"
 	"strconv"
 	"time"
@@ -187,6 +188,10 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
+		version := metadata[util.PolarisCustomVersion]
+		if version == "" {
+			version = addr.Version
+		}
 		healthy := util.Bool(addr.Healthy)
 		tmpInstance := polarisapi.Instance{
 			Service:           util.GetServiceName(service),
@@ -194,6 +199,8 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 			ServiceToken:      globalToken,
 			HealthCheck:       &healthCheck,
 			Host:              addr.IP,
+			Protocol:          addr.Protocol,
+			Version:           version,
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
 			Healthy:           healthy,
@@ -218,9 +225,9 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-		log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
+		log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v",
 			service.GetNamespace(), service.GetName(), err)
-		return []model.Instance{}, nil
+		return nil, err
 	}
 	metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Success", "200").
 		Observe(time.Since(startTime).Seconds())
@@ -238,7 +245,9 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 			// 如果存在，判断是否要更新
 			if p.compareInstanceUpdate(service, instance, cur[index]) {
 				log.SyncNamingScope().Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
-				updateIns = append(updateIns, *instance)
+				updated := *instance
+				updated.PolarisInstance = cur[index].PolarisInstance
+				updateIns = append(updateIns, updated)
 			}
 		} else {
 			// 如果不存在，增加到add列表
@@ -310,46 +319,11 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 		return true
 	}
 
-	// custom meta update
-	newMetadataStr := service.GetAnnotations()[util.PolarisMetadata]
-	oldMetadata := cur.PolarisInstance.GetMetadata()
-	if oldMetadata == nil {
-		return true
-	}
-
-	if newMetadataStr == "" {
-		return isPolarisInstanceHasCustomMeta(oldMetadata)
-	}
-	newMetaMap := make(map[string]string)
-	err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
-	if err != nil {
-		log.SyncNamingScope().Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
-		return false
-	}
-
-	for k, v := range newMetaMap {
-		// 这里的 meta ，后面的流程会覆盖掉，不用处理
-		if _, ok := util.PolarisSystemMetaSet[k]; ok {
-			continue
-		}
-		// 不是系统 meta ，查看 polaris ins 中是否有这个 meta key
-		curV, ok := oldMetadata[k]
-		if !ok {
-			// polaris ins 中没有，则是修改
-			return true
-		}
-		// polaris ins 中有，查看 value 是否相同
-		if curV != v {
-			// 不同，则是修改
-			return true
-		}
-	}
-	return false
-}
-
-// 判断当前 polaris 实例是否有自定义 meta
-func isPolarisInstanceHasCustomMeta(m map[string]string) bool {
-	return len(m) > len(util.PolarisDefaultMetaSet)
+	// 使用与写入完全相同的 metadata，覆盖 Pod/Service 字段的增加、变更和删除。
+	desired := *spec
+	desired.PolarisInstance = cur.PolarisInstance
+	metadata := mergeMetadataWithService(service, desired, p.config.PolarisController.ClusterName)
+	return !maps.Equal(metadata, cur.PolarisInstance.GetMetadata())
 }
 
 // filterPolarisMetadata 过滤属于TKE注册的服务
@@ -408,13 +382,26 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	if metadataStr != "" {
 		_ = json.Unmarshal([]byte(metadataStr), &metadata)
 	}
-
-	metadata[util.PolarisSource] = Source
-	metadata[util.PolarisClusterName] = clusterName
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
 
 	for k, v := range addr.Metadata {
 		metadata[k] = v
 	}
+
+	// 保留历史默认字段；其余业务 metadata 由 Service 注解和 Pod 标签完整声明。
+	if addr.PolarisInstance != nil {
+		for k, v := range addr.PolarisInstance.GetMetadata() {
+			_, isDefault := util.PolarisDefaultMetaSet[k]
+			if _, exists := metadata[k]; !exists && (isDefault || k == util.PolarisOldSource) {
+				metadata[k] = v
+			}
+		}
+	}
+	// 实例归属不能被 Service 自定义 metadata 或 Pod 标签覆盖。
+	metadata[util.PolarisSource] = Source
+	metadata[util.PolarisClusterName] = clusterName
 
 	return metadata
 }

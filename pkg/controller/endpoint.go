@@ -16,6 +16,8 @@
 package controller
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -130,7 +132,8 @@ func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, *
 		return false, nil, nil
 	}
 
-	if util.EnableSync(service) {
+	if util.EnableSync(service) ||
+		service.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
 		return true, &Task{
 			Namespace:  service.GetNamespace(),
 			Name:       service.GetName(),
@@ -163,6 +166,14 @@ func (p *PolarisController) enqueueEndpoint(task *Task, endpoint *v1.Endpoints, 
 
 // processSyncInstance 同步实例, 获取Endpoint和北极星数据做同步
 func (p *PolarisController) processSyncInstance(service *v1.Service) (err error) {
+	// 解析失败不能视为空 metadata，否则完整集合对账会错误删除已有业务字段。
+	if raw := service.Annotations[util.PolarisMetadata]; raw != "" {
+		var metadata map[string]string
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			return fmt.Errorf("invalid %s on Service %s/%s: %w",
+				util.PolarisMetadata, service.Namespace, service.Name, err)
+		}
+	}
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	log.SyncNamingScope().Infof("Begin to sync instance %s", serviceMsg)
 
@@ -196,22 +207,16 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 
 	var addInsErr, deleteInsErr, updateInsErr error
 
-	enableRegister := service.GetAnnotations()[util.PolarisEnableRegister]
-	enableSync := service.GetAnnotations()[util.PolarisSync]
-	// 如果 enableRegister = true,那么自注册，平台不负责注册IP
-	if enableRegister != noAllow || enableSync != noAllow {
-		// 使用platform 接口
-		if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
-			log.SyncNamingScope().Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
-			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-				"Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
-		}
+	if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
+		log.SyncNamingScope().Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
+	}
 
-		if updateInsErr = p.updateInstances(service, updateIns); updateInsErr != nil {
-			log.SyncNamingScope().Errorf("Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
-			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-				"Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
-		}
+	if updateInsErr = p.updateInstances(service, updateIns); updateInsErr != nil {
+		log.SyncNamingScope().Errorf("Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
 	}
 
 	if deleteInsErr = p.deleteInstances(service, deleteIns); deleteInsErr != nil {
@@ -219,5 +224,5 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed DeleteInstances %s, err %s", serviceMsg, deleteInsErr.Error())
 	}
-	return nil
+	return errors.Join(addInsErr, updateInsErr, deleteInsErr)
 }

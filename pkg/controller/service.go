@@ -22,7 +22,6 @@ import (
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
@@ -152,16 +151,15 @@ func (p *PolarisController) syncService(task *Task) error {
 		// 查询原svc是啥，删除对应实例
 		processError := p.processDeleteService(cachedService)
 		if processError != nil {
-			// 如果处理有失败的，那就入队列重新处理
+			// 由 handleTask 统一退避重试，保留缓存直到删除成功。
 			p.eventRecorder.Eventf(cachedService, v1.EventTypeWarning, polarisEvent, "Delete polaris instances failed %v",
 				processError)
-			p.enqueueService(task, cachedService, string(op))
 			return processError
 		}
 		p.serviceCache.Delete(task.Key())
 	case err != nil:
 		log.SyncNamingScope().Errorf("Unable to retrieve service %v from store: %v", task.Key(), err)
-		p.enqueueService(task, nil, string(op))
+		return err
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建service
@@ -170,13 +168,8 @@ func (p *PolarisController) syncService(task *Task) error {
 		//    b. 北极星相关信息改变，相当于删除旧的北极星信息，注册新的北极星信息。
 		log.SyncNamingScope().Infof("Begin to process service %s, operation is %s", task.Key(), op)
 
+		// Namespace 任务同样根据当前对象和 Namespace 注解判断，无需补写 sync 注解。
 		operationService := service
-
-		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 service 打上 sync 标签
-		if op == ResourceKeyFlagAdd && p.IsPolarisService(operationService) {
-			operationService = service.DeepCopy()
-			v12.SetMetaDataAnnotation(&operationService.ObjectMeta, util.PolarisSync, util.IsEnableSync)
-		}
 
 		cachedService, ok := p.serviceCache.Load(task.Key())
 		if !ok {
@@ -195,6 +188,8 @@ func (p *PolarisController) syncService(task *Task) error {
 				return nil
 			}
 
+			// 实例批量写入可能部分成功；保留归属以便失败重试期间删除 Service 时清理。
+			p.serviceCache.Store(task.Key(), service)
 			if processError := p.processSyncInstance(operationService); processError != nil {
 				log.SyncNamingScope().Errorf("Service %s first add failed", task.Key())
 				return processError
@@ -313,11 +308,10 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 		}
 		return nil
 	case util.InstanceMetadataChanged, util.InstanceTTLChanged,
-		util.InstanceWeightChanged, util.InstanceCustomWeightChanged:
-		log.SyncNamingScope().Infof("Service %s metadata,ttl,custom weight changed, need to update", k8sService)
+		util.InstanceWeightChanged, util.InstanceCustomWeightChanged, util.InstanceEnableRegisterChanged:
+		log.SyncNamingScope().Infof(
+			"Service %s metadata,ttl,custom weight,enableRegister changed, need to update", k8sService)
 		return p.processSyncInstance(cur)
-	case util.InstanceEnableRegisterChanged:
-		return nil
 	default:
 		log.SyncNamingScope().Infof("Service %s endpoints or ports changed", k8sService)
 		return p.processSyncInstance(cur)
