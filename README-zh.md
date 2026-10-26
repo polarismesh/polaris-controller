@@ -200,6 +200,20 @@ metadata:
     polarismesh.cn/aliasService: aliasTest
 ```
 
+### 实例同步
+
+`polarismesh.cn/enableRegister: "true"` 作为历史同步开关保留。
+Service 未设置 `polarismesh.cn/sync` 时，`enableRegister=true` 与 `sync=true` 一样会开启 Service 同步，
+controller 仍会正常新增、更新和删除实例。
+如果同时设置了 `polarismesh.cn/sync`，以 `sync` 为准；例如 `sync=false` 时，
+即使 `enableRegister=true` 也不会同步该 Service。
+
+实例 metadata 由 `polarismesh.cn/metadata` 和 Pod labels 合并，同名字段以 Pod labels 为准。
+`source`、`clusterName` 为受保护字段。其余业务字段按完整集合管理：从两处声明中移除字段后，
+下一次更新会删除实例上的对应字段，包括直接在北极星添加的字段。
+兼容已有 `version`、`protocol` 和旧版 `platform` metadata：两处都未声明时保留现值。
+Pod labels 的独立变更通过周期对账收敛，周期由 `--resync-duration` 指定，默认为 `30s`。
+
 ### Sidecar 自动注入
 
 如果需要使用 polaris-sidecar，可以在应用 Pod 中自动注入，配置方式如下：
