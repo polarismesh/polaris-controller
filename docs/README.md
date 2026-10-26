@@ -18,6 +18,12 @@
 
 本文不是上游版本说明。`polarismesh.cn/enableRegister` 等行为以当前代码为准。
 
+## Beta 功能警告
+
+- Mesh 注入能力当前处于 Beta 阶段，仅用于开发、验证和灰度测试，请勿在生产环境启用。
+- ConfigMap/配置同步能力当前处于 Beta 阶段且没有对外暴露，请勿在生产环境启用。
+- Beta 阶段的行为、默认值、资源格式和兼容性可能变化，升级前必须重新验证。
+
 ## 目录
 
 - [一、Service 同步开关](#一service-同步开关)
@@ -429,6 +435,8 @@ Pod Annotation 的明确开关优先于 Label。
 
 ## 八、Sidecar 注入模式
 
+> Mesh 注入当前为 Beta 功能，不要在生产环境启用。
+
 模式选择优先级从高到低：
 
 1. Pod Annotation `polarismesh.cn/javaagent: "true"`。
@@ -490,6 +498,8 @@ metadata:
 它不是通用布尔开关：非 `"true"` 不会触发 Mesh 模式选择。
 
 ## 九、Mesh/DNS Sidecar 参数
+
+> 本章中的 Mesh 相关能力处于 Beta 阶段，仅用于测试和验证，不要用于生产环境。
 
 以下注解由当前 Mesh/DNS 注入模板使用。
 
@@ -781,6 +791,8 @@ traffic.sidecar.polarismesh.cn/includeOutboundIPRanges
 
 ### ConfigMap 同步内部注解
 
+ConfigMap/配置同步当前处于 Beta 阶段且没有对外暴露，请勿在生产环境启用。
+
 ConfigMap 同步当前没有对外暴露，以下注解仅属于内部实现，不应提供给用户：
 
 ```text
@@ -847,6 +859,8 @@ spec:
 ```
 
 ### 开启 Mesh 注入
+
+> 该示例仅用于 Beta 验证环境，请勿在生产环境执行。
 
 ```sh
 kubectl label namespace demo polarismesh.cn/inject=enabled
