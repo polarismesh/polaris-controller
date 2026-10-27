@@ -69,20 +69,16 @@ func TestNamespaceSyncTransitions(t *testing.T) {
 					storeObject(t, stores.configs, foreign)
 					p.onNamespaceUpdate(oldNs, curNs)
 					wantNames := map[string]bool{"inherited": true}
-					operation := OperationDelete
 					if enabled {
 						wantNames["true"] = true
-						operation = OperationAdd
 					}
 					found := map[string]bool{}
 					for p.queue.Len() > 0 {
-						value, _ := p.queue.Get()
-						task := value.(*Task)
-						p.queue.Done(value)
+						task, _ := takeQueueTask(t, p)
 						if task.ObjectType == KubernetesNamespace {
 							continue
 						}
-						if !wantNames[task.Name] || task.Operation != operation {
+						if !wantNames[task.Name] {
 							t.Fatalf("unexpected task: %+v", task)
 						}
 						if task.ObjectType == KubernetesConfigMap && !configEnabled {
@@ -235,11 +231,11 @@ func TestConfigMapDeletionRetainsDefaultGroup(t *testing.T) {
 
 func TestNamespaceAnnotationRemovalUsesSyncModeDefault(t *testing.T) {
 	for _, tc := range []struct {
-		mode, old string
-		operation Operation
+		mode, old  string
+		wantCached bool
 	}{
-		{util.SyncModeAll, "false", OperationAdd},
-		{util.SyncModeDemand, "true", OperationDelete},
+		{util.SyncModeAll, "false", true},
+		{util.SyncModeDemand, "true", false},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			p, stores := newTestController(t)
@@ -256,19 +252,22 @@ func TestNamespaceAnnotationRemovalUsesSyncModeDefault(t *testing.T) {
 			p.onNamespaceUpdate(old, cur)
 			objects := 0
 			for p.queue.Len() > 0 {
-				value, _ := p.queue.Get()
-				task := value.(*Task)
-				p.queue.Done(value)
+				task, _ := takeQueueTask(t, p)
 				if task.ObjectType == KubernetesNamespace {
 					continue
 				}
 				objects++
-				if task.Operation != tc.operation {
-					t.Fatalf("operation=%s want=%s", task.Operation, tc.operation)
-				}
 			}
 			if objects != 2 {
 				t.Fatalf("Service/ConfigMap tasks=%d want=2", objects)
+			}
+			serviceKey := (&Task{Namespace: "ns", Name: svc.Name, ObjectType: KubernetesService}).Key()
+			if _, ok := p.resyncServiceCache.Load(serviceKey); ok != tc.wantCached {
+				t.Fatalf("Service cache=%v want=%v", ok, tc.wantCached)
+			}
+			configKey := (&Task{Namespace: "ns", Name: cm.Name, ObjectType: KubernetesConfigMap}).Key()
+			if _, ok := p.resyncConfigFileCache.Load(configKey); ok != tc.wantCached {
+				t.Fatalf("ConfigMap cache=%v want=%v", ok, tc.wantCached)
 			}
 		})
 	}

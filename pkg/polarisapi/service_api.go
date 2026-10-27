@@ -121,7 +121,8 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 
-			metrics.InstanceRequestSync.WithLabelValues("Add", "Platform", response.Info, fmt.Sprint(response.Code)).
+			metrics.InstanceRequestSync.WithLabelValues("Add", "Platform", addInstanceRequestStatus(response),
+				fmt.Sprint(response.Code)).
 				Observe(times.Seconds())
 
 			dealAddInstanceResponse(response, msg, i, page, requestID, polarisErrors)
@@ -135,45 +136,84 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 
 func dealAddInstanceResponse(response AddResponse, msg string,
 	i int, page int, requestID string, polarisErrors *PErrors) {
-	// 添加成功或者权限错误，都跳过
-	if response.Code == 200000 {
-		log.SyncNamingScope().Infof("Success add all %s [%d/%d], info %s. (%s)",
-			msg, i+1, page, response.Info, requestID)
-		return
-	}
-
-	if response.Code == 401000 {
-		log.SyncNamingScope().Infof("Failed add all %s [%d/%d], info %s. (%s)",
-			msg, i+1, page, response.Info, requestID)
-		return
-	}
-
-	if len(response.Responses) != 0 {
-		for _, ins := range response.Responses {
-			// 400201 已存在
-			// 200000 成功
-			// 确认部分成功
-			if ins.Code != 400201 && ins.Code != 200000 && ins.Code != 401000 {
-				log.SyncNamingScope().Errorf("Failed add %s [%s:%d] [%d/%d], info %s. (%s)",
-					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
-				polarisErrors.Append(PError{
-					IP:   ins.Instance.Host,
-					Port: ins.Instance.Port,
-					Code: util.Uint32Ptr(ins.Code),
-					Info: ins.Info,
-				})
-			} else {
-				log.SyncNamingScope().Debugf("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
-					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
-			}
+	if len(response.Responses) == 0 {
+		switch response.Code {
+		case 200000:
+			log.SyncNamingScope().Infof("Success add all %s [%d/%d], info %s. (%s)",
+				msg, i+1, page, response.Info, requestID)
+			return
+		case 401000:
+			log.SyncNamingScope().Infof("Failed add all %s [%d/%d], info %s. (%s)",
+				msg, i+1, page, response.Info, requestID)
+			return
+		case ExistedResource, SameInstanceRequest:
+			log.SyncNamingScope().Infof(
+				"skip add all %s [%d/%d], existing instance response (%d), treat as existed. (%s)",
+				msg, i+1, page, response.Code, requestID)
+			return
 		}
-	} else {
 		log.SyncNamingScope().Infof("Failed add %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
 		polarisErrors.Append(PError{
 			Code: util.Uint32Ptr(500),
 			Info: response.Info,
 		})
+		return
 	}
+
+	for _, ins := range response.Responses {
+		if ins.Code == SameInstanceRequest {
+			log.SyncNamingScope().Infof(
+				"skip add %s [%s:%d] [%d/%d], same instance request (400208), treat as existed. (%s)",
+				msg, ins.Instance.Host, ins.Instance.Port, i+1, page, requestID)
+			continue
+		}
+
+		// 400201 已存在，200000 成功，401000 保持历史忽略行为。
+		if ins.Code != ExistedResource && ins.Code != 200000 && ins.Code != 401000 {
+			log.SyncNamingScope().Errorf("Failed add %s [%s:%d] [%d/%d], info %s. (%s)",
+				msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
+			polarisErrors.Append(PError{
+				IP:   ins.Instance.Host,
+				Port: ins.Instance.Port,
+				Code: util.Uint32Ptr(ins.Code),
+				Info: ins.Info,
+			})
+		} else {
+			log.SyncNamingScope().Debugf("Success add %s [%s:%d] [%d/%d], info %s. (%s)",
+				msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
+		}
+	}
+}
+
+func addInstanceRequestStatus(response AddResponse) string {
+	if len(response.Responses) == 0 {
+		switch response.Code {
+		case ExistedResource, SameInstanceRequest:
+			return "Idempotent"
+		case 200000, 401000:
+			return "Success"
+		default:
+			return "Failed"
+		}
+	}
+
+	hasIdempotent := false
+	for _, ins := range response.Responses {
+		switch ins.Code {
+		case SameInstanceRequest, ExistedResource:
+			hasIdempotent = true
+		case 200000, 401000:
+		default:
+			return "Failed"
+		}
+	}
+	if hasIdempotent {
+		return "Idempotent"
+	}
+	if len(response.Responses) != 0 {
+		return "Success"
+	}
+	return "Failed"
 }
 
 // DeleteInstances 平台删除实例接口

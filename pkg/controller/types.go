@@ -44,10 +44,40 @@ type Task struct {
 	Operation  Operation
 }
 
+type taskQueueKey struct {
+	Namespace  string
+	Name       string
+	ObjectType ObjectType
+}
+
 func (t *Task) String() string {
 	return fmt.Sprintf("%s|%s|%v|%v|%v", t.Namespace, t.Name, t.Rsync, t.ObjectType, t.Operation)
 }
 
 func (t *Task) Key() string {
-	return fmt.Sprintf("%s|%s|%v", t.Namespace, t.Name, t.ObjectType)
+	key := t.QueueKey()
+	return fmt.Sprintf("%s|%s|%v", key.Namespace, key.Name, key.ObjectType)
+}
+
+func (t *Task) QueueKey() taskQueueKey {
+	return taskQueueKey{
+		Namespace:  t.Namespace,
+		Name:       t.Name,
+		ObjectType: normalizeTaskObjectType(t.ObjectType),
+	}
+}
+
+func normalizeTaskObjectType(objectType ObjectType) ObjectType {
+	if objectType == KubernetesEndpoints {
+		return KubernetesService
+	}
+	return objectType
+}
+
+func (k taskQueueKey) task() *Task {
+	return &Task{
+		Namespace:  k.Namespace,
+		Name:       k.Name,
+		ObjectType: k.ObjectType,
+	}
 }

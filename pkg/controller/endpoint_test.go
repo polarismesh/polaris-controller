@@ -141,13 +141,13 @@ func TestEnableRegisterToggleReconciles(t *testing.T) {
 		cur := old.DeepCopy()
 		cur.Annotations[util.PolarisEnableRegister] = "true"
 		storeObject(t, stores.services, cur)
-		task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationUpdate}
+		key := (&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}).QueueKey()
 		p.onServiceUpdate(old, cur)
 		if p.queue.Len() != 1 {
 			t.Fatal("enableRegister change not enqueued")
 		}
 		p.handleTask(p.process)
-		if p.queue.NumRequeues(task) != 0 {
+		if p.queue.NumRequeues(key) != 0 {
 			t.Fatal("unexpected retry")
 		}
 		if countRequests(tr.requests, http.MethodPost, "/naming/v1/instances") != 1 {
@@ -166,14 +166,15 @@ func TestEnableRegisterToggleReconciles(t *testing.T) {
 		delete(cur.Annotations, util.PolarisEnableRegister)
 		storeObject(t, stores.services, cur)
 		p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
-		task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationUpdate}
+		task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+		key := task.QueueKey()
 		p.serviceCache.Store(task.Key(), old)
 		p.onServiceUpdate(old, cur)
 		if p.queue.Len() != 1 {
 			t.Fatal("enableRegister removal not enqueued")
 		}
 		p.handleTask(p.process)
-		if p.queue.NumRequeues(task) != 0 {
+		if p.queue.NumRequeues(key) != 0 {
 			t.Fatal("unexpected retry")
 		}
 		if countRequests(tr.requests, http.MethodPost, "/naming/v1/instances/delete") != 1 {
@@ -464,16 +465,17 @@ func TestPodLookupRecoveryConverges(t *testing.T) {
 			consumer := p.consumer.(*testConsumer)
 			consumer.instances = []model.Instance{current}
 			task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+			key := task.QueueKey()
 			p.serviceCache.Store(task.Key(), svc)
 			p.resyncServiceCache.Store(task.Key(), svc)
-			p.queue.Add(task)
+			p.insertTask(task)
 			p.handleTask(p.process)
 			instanceWrites := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances") +
 				countRequests(tr.requests, http.MethodPut, "/naming/v1/instances") +
 				countRequests(tr.requests, http.MethodPost, "/naming/v1/instances/delete")
-			if p.queue.NumRequeues(task) != 1 || instanceWrites != 0 {
+			if p.queue.NumRequeues(key) != 1 || instanceWrites != 0 {
 				t.Fatalf("missing Pod should retry without writes: retries=%d requests=%d",
-					p.queue.NumRequeues(task), instanceWrites)
+					p.queue.NumRequeues(key), instanceWrites)
 			}
 
 			pod = pod.DeepCopy()
@@ -481,7 +483,7 @@ func TestPodLookupRecoveryConverges(t *testing.T) {
 			storeObject(t, stores.pods, pod)
 			before := len(tr.requests)
 			p.handleTask(p.process)
-			if p.queue.NumRequeues(task) != 0 {
+			if p.queue.NumRequeues(key) != 0 {
 				t.Fatal("recovered Pod lookup still retried")
 			}
 			var instanceRequests []capturedRequest

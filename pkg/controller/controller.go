@@ -401,7 +401,7 @@ func (p *PolarisController) insertTask(t *Task) {
 		log.Infof("insert task: %s", t.String())
 	}
 	log.TraceScope().Info("INSERT-TASK|" + t.String())
-	p.queue.Add(t)
+	p.queue.Add(t.QueueKey())
 }
 
 func (p *PolarisController) handleTask(f func(t *Task) error) bool {
@@ -410,7 +410,7 @@ func (p *PolarisController) handleTask(f func(t *Task) error) bool {
 		return false
 	}
 	defer p.queue.Done(val)
-	task := val.(*Task)
+	task := val.(taskQueueKey).task()
 	log.TraceScope().Info("HANDLE-TASK|" + task.String())
 	err := f(task)
 	if err == nil {

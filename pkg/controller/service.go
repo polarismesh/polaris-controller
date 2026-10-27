@@ -136,7 +136,6 @@ func (p *PolarisController) syncService(task *Task) error {
 
 	namespaces := task.Namespace
 	name := task.Name
-	op := task.Operation
 
 	service, err := p.serviceLister.Services(namespaces).Get(name)
 	switch {
@@ -166,7 +165,7 @@ func (p *PolarisController) syncService(task *Task) error {
 		// 2. 更新service
 		//    a. 北极星相关信息不变，更新了对应的metadata,ttl,权重信息
 		//    b. 北极星相关信息改变，相当于删除旧的北极星信息，注册新的北极星信息。
-		log.SyncNamingScope().Infof("Begin to process service %s, operation is %s", task.Key(), op)
+		log.SyncNamingScope().Infof("Begin to process service %s", task.Key())
 
 		// Namespace 任务同样根据当前对象和 Namespace 注解判断，无需补写 sync 注解。
 		operationService := service

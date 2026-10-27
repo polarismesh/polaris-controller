@@ -49,17 +49,9 @@ func TestResyncUsesFullCacheKeysAndObjectTypes(t *testing.T) {
 				if p.queue.Len() != 1 {
 					t.Fatalf("kind=%v name=%s cached=%v: tasks=%d", kind, name, cached, p.queue.Len())
 				}
-				value, _ := p.queue.Get()
-				got := value.(*Task)
-				p.queue.Done(value)
+				got, _ := takeQueueTask(t, p)
 				if got.ObjectType != kind || got.Key() != task.Key() {
 					t.Fatalf("wrong resync task: %+v", got)
-				}
-				if got.Rsync == cached {
-					t.Fatalf("cache hit=%v, resync miss flag=%v", cached, got.Rsync)
-				}
-				if cached && got.Operation != OperationUpdate {
-					t.Fatalf("cache hit did not use update path: %+v", got)
 				}
 			}
 		}

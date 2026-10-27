@@ -57,19 +57,74 @@ func TestHandleTaskOwnsRateLimitedRetry(t *testing.T) {
 	p.queue = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Hour, time.Hour))
 	defer p.queue.ShutDown()
 	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
-	p.queue.Add(task)
+	key := task.QueueKey()
+	p.insertTask(task)
 	if !p.handleTask(func(*Task) error { return errors.New("retry me") }) {
 		t.Fatal("worker stopped")
 	}
-	if got := p.queue.NumRequeues(task); got != 1 {
+	if got := p.queue.NumRequeues(key); got != 1 {
 		t.Fatalf("requeues=%d", got)
 	}
 	if p.queue.Len() != 0 {
 		t.Fatal("failed task immediately requeued without backoff")
 	}
-	p.queue.Add(task)
+	p.insertTask(task)
 	p.handleTask(func(*Task) error { return nil })
-	if p.queue.NumRequeues(task) != 0 {
+	if p.queue.NumRequeues(key) != 0 {
 		t.Fatal("successful task did not reset retry count")
 	}
+}
+
+func TestWorkQueueDeduplicatesSameTask(t *testing.T) {
+	p, _ := newTestController(t)
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationAdd}
+	p.insertTask(task)
+	task.Operation = OperationUpdate
+	p.insertTask(task)
+	if got := p.queue.Len(); got != 1 {
+		t.Fatalf("queue length=%d want=1", got)
+	}
+}
+
+func TestWorkQueueSeparatesObjectTypes(t *testing.T) {
+	p, _ := newTestController(t)
+	p.insertTask(&Task{Namespace: "ns", Name: "shared", ObjectType: KubernetesService})
+	p.insertTask(&Task{Namespace: "ns", Name: "shared", ObjectType: KubernetesConfigMap})
+	if got := p.queue.Len(); got != 2 {
+		t.Fatalf("queue length=%d want=2", got)
+	}
+}
+
+func TestEndpointAndServiceTasksShareQueueIdentity(t *testing.T) {
+	p, _ := newTestController(t)
+	p.insertTask(&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService})
+	p.insertTask(&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesEndpoints})
+	if got := p.queue.Len(); got != 1 {
+		t.Fatalf("queue length=%d want=1 after endpoint normalization", got)
+	}
+	if !p.handleTask(func(task *Task) error {
+		if task.ObjectType != KubernetesService {
+			t.Fatalf("restored object type=%v want %v", task.ObjectType, KubernetesService)
+		}
+		return nil
+	}) {
+		t.Fatal("worker stopped while processing endpoint task")
+	}
+}
+
+func TestWorkQueueSerializesSameTaskWhileProcessing(t *testing.T) {
+	p, _ := newTestController(t)
+	key := (&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}).QueueKey()
+	p.queue.Add(key)
+	first, _ := p.queue.Get()
+	p.queue.Add(key)
+	if got := p.queue.Len(); got != 0 {
+		t.Fatalf("processing key became concurrently available: len=%d", got)
+	}
+	p.queue.Done(first)
+	if got := p.queue.Len(); got != 1 {
+		t.Fatalf("dirty key was not requeued after Done: len=%d", got)
+	}
+	second, _ := p.queue.Get()
+	p.queue.Done(second)
 }

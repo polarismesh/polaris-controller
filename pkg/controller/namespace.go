@@ -169,5 +169,5 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 }
 
 func (p *PolarisController) enqueueNamespace(key *Task, namespace *v1.Namespace) {
-	p.queue.Add(key)
+	p.insertTask(key)
 }

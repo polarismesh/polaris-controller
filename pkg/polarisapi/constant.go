@@ -16,7 +16,8 @@
 package polarisapi
 
 const (
-	ExistedResource   = 400201
-	Source            = "polaris-controller"
-	AccessTokenHeader = "x-polaris-token"
+	ExistedResource     = 400201
+	SameInstanceRequest = 400208
+	Source              = "polaris-controller"
+	AccessTokenHeader   = "x-polaris-token"
 )

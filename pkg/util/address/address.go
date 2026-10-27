@@ -218,7 +218,9 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 
 // GetAddressMapFromPolarisInstance 同时返回本集群 controller 托管实例和全量实例的地址索引。
 // 全量索引只用于判断地址是否已注册，不扩大 controller 的更新和删除范围。
-func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string) (currentController, currentAll InstanceSet) {
+func GetAddressMapFromPolarisInstance(
+	instances []model.Instance, cluster string,
+) (currentController, currentAll InstanceSet) {
 	currentController = make(InstanceSet)
 	currentAll = make(InstanceSet)
 	// 根据metadata要过滤出来对应的实例列表

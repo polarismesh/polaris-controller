@@ -111,6 +111,20 @@ func storeObject(t *testing.T, indexer cache.Indexer, obj interface{}) {
 	}
 }
 
+func takeQueueTask(t *testing.T, p *PolarisController) (*Task, taskQueueKey) {
+	t.Helper()
+	value, shutdown := p.queue.Get()
+	if shutdown {
+		t.Fatal("queue unexpectedly shut down")
+	}
+	defer p.queue.Done(value)
+	key, ok := value.(taskQueueKey)
+	if !ok {
+		t.Fatalf("unexpected queue item type %T", value)
+	}
+	return key.task(), key
+}
+
 func testService() *v1.Service {
 	return &v1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "svc",
 		Annotations: map[string]string{util.PolarisSync: "true"}},

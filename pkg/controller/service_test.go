@@ -34,10 +34,11 @@ func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
 	consumer := p.consumer.(*testConsumer)
 	consumer.err = errors.New("discovery unavailable")
 	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationDelete}
+	key := task.QueueKey()
 	p.serviceCache.Store(task.Key(), testService())
-	p.queue.Add(task)
+	p.insertTask(task)
 	p.handleTask(p.process)
-	if p.queue.NumRequeues(task) != 1 {
+	if p.queue.NumRequeues(key) != 1 {
 		t.Fatal("delete failure was not retried")
 	}
 	if p.queue.Len() != 0 {
@@ -51,9 +52,9 @@ func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
 	}
 	consumer.err = nil
 	consumer.instances = []model.Instance{ownedInstance("10.0.0.1")}
-	p.queue.Add(task)
+	p.insertTask(task)
 	p.handleTask(p.process)
-	if p.queue.NumRequeues(task) != 0 {
+	if p.queue.NumRequeues(key) != 0 {
 		t.Fatal("success did not clear retries")
 	}
 	if _, ok := p.serviceCache.Load(task.Key()); ok {
@@ -87,7 +88,6 @@ func TestFirstRegistrationFailureRetainsDeletionState(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
-	task.Operation = OperationDelete
 	if err := p.syncService(task); err != nil {
 		t.Fatal(err)
 	}

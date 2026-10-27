@@ -79,7 +79,7 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoints.Subsets, curEndpoints.Subsets) {
 		metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
 		log.SyncNamingScope().Infof("Endpoints %s is updating, in queue", task.Key())
-		p.queue.Add(task)
+		p.insertTask(task)
 	}
 }
 
@@ -161,7 +161,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, *
 
 func (p *PolarisController) enqueueEndpoint(task *Task, endpoint *v1.Endpoints, eventType string) {
 	metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
-	p.queue.Add(task)
+	p.insertTask(task)
 }
 
 // processSyncInstance 同步实例, 获取Endpoint和北极星数据做同步
@@ -198,7 +198,8 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		// Pod 数据未完整读取时停止本轮写入，不能将缺失标签或部分地址用于增删改对账。
 		return fmt.Errorf("get endpoint addresses for Service %s/%s: %w", service.Namespace, service.Name, err)
 	}
-	currentController, currentAll := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
+	currentController, currentAll := address.GetAddressMapFromPolarisInstance(
+		instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentController, currentAll)
 
 	msg := []string{
