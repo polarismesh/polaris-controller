@@ -57,6 +57,7 @@ type testInstance struct {
 	host     string
 	metadata map[string]string
 	weight   int
+	protocol string
 }
 
 func (i testInstance) GetMetadata() map[string]string { return i.metadata }
@@ -66,10 +67,10 @@ func (i testInstance) IsEnableHealthCheck() bool      { return false }
 func (i testInstance) GetHost() string                { return i.host }
 func (i testInstance) GetPort() uint32                { return 80 }
 func (i testInstance) GetWeight() int                 { return i.weight }
-func (i testInstance) GetProtocol() string            { return "http/TCP" }
+func (i testInstance) GetProtocol() string            { return i.protocol }
 
 func ownedInstance(host string) testInstance {
-	return testInstance{host: host, weight: util.DefaultWeight,
+	return testInstance{host: host, weight: util.DefaultWeight, protocol: string(v1.ProtocolTCP),
 		metadata: map[string]string{util.PolarisSource: Source, util.PolarisClusterName: "test"}}
 }
 

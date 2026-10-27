@@ -235,28 +235,26 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	return registered.GetInstances(), nil
 }
 
-// CompareInstance 比较预期示例和现有实例的区别
+// CompareInstance 使用全量实例判断是否新增，仅更新、删除本集群 controller 托管的实例。
 func (p *PolarisController) CompareInstance(service *v1.Service,
-	spec, cur address.InstanceSet) (addIns,
+	spec, currentController, currentAll address.InstanceSet) (addIns,
 	deleteIns, updateIns []address.Address) {
-	// 对比预期的endpoint和当前的北极星获取的值，如果没有就增加，如果更新
 	for index, instance := range spec {
-		if cur[index] != nil {
-			// 如果存在，判断是否要更新
-			if p.compareInstanceUpdate(service, instance, cur[index]) {
+		if cur := currentController[index]; cur != nil {
+			if p.compareInstanceUpdate(service, instance, cur) {
 				log.SyncNamingScope().Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
 				updated := *instance
-				updated.PolarisInstance = cur[index].PolarisInstance
+				updated.PolarisInstance = cur.PolarisInstance
 				updateIns = append(updateIns, updated)
 			}
-		} else {
-			// 如果不存在，增加到add列表
+		} else if currentAll[index] == nil {
+			// SDK/Java Agent 或其他集群已注册相同地址时，不重复 Add。
 			addIns = append(addIns, *instance)
 		}
 	}
 
-	// 对比当前北极星的跟预期列表，删除没有用的。
-	for i, ins := range cur {
+	// 删除范围保持原有归属限制，不能遍历全量实例。
+	for i, ins := range currentController {
 		if spec[i] == nil {
 			log.SyncNamingScope().Warnf("%s %s need delete %v-%v", service.Namespace, service.Name, ins.IP, ins.Port)
 			deleteIns = append(deleteIns, *ins)

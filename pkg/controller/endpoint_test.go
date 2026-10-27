@@ -24,6 +24,7 @@ import (
 
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -191,6 +192,123 @@ func countRequests(requests []capturedRequest, method, path string) int {
 	return count
 }
 
+func TestInstanceProtocolConvergesFromEndpointPort(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	svc := testService()
+	storeObject(t, stores.services, svc)
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"}}
+	storeObject(t, stores.pods, pod)
+	longPortName := strings.Repeat("p", 64)
+	ep := &v1.Endpoints{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "svc"},
+		Subsets: []v1.EndpointSubset{{
+			Addresses: []v1.EndpointAddress{{IP: "10.0.0.1",
+				TargetRef: &v1.ObjectReference{Namespace: "ns", Name: "pod", Kind: "Pod"}}},
+			Ports: []v1.EndpointPort{{Name: longPortName, Port: 80, Protocol: v1.ProtocolTCP}},
+		}}}
+	storeObject(t, stores.endpoints, ep)
+	current := ownedInstance("10.0.0.1")
+	current.protocol = longPortName + "/TCP"
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{current}
+
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != 1 || tr.requests[0].method != http.MethodPut || tr.requests[0].path != "/naming/v1/instances" {
+		t.Fatalf("expected one protocol update, got %+v", tr.requests)
+	}
+	var payload []polarisapi.Instance
+	if err := json.Unmarshal(tr.requests[0].body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != 1 || payload[0].Protocol != "TCP" {
+		t.Fatalf("unexpected protocol update payload: %+v", payload)
+	}
+
+	current.protocol = "TCP"
+	consumer.instances = []model.Instance{current}
+	before := len(tr.requests)
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != before {
+		t.Fatalf("converged protocol triggered another write: %+v", tr.requests[before:])
+	}
+}
+
+func TestCustomProtocolsReconcile(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	svc := testService()
+	svc.Spec.Ports[0].Name = "http"
+	svc.Annotations[util.PolarisProtocols] = `{"http":"grpc"}`
+	current := ownedInstance("10.0.0.1")
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{current}
+
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != 1 || tr.requests[0].method != http.MethodPut ||
+		tr.requests[0].path != "/naming/v1/instances" {
+		t.Fatalf("expected custom protocol update, got %+v", tr.requests)
+	}
+	var payload []polarisapi.Instance
+	if err := json.Unmarshal(tr.requests[0].body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != 1 || payload[0].Protocol != "grpc" {
+		t.Fatalf("custom protocol was not applied: %+v", payload)
+	}
+
+	current.protocol = "grpc"
+	consumer.instances = []model.Instance{current}
+	delete(svc.Annotations, util.PolarisProtocols)
+	before := len(tr.requests)
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests)-before != 1 || tr.requests[len(tr.requests)-1].method != http.MethodPut ||
+		tr.requests[len(tr.requests)-1].path != "/naming/v1/instances" {
+		t.Fatalf("expected protocol fallback update, got %+v", tr.requests[before:])
+	}
+	if err := json.Unmarshal(tr.requests[len(tr.requests)-1].body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != 1 || payload[0].Protocol != "TCP" {
+		t.Fatalf("endpoint protocol fallback was not applied: %+v", payload)
+	}
+
+	current.protocol = "TCP"
+	consumer.instances = []model.Instance{current}
+	before = len(tr.requests)
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != before {
+		t.Fatalf("converged custom protocol triggered another write: %+v", tr.requests[before:])
+	}
+}
+
+func TestInvalidCustomProtocolsDoNotWriteInstances(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	svc := testService()
+	svc.Annotations[util.PolarisProtocols] = `{"unknown":"grpc"}`
+	p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
+
+	err := p.processSyncInstance(svc)
+	if err == nil || !strings.Contains(err.Error(), "unknown Service port name") {
+		t.Fatalf("invalid custom protocol annotation was accepted: %v", err)
+	}
+	if len(tr.requests) != 0 {
+		t.Fatalf("invalid custom protocol annotation caused writes: %+v", tr.requests)
+	}
+}
+
 func TestPodMetadataConvergesThroughResync(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)
@@ -228,7 +346,7 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 				t.Fatalf("instances=%d", len(payload))
 			}
 			written := payload[0]
-			if written.Protocol != "http/TCP" || written.Version != "v2" {
+			if written.Protocol != "TCP" || written.Version != "v2" {
 				t.Fatalf("protocol/version not propagated: %+v", written)
 			}
 			if written.Metadata[util.PolarisOldSource] != Source || written.Metadata[util.PolarisProtocol] != "http" {
@@ -270,6 +388,137 @@ func TestInvalidMetadataDoesNotWriteInstances(t *testing.T) {
 			}
 			if len(tr.requests) != 0 {
 				t.Fatal("invalid metadata caused instance writes")
+			}
+		})
+	}
+}
+
+func TestPodLookupFailureDoesNotWriteInstances(t *testing.T) {
+	for _, notReady := range []bool{false, true} {
+		name := "ready"
+		if notReady {
+			name = "not ready"
+		}
+		t.Run(name, func(t *testing.T) {
+			p, stores := newTestController(t)
+			tr := mockPolarisHTTP(t)
+			addTestEndpoint(t, stores, "10.0.0.1", "10.0.0.2", "10.0.0.3")
+			storeObject(t, stores.pods, &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns", Name: "pod", Labels: map[string]string{"tenant": "new"},
+			}})
+			ep, err := p.endpointsLister.Endpoints("ns").Get("svc")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ep = ep.DeepCopy()
+			subset := &ep.Subsets[0]
+			subset.Addresses[0].TargetRef.Name = "missing-pod"
+			if notReady {
+				subset.NotReadyAddresses = subset.Addresses[:1]
+				subset.Addresses = subset.Addresses[1:]
+			}
+			storeObject(t, stores.endpoints, ep)
+
+			missing := ownedInstance("10.0.0.1")
+			missing.metadata["tenant"] = "keep"
+			existing := ownedInstance("10.0.0.2")
+			existing.metadata["tenant"] = "old"
+			p.consumer.(*testConsumer).instances = []model.Instance{
+				missing, existing, ownedInstance("10.0.0.4"),
+			}
+			err = p.processSyncInstance(testService())
+			if !k8serrors.IsNotFound(err) || !strings.Contains(err.Error(), "ns/missing-pod") {
+				t.Errorf("Pod lookup error was not propagated with context: %v", err)
+			}
+			if len(tr.requests) != 0 {
+				t.Errorf("incomplete Pod data caused %d instance writes", len(tr.requests))
+			}
+		})
+	}
+}
+
+func TestPodLookupRecoveryConverges(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		labels map[string]string
+	}{
+		{name: "updated labels", labels: map[string]string{"tenant": "new"}},
+		{name: "nil labels"},
+		{name: "empty labels", labels: map[string]string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, stores := newTestController(t)
+			tr := mockPolarisHTTP(t)
+			svc := testService()
+			storeObject(t, stores.services, svc)
+			addTestEndpoint(t, stores, "10.0.0.1")
+			pod, err := p.podLister.Pods("ns").Get("pod")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := stores.pods.Delete(pod); err != nil {
+				t.Fatal(err)
+			}
+			current := ownedInstance("10.0.0.1")
+			current.metadata["tenant"] = "keep"
+			consumer := p.consumer.(*testConsumer)
+			consumer.instances = []model.Instance{current}
+			task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+			p.serviceCache.Store(task.Key(), svc)
+			p.resyncServiceCache.Store(task.Key(), svc)
+			p.queue.Add(task)
+			p.handleTask(p.process)
+			instanceWrites := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances") +
+				countRequests(tr.requests, http.MethodPut, "/naming/v1/instances") +
+				countRequests(tr.requests, http.MethodPost, "/naming/v1/instances/delete")
+			if p.queue.NumRequeues(task) != 1 || instanceWrites != 0 {
+				t.Fatalf("missing Pod should retry without writes: retries=%d requests=%d",
+					p.queue.NumRequeues(task), instanceWrites)
+			}
+
+			pod = pod.DeepCopy()
+			pod.Labels = tc.labels
+			storeObject(t, stores.pods, pod)
+			before := len(tr.requests)
+			p.handleTask(p.process)
+			if p.queue.NumRequeues(task) != 0 {
+				t.Fatal("recovered Pod lookup still retried")
+			}
+			var instanceRequests []capturedRequest
+			for _, request := range tr.requests[before:] {
+				if request.path == "/naming/v1/instances" || request.path == "/naming/v1/instances/delete" {
+					instanceRequests = append(instanceRequests, request)
+				}
+			}
+			if len(instanceRequests) != 1 || instanceRequests[0].method != http.MethodPut ||
+				instanceRequests[0].path != "/naming/v1/instances" {
+				t.Fatalf("expected one update after recovery: %v", tr.requests)
+			}
+			var payload []polarisapi.Instance
+			if err := json.Unmarshal(instanceRequests[0].body, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if len(payload) != 1 {
+				t.Fatalf("instances=%d want=1", len(payload))
+			}
+			written := payload[0]
+			tenant, exists := written.Metadata["tenant"]
+			wantTenant, wantExists := tc.labels["tenant"]
+			if tenant != wantTenant || exists != wantExists {
+				t.Fatalf("recovered labels not propagated: %v", written.Metadata)
+			}
+			if written.Metadata[util.PolarisSource] != Source || written.Metadata[util.PolarisClusterName] != "test" {
+				t.Fatal("instance ownership metadata lost")
+			}
+			current.metadata = written.Metadata
+			consumer.instances = []model.Instance{current}
+			before = len(tr.requests)
+			p.resyncWorker()
+			p.handleTask(p.process)
+			for _, request := range tr.requests[before:] {
+				if request.path == "/naming/v1/instances" || request.path == "/naming/v1/instances/delete" {
+					t.Fatal("metadata did not converge after Pod lookup recovery")
+				}
 			}
 		})
 	}

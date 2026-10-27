@@ -184,7 +184,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	}
 
 	// 1. 先获取当前service Endpoint中的IP信息，IP:Port:Weight
-	// 2. 获取北极星中注册的Service，经过过滤，获取对应的 IP:Port:Weight
+	// 2. 获取北极星全量实例，并区分本集群 controller 托管的实例
 	// 3. 对比，获取三个数组： 增加，更新，删除
 	// 4. 发起增加，更新，删除操作。
 	instances, err := p.getAllInstance(service)
@@ -193,14 +193,18 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		return err
 	}
 	ipPortMap := getCustomWeight(service, serviceMsg)
-	specIPs := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
-	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
-	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
+	specIPs, err := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
+	if err != nil {
+		// Pod 数据未完整读取时停止本轮写入，不能将缺失标签或部分地址用于增删改对账。
+		return fmt.Errorf("get endpoint addresses for Service %s/%s: %w", service.Namespace, service.Name, err)
+	}
+	currentController, currentAll := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
+	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentController, currentAll)
 
 	msg := []string{
 		fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
 		fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
-		fmt.Sprintf("%s Current polaris instance is %v", serviceMsg, currentIPs),
+		fmt.Sprintf("%s Current controller-owned polaris instance is %v", serviceMsg, currentController),
 		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
 	}
 	log.SyncNamingScope().Info(strings.Join(msg, "\n"))

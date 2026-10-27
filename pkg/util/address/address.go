@@ -59,7 +59,17 @@ type InstanceSet map[string]*Address
 //	}]
 
 func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, hasIndex bool,
-	podLister corelisters.PodLister, defaultWeight int, indexPortMap util.IndexPortMap, isolate bool) InstanceSet {
+	podLister corelisters.PodLister, defaultWeight int,
+	indexPortMap util.IndexPortMap, customProtocols map[string]string, isolate bool) (InstanceSet, error) {
+	if endpoint.TargetRef == nil {
+		return nil, fmt.Errorf("endpoint %s has no Pod target reference", endpoint.IP)
+	}
+	pod, err := podLister.Pods(endpoint.TargetRef.Namespace).Get(endpoint.TargetRef.Name)
+	if err != nil {
+		return nil, fmt.Errorf("get Pod %s/%s for endpoint %s: %w",
+			endpoint.TargetRef.Namespace, endpoint.TargetRef.Name, endpoint.IP, err)
+	}
+
 	tmpReadyIndex := ""
 	if hasIndex {
 		tmpIndexArray := strings.Split(endpoint.TargetRef.Name, "-")
@@ -68,16 +78,19 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 		}
 	}
 
-	pod, err := podLister.Pods(endpoint.TargetRef.Namespace).Get(endpoint.TargetRef.Name)
-	if err != nil {
-		log.SyncNamingScope().Error("list pod info fail", zap.String("namespace", endpoint.TargetRef.Namespace),
-			zap.String("pod-name", endpoint.TargetRef.Name), zap.Error(err))
-	}
-
 	instanceSet := make(InstanceSet)
 	for _, port := range subset.Ports {
 		ipPort := fmt.Sprintf("%s-%d", endpoint.IP, port.Port)
 		indexPort := fmt.Sprintf("%s-%d", tmpReadyIndex, port.Port)
+		protocol := string(port.Protocol)
+		if port.Name != "" {
+			if custom, ok := customProtocols[port.Name]; ok {
+				protocol = custom
+			}
+		}
+		if protocol == "" {
+			protocol = string(v1.ProtocolTCP)
+		}
 		tmpWeight := defaultWeight
 		if w, ok := indexPortMap[indexPort]; ok {
 			if w >= 0 && w <= 100 {
@@ -93,18 +106,57 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 			Weight:   tmpWeight,
 			Healthy:  true,
 			Isolate:  isolate,
-			Protocol: port.Name + "/" + string(port.Protocol),
+			Protocol: protocol,
 		}
 
 		instanceSet[ipPort] = address
-		if err != nil {
-			continue
-		}
 		address.Metadata = noEmptyMap(pod.Labels)
 		// 默认从 POD 的 labels 中获取到 version 字段的值
 		address.Version = address.Metadata["version"]
 	}
-	return instanceSet
+	return instanceSet, nil
+}
+
+func parseCustomProtocols(service *v1.Service) (map[string]string, error) {
+	raw := service.GetAnnotations()[util.PolarisProtocols]
+	if raw == "" {
+		return nil, nil
+	}
+
+	protocols := make(map[string]string)
+	if err := json.Unmarshal([]byte(raw), &protocols); err != nil {
+		return nil, fmt.Errorf("annotation %s must be a JSON object of string values: %w",
+			util.PolarisProtocols, err)
+	}
+	if protocols == nil {
+		return nil, fmt.Errorf("annotation %s must be a JSON object of string values", util.PolarisProtocols)
+	}
+
+	namedPorts := make(map[string]struct{}, len(service.Spec.Ports))
+	for _, port := range service.Spec.Ports {
+		if port.Name != "" {
+			namedPorts[port.Name] = struct{}{}
+		}
+	}
+
+	for name, protocol := range protocols {
+		if name == "" {
+			return nil, fmt.Errorf("annotation %s cannot use an empty port name", util.PolarisProtocols)
+		}
+		if _, exists := namedPorts[name]; !exists {
+			return nil, fmt.Errorf("annotation %s references unknown Service port name %q", util.PolarisProtocols, name)
+		}
+		if protocol == "" || strings.TrimSpace(protocol) != protocol {
+			return nil, fmt.Errorf("annotation %s has an invalid protocol for port %q: %q",
+				util.PolarisProtocols, name, protocol)
+		}
+		if len(protocol) > util.MaxInstanceProtocolLength {
+			return nil, fmt.Errorf("annotation %s protocol for port %q exceeds %d characters",
+				util.PolarisProtocols, name, util.MaxInstanceProtocolLength)
+		}
+	}
+
+	return protocols, nil
 }
 
 var _emptyPodLabels = map[string]string{}
@@ -116,11 +168,17 @@ func noEmptyMap(m map[string]string) map[string]string {
 	return m
 }
 
+// GetAddressMapFromEndpoints 返回完整的地址和 Pod 标签快照。
+// Pod 查询失败时返回错误，不向调用方提供可被误用于实例对账的部分地址集合。
 func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
-	podLister corelisters.PodLister, indexPortMap util.IndexPortMap) InstanceSet {
+	podLister corelisters.PodLister, indexPortMap util.IndexPortMap) (InstanceSet, error) {
 	instanceSet := make(InstanceSet)
 	workloadKind := service.GetAnnotations()[util.WorkloadKind]
 	defaultWeight := util.GetWeightFromService(service)
+	customProtocols, err := parseCustomProtocols(service)
+	if err != nil {
+		return nil, err
+	}
 	hasIndex := workloadKind == "statefulset" || workloadKind == "statefulsetplus" ||
 		workloadKind == "StatefulSetPlus" || workloadKind == "StatefulSet"
 
@@ -132,7 +190,11 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
 			// TODO 后续可以考虑支持只注册某些端口到对应的服务上，而不是默认全部的端口都进行注册
-			addresses := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap, false)
+			addresses, err := buildAddresses(&readyAds, &subset, hasIndex, podLister, defaultWeight,
+				indexPortMap, customProtocols, false)
+			if err != nil {
+				return nil, err
+			}
 			for k, v := range addresses {
 				instanceSet[k] = v
 			}
@@ -140,19 +202,25 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 
 		// 如果不需要优雅同步，就不把notReadyAddress加入的同步列表里面。
 		for _, notReadyAds := range subset.NotReadyAddresses {
-			addresses := buildAddresses(&notReadyAds, &subset, hasIndex, podLister, defaultWeight, indexPortMap, true)
+			addresses, err := buildAddresses(&notReadyAds, &subset, hasIndex, podLister, defaultWeight,
+				indexPortMap, customProtocols, true)
+			if err != nil {
+				return nil, err
+			}
 			for k, v := range addresses {
 				instanceSet[k] = v
 			}
 		}
 	}
 
-	return instanceSet
+	return instanceSet, nil
 }
 
-// GetAddressMapFromPolarisInstance 实体转换，将 polaris 接口返回的对象转为后续注册需要的实体
-func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string) InstanceSet {
-	instanceSet := make(InstanceSet)
+// GetAddressMapFromPolarisInstance 同时返回本集群 controller 托管实例和全量实例的地址索引。
+// 全量索引只用于判断地址是否已注册，不扩大 controller 的更新和删除范围。
+func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string) (currentController, currentAll InstanceSet) {
+	currentController = make(InstanceSet)
+	currentAll = make(InstanceSet)
 	// 根据metadata要过滤出来对应的实例列表
 	/*
 		"clusterName":  p.config.PolarisController.ClusterName,
@@ -162,6 +230,18 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 		"serviceName":  service.GetName,
 	*/
 	for _, instance := range instances {
+		tmpKey := fmt.Sprintf("%s-%d", instance.GetHost(), instance.GetPort())
+		addr := &Address{
+			IP:              instance.GetHost(),
+			Port:            int(instance.GetPort()),
+			Weight:          instance.GetWeight(),
+			Protocol:        instance.GetProtocol(),
+			PolarisInstance: instance,
+			Healthy:         instance.IsHealthy(),
+			Isolate:         instance.IsIsolated(),
+		}
+		currentAll[tmpKey] = addr
+
 		clusterName := instance.GetMetadata()[util.PolarisClusterName]
 		source := instance.GetMetadata()[util.PolarisSource]
 
@@ -179,18 +259,9 @@ func GetAddressMapFromPolarisInstance(instances []model.Instance, cluster string
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {
-			tmpKey := fmt.Sprintf("%s-%d", instance.GetHost(), instance.GetPort())
-			instanceSet[tmpKey] = &Address{
-				IP:              instance.GetHost(),
-				Port:            int(instance.GetPort()),
-				Weight:          instance.GetWeight(),
-				Protocol:        instance.GetProtocol(),
-				PolarisInstance: instance,
-				Healthy:         instance.IsHealthy(),
-				Isolate:         instance.IsIsolated(),
-			}
+			currentController[tmpKey] = addr
 		}
 	}
 
-	return instanceSet
+	return currentController, currentAll
 }

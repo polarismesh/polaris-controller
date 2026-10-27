@@ -88,13 +88,14 @@ func TestCompareInstanceMetadata(t *testing.T) {
 				metadata[util.PolarisSource] = Source
 				metadata[util.PolarisClusterName] = "test"
 			}
-			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "http/TCP", Metadata: tt.pod}
+			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP", Metadata: tt.pod}
 			cur := &address.Address{IP: spec.IP, Port: 80, Weight: 100, Protocol: spec.Protocol, PolarisInstance: testInstance{metadata: metadata}}
 			if got := p.compareInstanceUpdate(svc, spec, cur); got != tt.want {
 				t.Fatalf("update=%v, want %v", got, tt.want)
 			}
 			if tt.want {
-				add, del, updates := p.CompareInstance(svc, address.InstanceSet{"ip": spec}, address.InstanceSet{"ip": cur})
+				current := address.InstanceSet{"ip": cur}
+				add, del, updates := p.CompareInstance(svc, address.InstanceSet{"ip": spec}, current, current)
 				if len(add) != 0 || len(del) != 0 || len(updates) != 1 {
 					t.Fatalf("unexpected diff: %v %v %v", add, del, updates)
 				}

@@ -191,13 +191,13 @@ func (p *PolarisController) syncService(task *Task) error {
 			// 实例批量写入可能部分成功；保留归属以便失败重试期间删除 Service 时清理。
 			p.serviceCache.Store(task.Key(), service)
 			if processError := p.processSyncInstance(operationService); processError != nil {
-				log.SyncNamingScope().Errorf("Service %s first add failed", task.Key())
+				log.SyncNamingScope().Errorf("Service %s first add failed: %v", task.Key(), processError)
 				return processError
 			}
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
 			if processError := p.processUpdateService(cachedService, operationService); processError != nil {
-				log.SyncNamingScope().Errorf("Service %s update add failed", task.Key())
+				log.SyncNamingScope().Errorf("Service %s update add failed: %v", task.Key(), processError)
 				return processError
 			}
 		}

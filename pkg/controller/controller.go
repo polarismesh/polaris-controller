@@ -420,8 +420,8 @@ func (p *PolarisController) handleTask(f func(t *Task) error) bool {
 	}
 
 	if p.queue.NumRequeues(val) < maxRetries {
-		log.TraceScope().Warn("RETRY-TASK|" + task.String())
-		log.Infof("syncing service %v, retrying. Error: %v", task, err)
+		log.TraceScope().Error("RETRY-TASK|" + task.String())
+		log.Errorf("syncing service %v, retrying. Error: %v", task, err)
 		p.queue.AddRateLimited(val)
 		return true
 	}

@@ -20,6 +20,11 @@ const (
 )
 
 const (
+	// MaxInstanceProtocolLength 与 Polaris 服务端实例 protocol 字段的最大长度保持一致。
+	MaxInstanceProtocolLength = 32
+)
+
+const (
 	PolarisSync = "polarismesh.cn/sync"
 	// PolarisEnableRegister 是历史同步注解；sync 缺失时等价于 sync=true。
 	PolarisEnableRegister   = "polarismesh.cn/enableRegister"
@@ -29,6 +34,7 @@ const (
 	PolarisOverideService   = "polarismesh.cn/overideService"
 	PolarisSidecarMode      = "polarismesh.cn/sidecar-mode"
 	PolarisMetadata         = "polarismesh.cn/metadata"
+	PolarisProtocols        = "polarismesh.cn/protocols"
 	PolarisWeight           = "polarismesh.cn/weight"
 	PolarisHeartBeatTTL     = "polarismesh.cn/ttl"
 
