@@ -40,8 +40,8 @@ const (
 	globalToken    = "polaris@12345678"
 )
 
-// updateService 批量增加实例接口
-func (p *PolarisController) updateService(cur *v1.Service) error {
+// updateService 根据 Kubernetes Service Label 的实际变化更新 Polaris Service metadata。
+func (p *PolarisController) updateService(old, cur *v1.Service) error {
 	resp, err := polarisapi.GetService(cur)
 	if err != nil {
 		return err
@@ -52,14 +52,53 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 	}
 	polarisSvc := resp.Services[0]
 
-	// 合并服务的 labels 信息
-	newLabels := cur.Labels
-	curLabels := polarisSvc.Metadata
-	for k, v := range newLabels {
-		curLabels[k] = v
+	metadata := maps.Clone(polarisSvc.Metadata)
+	if metadata == nil {
+		metadata = make(map[string]string)
 	}
 
-	polarisSvc.Metadata = curLabels
+	changed := false
+	for key, value := range cur.Labels {
+		remoteValue, exists := metadata[key]
+		if !exists {
+			metadata[key] = value
+			changed = true
+			continue
+		}
+
+		oldValue, hadLabel := old.Labels[key]
+		if !hadLabel || oldValue != value {
+			if remoteValue != value {
+				metadata[key] = value
+				changed = true
+			}
+		}
+	}
+
+	for key, oldValue := range old.Labels {
+		if _, exists := cur.Labels[key]; exists {
+			continue
+		}
+
+		remoteValue, exists := metadata[key]
+		if !exists {
+			continue
+		}
+		if remoteValue != oldValue {
+			log.SyncNamingScope().Warnf(
+				"Service %s/%s preserved metadata key %q because its value changed outside the removed Label",
+				cur.GetNamespace(), cur.GetName(), key)
+			continue
+		}
+		delete(metadata, key)
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	polarisSvc.Metadata = metadata
 	_, _, err = polarisapi.UpdateService(cur, []polarisapi.Service{polarisSvc})
 	return err
 }

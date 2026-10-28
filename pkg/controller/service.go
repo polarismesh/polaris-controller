@@ -314,7 +314,7 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 
 	k8sService := cur.GetNamespace() + "/" + cur.GetName()
 	// 同步 service 的标签变化情况
-	metadataErr := p.updateService(cur)
+	metadataErr := p.updateService(old, cur)
 	if metadataErr != nil {
 		log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(metadataErr))
 	}
