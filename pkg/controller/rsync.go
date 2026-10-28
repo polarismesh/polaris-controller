@@ -16,6 +16,8 @@
 package controller
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
@@ -27,6 +29,10 @@ func (p *PolarisController) resyncWorker() {
 	log.Info("start do Resync job")
 	if !p.isPolarisServerHealthy.Load() {
 		log.Info("Resync: Polaris server failed, not sync")
+		return
+	}
+	if err := p.recoverSyncStates(context.Background()); err != nil {
+		log.SyncNamingScope().Errorf("recover persisted sync states failed: %v", err)
 		return
 	}
 

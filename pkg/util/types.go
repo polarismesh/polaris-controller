@@ -83,10 +83,13 @@ const (
 )
 
 const (
-	PolarisClusterName = "clusterName"
-	PolarisSource      = "source"
-	PolarisVersion     = "version"
-	PolarisProtocol    = "protocol"
+	PolarisClusterName  = "clusterName"
+	PolarisSource       = "source"
+	PolarisVersion      = "version"
+	PolarisProtocol     = "protocol"
+	K8sServiceNamespace = "k8sServiceNamespace"
+	K8sServiceName      = "k8sServiceName"
+	K8sServiceUID       = "k8sServiceUID"
 
 	// PolarisOldSource 旧版本 controller 用来标志是 controller 同步的服务实例。
 	// 已经废弃，项目中当前用来兼容存量的实例。
@@ -128,15 +131,21 @@ const (
 )
 
 // PolarisSystemMetaSet 由 polaris controller 决定的 meta，用户如果在 custom meta 中设置了，不会生效
-var PolarisSystemMetaSet = map[string]struct{}{PolarisClusterName: {}, PolarisSource: {}}
+var PolarisSystemMetaSet = map[string]struct{}{
+	PolarisClusterName: {}, PolarisSource: {},
+	K8sServiceNamespace: {}, K8sServiceName: {}, K8sServiceUID: {},
+}
 
 // PolarisDefaultMetaSet 由 polaris controller 托管的 service ，注册的实例必定会带的 meta，
 // 用于判断用户的 custom meta 是否发生了更新
 var PolarisDefaultMetaSet = map[string]struct{}{
-	PolarisClusterName: {},
-	PolarisSource:      {},
-	PolarisVersion:     {},
-	PolarisProtocol:    {},
+	PolarisClusterName:  {},
+	PolarisSource:       {},
+	PolarisVersion:      {},
+	PolarisProtocol:     {},
+	K8sServiceNamespace: {},
+	K8sServiceName:      {},
+	K8sServiceUID:       {},
 }
 
 // ServiceChangeType 发升变更的类型

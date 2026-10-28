@@ -44,11 +44,14 @@ func TestMergeMetadataProtectsOwnership(t *testing.T) {
 			if metadata[util.PolarisSource] != Source || metadata[util.PolarisClusterName] != "test" || metadata["tenant"] != "pod" {
 				t.Fatalf("unexpected merged metadata: %v", metadata)
 			}
+			if metadata[util.K8sServiceNamespace] != svc.Namespace || metadata[util.K8sServiceName] != svc.Name {
+				t.Fatalf("unexpected service ownership metadata: %v", metadata)
+			}
 			if !maps.Equal(labels, original) {
 				t.Fatal("mutated Pod labels")
 			}
 			p, _ := newTestController(t)
-			if !p.isSyncInstance(testInstance{metadata: metadata}) {
+			if !p.isSyncInstance(svc, testInstance{metadata: metadata}) {
 				t.Fatal("lost instance ownership")
 			}
 		})
@@ -87,6 +90,9 @@ func TestCompareInstanceMetadata(t *testing.T) {
 			if metadata != nil {
 				metadata[util.PolarisSource] = Source
 				metadata[util.PolarisClusterName] = "test"
+				metadata[util.K8sServiceNamespace] = svc.Namespace
+				metadata[util.K8sServiceName] = svc.Name
+				metadata[util.K8sServiceUID] = string(svc.UID)
 			}
 			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP", Metadata: tt.pod}
 			cur := &address.Address{IP: spec.IP, Port: 80, Weight: 100, Protocol: spec.Protocol, PolarisInstance: testInstance{metadata: metadata}}

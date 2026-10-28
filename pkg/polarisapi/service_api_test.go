@@ -25,6 +25,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 func TestGetPolarisNameIgnoresLegacyOverrideAnnotations(t *testing.T) {
@@ -126,6 +128,45 @@ func TestCreateServiceAliasDoesNotHideExistedResource(t *testing.T) {
 	}}
 	if _, err := CreateServiceAlias(service, Source); err == nil || !strings.Contains(err.Error(), "400201") {
 		t.Fatalf("ExistedResource was hidden: %v", err)
+	}
+}
+
+func TestDeleteInstancesRejectsTopLevelUnauthorized(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusUnauthorized,
+			`{"code":401000,"info":"unauthorized"}`)
+	})
+
+	err := DeleteInstances([]Instance{{Service: "svc", Namespace: "ns", Host: "10.0.0.1", Port: util.IntPtr(80)}},
+		10, "svc")
+	if err == nil || !strings.Contains(err.Error(), "401000") {
+		t.Fatalf("unauthorized delete was treated as success: %v", err)
+	}
+}
+
+func TestDeleteInstancesChecksHTTP200ResponseBody(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":401000,"info":"unauthorized"}`)
+	})
+
+	err := DeleteInstances([]Instance{{Service: "svc", Namespace: "ns", Host: "10.0.0.1", Port: util.IntPtr(80)}},
+		10, "svc")
+	if err == nil || !strings.Contains(err.Error(), "401000") {
+		t.Fatalf("HTTP 200 error body was treated as success: %v", err)
+	}
+}
+
+func TestDeleteInstancesDoesNotHidePerInstanceFailure(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":200000,"info":"success","responses":[{"code":401000,"info":"unauthorized","instance":{"host":"10.0.0.1","port":80}}]}`)
+	})
+
+	err := DeleteInstances([]Instance{{Service: "svc", Namespace: "ns", Host: "10.0.0.1", Port: util.IntPtr(80)}},
+		10, "svc")
+	if err == nil || !strings.Contains(err.Error(), "401000") {
+		t.Fatalf("per-instance failure was treated as success: %v", err)
 	}
 }
 

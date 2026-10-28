@@ -262,11 +262,10 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 					Observe(times.Seconds())
 				return
 			}
-			if statusCode == http.StatusOK {
-				log.SyncNamingScope().Infof("Success delete all %s [%d/%d], info %s. (%s)",
-					msg, i+1, page, response.Info, requestID)
-				// 删除成功就没有返回值了，所以默认指定为2000
-				metrics.InstanceRequestSync.WithLabelValues("Add", "Platform", "Success", "2000").
+			if len(bytes.TrimSpace(body)) == 0 && statusCode == http.StatusOK {
+				log.SyncNamingScope().Infof("Success delete all %s [%d/%d]. (%s)",
+					msg, i+1, page, requestID)
+				metrics.InstanceRequestSync.WithLabelValues("Delete", "Platform", "Success", "200000").
 					Observe(times.Seconds())
 				return
 			}
@@ -293,27 +292,21 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 
 func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page int, requestID string,
 	times time.Duration, polarisErrors *PErrors) {
-	// 如果是成功或者未授权
-	if response.Code == 200000 {
-		log.SyncNamingScope().Infof("Success delete all %s [%d/%d], info %s. (%s)",
-			msg, i+1, page, response.Info, requestID)
-		metrics.InstanceRequestSync.WithLabelValues(
-			"Add", "Platform", response.Info, fmt.Sprint(response.Code)).Observe(times.Seconds())
-		return
-	}
-	if response.Code == 401000 {
-		log.SyncNamingScope().Infof("Failed delete all %s [%d/%d], info %s. (%s)",
-			msg, i+1, page, response.Info, requestID)
-		metrics.InstanceRequestSync.WithLabelValues(
-			"Add", "Platform", response.Info, fmt.Sprint(response.Code)).Observe(times.Seconds())
-		return
-	}
-
-	// 如果response不等于空，要具体判断是否有正常处理成功的instances
 	if len(response.Responses) != 0 {
+		if response.Code != 200000 {
+			code := response.Code
+			if code == 0 {
+				code = 500
+			}
+			log.SyncNamingScope().Errorf("Failed delete %s top-level [%d/%d], info %s. (%s)",
+				msg, i+1, page, response.Info, requestID)
+			polarisErrors.Append(PError{
+				Code: util.Uint32Ptr(code),
+				Info: response.Info,
+			})
+		}
 		for _, ins := range response.Responses {
-			// 200000 删除成功
-			if ins.Code != 200000 && ins.Code != 401000 {
+			if ins.Code != 200000 {
 				log.SyncNamingScope().Errorf("Failed delete %s [%s:%d] [%d/%d], info %s. (%s)",
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 				polarisErrors.Append(PError{
@@ -327,7 +320,29 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 					msg, ins.Instance.Host, ins.Instance.Port, i+1, page, ins.Info, requestID)
 			}
 		}
-	} else {
+		metrics.InstanceRequestSync.WithLabelValues(
+			"Delete", "Platform", "PerInstance", fmt.Sprint(response.Code)).Observe(times.Seconds())
+		return
+	}
+
+	switch response.Code {
+	case 200000:
+		log.SyncNamingScope().Infof("Success delete all %s [%d/%d], info %s. (%s)",
+			msg, i+1, page, response.Info, requestID)
+		metrics.InstanceRequestSync.WithLabelValues(
+			"Delete", "Platform", "Success", fmt.Sprint(response.Code)).Observe(times.Seconds())
+		return
+	case 401000:
+		log.SyncNamingScope().Errorf("Failed delete all %s [%d/%d], unauthorized, info %s. (%s)",
+			msg, i+1, page, response.Info, requestID)
+		polarisErrors.Append(PError{
+			Code: util.Uint32Ptr(response.Code),
+			Info: response.Info,
+		})
+		metrics.InstanceRequestSync.WithLabelValues(
+			"Delete", "Platform", "Failed", fmt.Sprint(response.Code)).Observe(times.Seconds())
+		return
+	default:
 		log.SyncNamingScope().Infof("Failed delete %s all [%d/%d], info %s.", msg, i+1, page, response.Info)
 		polarisErrors.Append(PError{
 			Code: util.Uint32Ptr(500),
@@ -335,7 +350,7 @@ func dealDeleteInstanceResponse(response AddResponse, msg string, i int, page in
 		})
 	}
 	metrics.InstanceRequestSync.WithLabelValues(
-		"Add", "Platform", response.Info, fmt.Sprint(response.Code)).Observe(times.Seconds())
+		"Delete", "Platform", "Failed", fmt.Sprint(response.Code)).Observe(times.Seconds())
 }
 
 // UpdateInstances 修改平台实例接口

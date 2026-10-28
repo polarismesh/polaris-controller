@@ -136,6 +136,23 @@ func TestSyncInstanceDeletionPreservesOwnership(t *testing.T) {
 	}
 }
 
+func TestDeleteServiceDoesNotRemoveInstanceForAnotherServiceUID(t *testing.T) {
+	p, _ := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.UID = "uid-current"
+	instance := ownedInstance("10.0.0.1")
+	instance.metadata[util.K8sServiceUID] = "uid-old"
+	p.consumer.(*testConsumer).instances = []model.Instance{instance}
+
+	if err := p.processDeleteService(service); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != 0 {
+		t.Fatalf("deleted instance owned by another Service UID: %+v", tr.requests)
+	}
+}
+
 func TestSyncSDKInstanceUsesHostAndPort(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)

@@ -16,6 +16,7 @@
 package controller
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -87,6 +88,8 @@ type PolarisController struct {
 	// aliasClaimStates deduplicates repeated waiting/conflict events.
 	aliasClaimStates sync.Map
 
+	syncStateStore *syncStateStore
+
 	// workerLoopPeriod is the time between worker runs. The workers process the queue of service and pod changes.
 	workerLoopPeriod time.Duration
 
@@ -148,6 +151,7 @@ func NewPolarisController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(),
 			polarisControllerName),
 		workerLoopPeriod: time.Second,
+		syncStateStore:   newSyncStateStore(client),
 	}
 
 	_, _ = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -236,6 +240,9 @@ func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
 		p.namespaceSynced, p.configMapSynced) {
 		return
 	}
+	if err := p.recoverSyncStates(context.Background()); err != nil {
+		log.Errorf("failed to recover persisted sync states: %v", err)
+	}
 
 	p.CounterPolarisService()
 
@@ -281,6 +288,8 @@ func (p *PolarisController) process(t *Task) error {
 		err = p.syncService(t)
 	case KubernetesConfigMap:
 		err = p.syncConfigMap(t)
+	case PolarisSyncState:
+		err = p.processPendingSyncState(t)
 	}
 	return err
 }
@@ -376,6 +385,9 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 	if util.IgnoreObject(svc) {
 		return false
 	}
+	if svc.GetLabels()[syncStateLabelKey] == syncStateLabelValue {
+		return false
+	}
 	if val, ok := svc.Annotations[util.InternalConfigFileSyncSourceKey]; ok {
 		// 如果同步来源是 polaris, 则不能在认为是需要同步回 polaris 的 ConfigMap
 		if val == util.SourceFromPolaris {
@@ -401,7 +413,7 @@ func (p *PolarisController) insertTask(t *Task) {
 	switch t.ObjectType {
 	case KubernetesConfigMap:
 		log.SyncConfigScope().Infof("insert task: %s", t.String())
-	case KubernetesService, KubernetesEndpoints:
+	case KubernetesService, KubernetesEndpoints, PolarisSyncState:
 		log.SyncNamingScope().Infof("insert task: %s", t.String())
 	case KubernetesNamespace:
 		log.Infof("insert task: %s", t.String())

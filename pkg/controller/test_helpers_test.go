@@ -27,6 +27,7 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -72,7 +73,13 @@ func (i testInstance) GetProtocol() string            { return i.protocol }
 
 func ownedInstance(host string) testInstance {
 	return testInstance{host: host, weight: util.DefaultWeight, protocol: string(v1.ProtocolTCP),
-		metadata: map[string]string{util.PolarisSource: Source, util.PolarisClusterName: "test"}}
+		metadata: map[string]string{
+			util.PolarisSource:       Source,
+			util.PolarisClusterName:  "test",
+			util.K8sServiceNamespace: "ns",
+			util.K8sServiceName:      "svc",
+			util.K8sServiceUID:       "",
+		}}
 }
 
 type testStores struct{ services, endpoints, pods, namespaces, configs cache.Indexer }
@@ -84,9 +91,12 @@ func newTestController(t *testing.T) (*PolarisController, testStores) {
 	}
 	stores := testStores{newStore(), newStore(), newStore(), newStore(), newStore()}
 	q := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	client := fake.NewSimpleClientset()
 	t.Cleanup(q.ShutDown)
 	p := &PolarisController{
-		queue: q, consumer: &testConsumer{}, eventRecorder: record.NewFakeRecorder(100),
+		client: client,
+		queue:  q, consumer: &testConsumer{}, eventRecorder: record.NewFakeRecorder(100),
+		syncStateStore:  newSyncStateStore(client),
 		serviceLister:   corelisters.NewServiceLister(stores.services),
 		endpointsLister: corelisters.NewEndpointsLister(stores.endpoints),
 		podLister:       corelisters.NewPodLister(stores.pods),

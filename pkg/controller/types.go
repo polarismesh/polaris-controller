@@ -25,6 +25,7 @@ const (
 	KubernetesService
 	KubernetesConfigMap
 	KubernetesEndpoints
+	PolarisSyncState
 )
 
 type Operation string

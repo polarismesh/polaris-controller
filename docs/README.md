@@ -65,6 +65,7 @@ Kubernetes Service
 | Pod Label `version` | Polaris **Instance Version** | 未设置自定义版本时的默认值 |
 | 合并后 metadata 中的 `polarismesh.cn/customVersion` | Polaris **Instance Version** | 优先级高于 Pod Label `version` |
 | controller 自动写入的 `source`、`clusterName` | Polaris **Instance metadata** | 受保护字段，用户配置不能覆盖 |
+| controller 自动写入的 `k8sServiceNamespace`、`k8sServiceName`、`k8sServiceUID` | Polaris **Instance metadata** | 标识实例所属 Kubernetes Service，受保护且不能覆盖 |
 
 必须区分以下边界：
 
@@ -72,6 +73,17 @@ Kubernetes Service
 - **Pod Label 不会写入 Polaris Service metadata。**
 - controller 读取的是实际 Pod Label。Deployment 模板 Label 只有实际复制到 Pod 后才会被读取。
 - Polaris Service metadata 和 Polaris Instance metadata 是两个不同层级的数据。
+- `k8sServiceUID` 用于防止同名 Service 删除重建时误删新实例；历史实例缺少该字段时按 legacy 实例兼容。
+
+controller 会在自身 Namespace 创建内部 ConfigMap：
+
+```text
+polaris-controller-sync-state-00
+...
+polaris-controller-sync-state-0f
+```
+
+这些 ConfigMap 保存 Service 同步归属和待删除状态，用于 controller 重启或 leader 切换后的恢复。不要手工修改或删除。
 
 ### 合并示例
 
