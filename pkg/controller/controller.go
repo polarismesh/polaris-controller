@@ -16,6 +16,7 @@
 package controller
 
 import (
+	"sync"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -80,6 +81,11 @@ type PolarisController struct {
 	// service that's inserted multiple times to be processed more than
 	// necessary.
 	queue workqueue.RateLimitingInterface
+
+	// aliasLocks serializes reconciliation for the same Polaris alias.
+	aliasLocks sync.Map
+	// aliasClaimStates deduplicates repeated waiting/conflict events.
+	aliasClaimStates sync.Map
 
 	// workerLoopPeriod is the time between worker runs. The workers process the queue of service and pod changes.
 	workerLoopPeriod time.Duration

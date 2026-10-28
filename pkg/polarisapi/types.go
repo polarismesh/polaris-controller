@@ -159,6 +159,8 @@ type CreateServiceAliasRequest struct {
 	Owners         string `json:"owners,omitempty"`
 	Alias          string `json:"alias"`
 	AliasNamespace string `json:"alias_namespace"`
+	ServiceToken   string `json:"service_token,omitempty"`
+	Comment        string `json:"comment,omitempty"`
 }
 
 // CreateServiceAliasResponse create service alias response
@@ -170,10 +172,23 @@ type CreateServiceAliasResponse struct {
 
 // Alias service alias
 type Alias struct {
-	Service        string `json:"service"`
-	Namespace      string `json:"namespace"`
-	Alias          string `json:"alias"`
-	AliasNamespace string `json:"alias_namespace"`
+	ID             string `json:"id,omitempty"`
+	Service        string `json:"service,omitempty"`
+	Namespace      string `json:"namespace,omitempty"`
+	Alias          string `json:"alias,omitempty"`
+	AliasNamespace string `json:"alias_namespace,omitempty"`
+	Owners         string `json:"owners,omitempty"`
+	Comment        string `json:"comment,omitempty"`
+	ServiceToken   string `json:"service_token,omitempty"`
+}
+
+// GetServiceAliasesResponse query service aliases response
+type GetServiceAliasesResponse struct {
+	Code    uint32  `json:"code"`
+	Info    string  `json:"info"`
+	Amount  uint32  `json:"amount"`
+	Size    uint32  `json:"size"`
+	Aliases []Alias `json:"aliases"`
 }
 
 // GetNamespacesResponse 获取命名空间的返回

@@ -23,6 +23,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,8 @@ const (
 	updateService      = "/naming/v1/services"
 	createService      = "/naming/v1/services"
 	createServiceAlias = "/naming/v1/service/alias"
+	updateServiceAlias = "/naming/v1/service/alias"
+	getServiceAliases  = "/naming/v1/service/aliases"
 	getNamespace       = "/naming/v1/namespaces"
 	createNamespace    = "/naming/v1/namespaces"
 	checkHealth        = ""
@@ -587,10 +590,14 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 }
 
 // CreateServiceAlias 创建北极星服务别名
-func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error) {
+func CreateServiceAlias(service *v1.Service, owners string) (CreateServiceAliasResponse, error) {
 	var response CreateServiceAliasResponse
 	alias := service.GetAnnotations()[util.PolarisAliasService]
 	aliasNs := service.GetAnnotations()[util.PolarisAliasNamespace]
+	if alias == "" || aliasNs == "" {
+		return response, fmt.Errorf("service alias namespace and name must both be set")
+	}
+
 	polarisName, polarisNamespace := getPolarisName(service)
 
 	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", polarisNamespace, polarisName, aliasNs, alias)
@@ -612,13 +619,7 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 	requestID := uuid.New().String()
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
 
-	createRequest := &CreateServiceAliasRequest{
-		Service:        polarisName,
-		Namespace:      polarisNamespace,
-		Alias:          alias,
-		AliasNamespace: aliasNs,
-		Owners:         Source,
-	}
+	createRequest := newServiceAliasRequest(service, owners, "", "")
 
 	requestByte, err := json.Marshal(createRequest)
 	if err != nil {
@@ -635,19 +636,96 @@ func CreateServiceAlias(service *v1.Service) (CreateServiceAliasResponse, error)
 		return response, err
 	}
 
-	if statusCode != http.StatusOK {
-		err = json.Unmarshal(body, &response)
-		if err != nil {
-			log.SyncNamingScope().Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
-			return CreateServiceAliasResponse{}, err
-		}
-		if response.Code != ExistedResource {
-			log.SyncNamingScope().Errorf("Failed to create service alias %s %v", serviceAliasMsg, response.Info)
-			return response, fmt.Errorf("create service alias failed: %s", response.Info)
-		}
+	if err = json.Unmarshal(body, &response); err != nil {
+		log.SyncNamingScope().Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
+		return CreateServiceAliasResponse{}, err
+	}
+	if statusCode != http.StatusOK || response.Code != ExecuteSuccess {
+		log.SyncNamingScope().Errorf("Failed to create service alias %s, code %d, info %s",
+			serviceAliasMsg, response.Code, response.Info)
+		return response, fmt.Errorf("create service alias failed, code=%d, info=%s", response.Code, response.Info)
 	}
 
 	return response, nil
+}
+
+// GetServiceAlias 查询指定 alias 的当前绑定。
+func GetServiceAlias(aliasNamespace, alias string) (Alias, bool, error) {
+	var response GetServiceAliasesResponse
+	if aliasNamespace == "" || alias == "" {
+		return Alias{}, false, fmt.Errorf("alias namespace and name must both be set")
+	}
+
+	requestID := uuid.New().String()
+	query := url.Values{}
+	query.Set("alias", alias)
+	query.Set("alias_namespace", aliasNamespace)
+	query.Set("offset", "0")
+	query.Set("limit", "10")
+	requestURL := fmt.Sprintf("%s%s?%s", PolarisHttpURL, getServiceAliases, query.Encode())
+
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return Alias{}, false, err
+	}
+	if err = json.Unmarshal(body, &response); err != nil {
+		return Alias{}, false, fmt.Errorf("unmarshal service alias response: %w", err)
+	}
+	if statusCode != http.StatusOK || response.Code != ExecuteSuccess {
+		return Alias{}, false, fmt.Errorf("get service alias %s/%s failed, code=%d, info=%s",
+			aliasNamespace, alias, response.Code, response.Info)
+	}
+
+	for _, item := range response.Aliases {
+		if item.Alias == alias && item.AliasNamespace == aliasNamespace {
+			return item, true, nil
+		}
+	}
+	return Alias{}, false, nil
+}
+
+// UpdateServiceAlias 更新已有 alias 指向的源服务。
+func UpdateServiceAlias(service *v1.Service, current Alias, owners string) (CreateServiceAliasResponse, error) {
+	var response CreateServiceAliasResponse
+	polarisName, polarisNamespace := getPolarisName(service)
+	alias := service.GetAnnotations()[util.PolarisAliasService]
+	aliasNs := service.GetAnnotations()[util.PolarisAliasNamespace]
+	serviceAliasMsg := fmt.Sprintf("[%s/%s], [%s/%s]", polarisNamespace, polarisName, aliasNs, alias)
+
+	updateRequest := newServiceAliasRequest(service, owners, current.ServiceToken, current.Comment)
+	requestByte, err := json.Marshal(updateRequest)
+	if err != nil {
+		return response, err
+	}
+
+	requestID := uuid.New().String()
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, updateServiceAlias)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, requestURL, requestByte)
+	if err != nil {
+		return response, err
+	}
+	if err = json.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("unmarshal update service alias response: %w", err)
+	}
+	if statusCode != http.StatusOK || (response.Code != ExecuteSuccess && response.Code != NoNeedUpdate) {
+		return response, fmt.Errorf("update service alias %s failed, code=%d, info=%s",
+			serviceAliasMsg, response.Code, response.Info)
+	}
+
+	return response, nil
+}
+
+func newServiceAliasRequest(service *v1.Service, owners, serviceToken, comment string) *CreateServiceAliasRequest {
+	polarisName, polarisNamespace := getPolarisName(service)
+	return &CreateServiceAliasRequest{
+		Service:        polarisName,
+		Namespace:      polarisNamespace,
+		Owners:         owners,
+		Alias:          service.GetAnnotations()[util.PolarisAliasService],
+		AliasNamespace: service.GetAnnotations()[util.PolarisAliasNamespace],
+		ServiceToken:   serviceToken,
+		Comment:        comment,
+	}
 }
 
 // UpdateService 更新服务字段
@@ -857,5 +935,5 @@ func lookAccessToken() (string, error) {
 
 // getPolarisName, 解析北极星的Name
 func getPolarisName(svr *v1.Service) (string, string) {
-	return util.GetServiceName(svr), util.GetNamespace(svr)
+	return svr.GetName(), svr.GetNamespace()
 }

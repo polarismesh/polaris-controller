@@ -47,7 +47,7 @@ Kubernetes Service 同步的主要数据流如下：
 ```text
 Kubernetes Service
   ├─ metadata.labels          -> Polaris Service metadata
-  ├─ annotations              -> 同步开关、名称、别名、权重、TTL 等控制项
+  ├─ annotations              -> 同步开关、别名、权重、TTL 等控制项
   └─ spec.selector / ports
         └─ Kubernetes Endpoints
               └─ Endpoint TargetRef Pod
@@ -314,50 +314,23 @@ spec:
 - 单端口 Service 的 `selector` 必须与工作负载 Pod Label 匹配，`targetPort` 必须是该 Pod 实际监听的端口。
 - `all` 同步模式下，必须给原来的多端口 Service 显式设置 `polarismesh.cn/sync: "false"`，否则它仍会默认同步全部端口。
 - 当前不支持从同一个 Kubernetes Service 中只选择部分端口并继续写入同一个 Polaris Service。如果需要这种能力，需要 controller 增加端口级过滤配置。
-- 不要用 `polarismesh.cn/overideService` 把多个单端口 Service 映射到同一个 Polaris Service。当前实例对账以整个目标 Polaris Service 为范围，不同 Kubernetes Service 的实例可能互相删除。
 
-## 三、Polaris 侧名称和别名
+## 三、Polaris 侧别名
 
-### `polarismesh.cn/overideNamespace`
-
-类型：Service Annotation。
-
-作用：覆盖写入 Polaris 的 Namespace 名称。
-
-取值：非空字符串。为空时使用 Kubernetes Namespace。
-
-### `polarismesh.cn/overideService`
-
-类型：Service Annotation。
-
-作用：覆盖写入 Polaris 的 Service 名称。
-
-取值：非空字符串。为空时使用 Kubernetes Service 名称。
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: k8s-demo
-  annotations:
-    polarismesh.cn/sync: "true"
-    polarismesh.cn/overideNamespace: Production
-    polarismesh.cn/overideService: demo.prod
-```
-
-注意：
-
-- key 中的 `overide` 是当前代码的实际拼写，不是 `override`。
-- Kubernetes 对象名称不变，只有 Polaris 侧名称改变。
-- 两个 Annotation 可以独立设置。
-- controller 不检查目标 Polaris Service 是否与其他 Kubernetes Service 冲突。
-- 多个 Kubernetes Service 映射到同一个 Polaris Service 时，实例归属仍依赖 `clusterName` 和 `source`。
+Polaris Service 的 Namespace 和 Name 直接使用 Kubernetes Service 自身的 Namespace 和 Name。
 
 ### `polarismesh.cn/aliasNamespace` 和 `polarismesh.cn/aliasService`
 
 类型：Service Annotation。
 
 作用：创建指向当前 Polaris Service 的别名。
+
+alias 与 Polaris Service 名称是一对一关系：
+
+- 每个 Kubernetes Service 最多声明一个 alias。
+- 每个 alias 在同一时刻只能指向一个 Polaris Service。
+- 多个 Kubernetes Service 声明相同 alias 时，最早创建的 Service 获得绑定；其他 Service 等待。
+- 当前 winner 移除 alias Annotation、关闭同步或删除后，剩余 Service 中最早创建的一个接管。
 
 两个值必须同时非空才会创建别名。只设置其中一个不会创建或删除别名。
 
@@ -370,8 +343,10 @@ annotations:
 
 注意：
 
-- 别名指向覆盖后的 Polaris Namespace/Service 名称。
-- 当前修改别名时会尝试创建新别名，但没有删除旧别名的逻辑。
+- 别名指向当前 Kubernetes Service 对应的 Polaris Namespace/Service。
+- alias 是全局唯一的服务入口，不用于把多个 Polaris Service 聚合为同一个名称。
+- controller 会周期核对 alias：不存在时创建，已存在但指向旧 Service 时更新指向。
+- 修改 alias 名称时只为新 alias 建立绑定，不删除旧 alias。
 - 删除或修改别名配置前，需要人工确认并清理旧别名。
 
 ## 四、Instance metadata 生命周期
@@ -1348,17 +1323,6 @@ value 应为字符串，不要写数字或布尔值：
 polarismesh.cn/metadata: '{"replicas":3}'
 ```
 
-### 使用 `override` 拼写
-
-当前代码实际读取：
-
-```text
-polarismesh.cn/overideNamespace
-polarismesh.cn/overideService
-```
-
-写成 `overrideNamespace` 或 `overrideService` 不会生效。
-
 ### 以为删除 alias Annotation 会删除已创建别名
 
 同时删除 `aliasNamespace` 和 `aliasService` 不会删除 Polaris 中已经创建的别名，需要人工确认和清理。
@@ -1403,7 +1367,7 @@ kubectl get endpoints demo -o yaml
 
 - Service 有 selector 和 port。
 - `sync` / `enableRegister` 的值符合预期。
-- 覆盖名称和 alias 成对配置。
+- alias Namespace 和 Service 成对配置。
 - `polarismesh.cn/metadata` 是合法 JSON。
 - Endpoint 的 `TargetRef` 指向实际 Pod。
 
@@ -1411,7 +1375,7 @@ kubectl get endpoints demo -o yaml
 
 在 Polaris 控制台或 API 中确认：
 
-- Polaris Namespace 和 Service 名称符合覆盖规则。
+- Polaris Namespace 和 Service 名称与 Kubernetes Namespace 和 Service 名称一致。
 - Polaris Service metadata 来自 Kubernetes Service Label。
 - 实例数量与 Endpoints 一致。
 - Instance metadata 来自 Service Annotation 和 Pod Label。
@@ -1456,7 +1420,6 @@ kubectl logs -n polaris-system deploy/polaris-controller
 - Service 和通用 Annotation 常量：`../pkg/util/types.go`
 - Service 同步判断：`../pkg/controller/controller.go`
 - Namespace 同步：`../pkg/controller/namespace.go`
-- 名称覆盖：`../pkg/util/controller_utils.go`
 - metadata 合并和实例写入：`../pkg/controller/apis.go`
 - Endpoint 和 Pod Label 读取：`../pkg/util/address/address.go`
 - 权重和 StatefulSet 序号：`../pkg/util/address/address.go`

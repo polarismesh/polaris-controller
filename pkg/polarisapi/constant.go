@@ -18,6 +18,8 @@ package polarisapi
 const (
 	ExistedResource     = 400201
 	SameInstanceRequest = 400208
+	ExecuteSuccess      = 200000
+	NoNeedUpdate        = 200002
 	Source              = "polaris-controller"
 	AccessTokenHeader   = "x-polaris-token"
 )

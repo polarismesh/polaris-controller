@@ -16,12 +16,13 @@
 package controller
 
 import (
+	stderrors "errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
@@ -139,7 +140,7 @@ func (p *PolarisController) syncService(task *Task) error {
 
 	service, err := p.serviceLister.Services(namespaces).Get(name)
 	switch {
-	case errors.IsNotFound(err):
+	case k8serrors.IsNotFound(err):
 		// 发现对应的service不存在，即已经被删除了，那么需要从cache中查询之前注册的北极星是什么，然后把它从实例中删除
 		cachedService, ok := p.serviceCache.Load(task.Key())
 		if !ok {
@@ -234,7 +235,7 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		return nil
 	}
 
-	createNsResponse, err := polarisapi.CreateNamespaces(util.GetNamespace(service))
+	createNsResponse, err := polarisapi.CreateNamespaces(service.GetNamespace())
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed create namespaces in processSyncNamespaceAndService %s, err %s, resp %v",
 			serviceMsg, err, createNsResponse)
@@ -251,16 +252,11 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		return err
 	}
 
-	if service.Annotations[util.PolarisAliasNamespace] != "" &&
-		service.Annotations[util.PolarisAliasService] != "" {
-		createAliasResponse, err := polarisapi.CreateServiceAlias(service)
-		if err != nil {
-			log.SyncNamingScope().Errorf("Failed create service alias in processSyncNamespaceAndService %s, err %s, resp %v",
-				serviceMsg, err, createAliasResponse)
-			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
-			return err
-		}
+	if err := p.reconcileServiceAlias(service); err != nil {
+		log.SyncNamingScope().Errorf("Failed to reconcile service alias %s: %v", serviceMsg, err)
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, "AliasReconcileFailed",
+			"Failed to reconcile service alias %s: %v", serviceMsg, err)
+		return err
 	}
 
 	return nil
@@ -275,44 +271,46 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	// 2. service 无变更，那么可能只有endpoint变化
 	//    * 仅需要同步对应的endpoint即可
 	//    * 更新serviceCache缓存
-	if p.IsPolarisService(cur) && util.IfNeedCreateServiceAlias(old, cur) {
-		createAliasResponse, err := polarisapi.CreateServiceAlias(cur)
-		if err != nil {
+	var aliasErr error
+	if p.IsPolarisService(cur) {
+		aliasErr = p.reconcileServiceAlias(cur)
+		if aliasErr != nil {
 			serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
-			log.SyncNamingScope().Errorf("Failed create service alias in processUpdateService %s, err %s, resp %v",
-				serviceMsg, err, createAliasResponse)
-			p.eventRecorder.Eventf(cur, v1.EventTypeWarning, polarisEvent,
-				"Failed create service alias %s, err %s, resp %v", serviceMsg, err, createAliasResponse)
+			log.SyncNamingScope().Errorf("Failed to reconcile service alias %s: %v", serviceMsg, aliasErr)
+			p.eventRecorder.Eventf(cur, v1.EventTypeWarning, "AliasReconcileFailed",
+				"Failed to reconcile service alias %s: %v", serviceMsg, aliasErr)
 		}
 	}
 
 	k8sService := cur.GetNamespace() + "/" + cur.GetName()
 	// 同步 service 的标签变化情况
-	if err := p.updateService(cur); err != nil {
-		log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(err))
+	metadataErr := p.updateService(cur)
+	if metadataErr != nil {
+		log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(metadataErr))
 	}
 
 	changeType := p.CompareServiceChange(old, cur)
+	var instanceErr error
 	switch changeType {
 	case util.ServicePolarisDelete:
 		log.SyncNamingScope().Infof("Service %s %s, need delete ", k8sService, util.ServicePolarisDelete)
-		return p.processDeleteService(old)
+		instanceErr = p.processDeleteService(old)
 	case util.WorkloadKind:
 		log.SyncNamingScope().Infof("Service %s changed, need delete old and update", k8sService)
 		syncErr := p.processSyncInstance(cur)
 		deleteErr := p.processDeleteService(old)
 		if syncErr != nil || deleteErr != nil {
-			return fmt.Errorf("failed service %s changed, need delete old and update new, %v|%v",
+			instanceErr = fmt.Errorf("failed service %s changed, need delete old and update new, %v|%v",
 				k8sService, syncErr, deleteErr)
 		}
-		return nil
 	case util.InstanceMetadataChanged, util.InstanceTTLChanged,
 		util.InstanceWeightChanged, util.InstanceCustomWeightChanged, util.InstanceEnableRegisterChanged:
 		log.SyncNamingScope().Infof(
 			"Service %s metadata,ttl,custom weight,enableRegister changed, need to update", k8sService)
-		return p.processSyncInstance(cur)
+		instanceErr = p.processSyncInstance(cur)
 	default:
 		log.SyncNamingScope().Infof("Service %s endpoints or ports changed", k8sService)
-		return p.processSyncInstance(cur)
+		instanceErr = p.processSyncInstance(cur)
 	}
+	return stderrors.Join(aliasErr, metadataErr, instanceErr)
 }

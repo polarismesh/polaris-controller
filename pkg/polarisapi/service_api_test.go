@@ -17,9 +17,145 @@
 package polarisapi
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestGetPolarisNameIgnoresLegacyOverrideAnnotations(t *testing.T) {
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "demo",
+			Annotations: map[string]string{
+				"polarismesh.cn/overideNamespace": "Production",
+				"polarismesh.cn/overideService":   "demo.prod",
+			},
+		},
+	}
+
+	name, namespace := getPolarisName(service)
+	if name != "demo" || namespace != "default" {
+		t.Fatalf("got %s/%s, want default/demo", namespace, name)
+	}
+}
+
+func TestGetServiceAliasReturnsBindingAndOwners(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/naming/v1/service/aliases" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("alias"); got != "order" {
+			t.Fatalf("alias query=%q", got)
+		}
+		if got := r.URL.Query().Get("alias_namespace"); got != "Production" {
+			t.Fatalf("alias_namespace query=%q", got)
+		}
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":200000,"info":"success","amount":1,"size":1,"aliases":[{"service":"order","namespace":"default","alias":"order","alias_namespace":"Production","owners":"polaris-controller"}]}`)
+	})
+
+	alias, found, err := GetServiceAlias("Production", "order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || alias.Service != "order" || alias.Namespace != "default" || alias.Owners != Source {
+		t.Fatalf("unexpected alias: %+v, found=%v", alias, found)
+	}
+}
+
+func TestUpdateServiceAliasChangesSourceService(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPut || r.URL.Path != "/naming/v1/service/alias" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var request CreateServiceAliasRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Service != "order-new" || request.Namespace != "default" {
+			t.Fatalf("unexpected source service: %+v", request)
+		}
+		if request.Owners != Source {
+			t.Fatalf("owners=%q", request.Owners)
+		}
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":200002,"info":"no need update","alias":{"service":"order-new","namespace":"default","alias":"order","alias_namespace":"Production","owners":"polaris-controller"}}`)
+	})
+
+	service := &v1.Service{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "default",
+		Name:      "order-new",
+		Annotations: map[string]string{
+			"polarismesh.cn/aliasNamespace": "Production",
+			"polarismesh.cn/aliasService":   "order",
+		},
+	}}
+	if _, err := UpdateServiceAlias(service, Alias{Owners: Source}, Source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateServiceAliasDoesNotHideExistedResource(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/naming/v1/namespaces":
+			return aliasAPIResponse(http.StatusOK,
+				`{"code":200000,"info":"success","responses":[{"code":200000}]}`)
+		case "/naming/v1/service/alias":
+			return aliasAPIResponse(http.StatusBadRequest,
+				`{"code":400201,"info":"resource exists"}`)
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.Path)
+		}
+		return nil, nil
+	})
+
+	service := &v1.Service{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "default",
+		Name:      "order",
+		Annotations: map[string]string{
+			"polarismesh.cn/aliasNamespace": "Production",
+			"polarismesh.cn/aliasService":   "order",
+		},
+	}}
+	if _, err := CreateServiceAlias(service, Source); err == nil || !strings.Contains(err.Error(), "400201") {
+		t.Fatalf("ExistedResource was hidden: %v", err)
+	}
+}
+
+type polarisTestRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f polarisTestRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func newPolarisTestClient(t *testing.T, handler polarisTestRoundTripper) {
+	t.Helper()
+	client, url, token, operator := http.DefaultClient, PolarisHttpURL, PolarisAccessToken, PolarisOperator
+	t.Cleanup(func() {
+		http.DefaultClient, PolarisHttpURL, PolarisAccessToken, PolarisOperator =
+			client, url, token, operator
+	})
+
+	http.DefaultClient = &http.Client{Transport: handler}
+	PolarisHttpURL = "http://polaris.invalid"
+	PolarisAccessToken = "test-token"
+	PolarisOperator = ""
+}
+
+func aliasAPIResponse(status int, body string) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
 
 func TestDealAddInstanceResponseSimpleSuccessAndIdempotentCodes(t *testing.T) {
 	for _, code := range []uint32{200000, ExistedResource, SameInstanceRequest} {

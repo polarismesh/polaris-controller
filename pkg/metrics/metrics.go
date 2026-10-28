@@ -58,6 +58,17 @@ var (
 		},
 		[]string{"service_namespace", "service_name", "polaris_namespace", "polaris_service"},
 	)
+
+	// AliasBindingConflicts counts alias ownership or first-claim conflicts.
+	AliasBindingConflicts = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      endpointSliceSubsystem,
+			Name:           "alias_binding_conflicts_total",
+			Help:           "Number of alias binding conflicts",
+			StabilityLevel: metrics.STABLE,
+		},
+		[]string{"alias_namespace", "alias_service", "service_namespace", "service_name", "reason"},
+	)
 )
 
 var registerMetrics sync.Once
@@ -68,5 +79,6 @@ func RegisterMetrics() {
 		legacyregistry.MustRegister(InstanceRequestSync)
 		legacyregistry.MustRegister(SyncTimes)
 		legacyregistry.MustRegister(PolarisCount)
+		legacyregistry.MustRegister(AliasBindingConflicts)
 	})
 }

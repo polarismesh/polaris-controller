@@ -16,6 +16,7 @@
 package controller
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"strings"
@@ -164,6 +165,7 @@ func (tr *testTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 	tr.Lock()
 	tr.requests = append(tr.requests, capturedRequest{r.Method, r.URL.Path, body})
