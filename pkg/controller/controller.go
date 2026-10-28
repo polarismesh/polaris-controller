@@ -93,8 +93,8 @@ type PolarisController struct {
 	// workerLoopPeriod is the time between worker runs. The workers process the queue of service and pod changes.
 	workerLoopPeriod time.Duration
 
-	// serviceCache 记录了service历史service相关信息
-	serviceCache *localCache.CachedServiceMap
+	// appliedServiceCache stores the last Service state successfully applied to Polaris.
+	appliedServiceCache *localCache.CachedServiceMap
 	// resyncServiceCache 需要进行同步的service历史
 	resyncServiceCache *localCache.CachedServiceMap
 
@@ -194,7 +194,7 @@ func NewPolarisController(
 	p.eventBroadcaster = broadcaster
 	p.eventRecorder = recorder
 
-	p.serviceCache = localCache.NewCachedServiceMap()
+	p.appliedServiceCache = localCache.NewCachedServiceMap()
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
 	p.configFileCache = localCache.NewCachedConfigFileMap()
 	p.resyncConfigFileCache = localCache.NewCachedConfigFileMap()

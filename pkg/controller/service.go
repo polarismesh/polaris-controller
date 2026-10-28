@@ -16,7 +16,6 @@
 package controller
 
 import (
-	"context"
 	stderrors "errors"
 	"fmt"
 	"time"
@@ -63,22 +62,21 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	// 现在已经不是需要同步的北极星服务
 	if !curIsPolaris {
 		task.Operation = OperationUpdate
-		p.enqueueService(task, oldService, "Update")
 		p.resyncServiceCache.Delete(task.Key())
+		p.enqueueService(task, oldService, "Update")
 		return
 	}
 
+	p.resyncServiceCache.Store(task.Key(), curService)
 	if oldIsPolaris {
 		// 原来就是北极星类型的，增加cache
 		task.Operation = OperationUpdate
 		p.enqueueService(task, oldService, "Update")
-		p.serviceCache.Store(task.Key(), oldService)
 	} else if curIsPolaris {
 		// 原来不是北极星的，新增是北极星的，入队列
 		task.Operation = OperationAdd
 		p.enqueueService(task, curService, "Add")
 	}
-	p.resyncServiceCache.Store(task.Key(), curService)
 }
 
 // onServiceAdd 在识别到是这个北极星类型service的时候进行处理
@@ -99,8 +97,8 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 		Operation:  OperationAdd,
 	}
 
-	p.enqueueService(task, service, "Add")
 	p.resyncServiceCache.Store(task.Key(), service)
+	p.enqueueService(task, service, "Add")
 }
 
 // onServiceDelete 在识别到是这个北极星类型service删除的时候，才进行处理
@@ -129,8 +127,8 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 		Operation:  OperationDelete,
 	}
 
-	p.enqueueService(task, service, "Delete")
 	p.resyncServiceCache.Delete(task.Key())
+	p.enqueueService(task, service, "Delete")
 }
 
 func (p *PolarisController) enqueueService(task *Task, service *v1.Service, eventType string) {
@@ -151,19 +149,14 @@ func (p *PolarisController) syncService(task *Task) error {
 	switch {
 	case k8serrors.IsNotFound(err):
 		// 发现对应的service不存在，即已经被删除了，那么需要从cache中查询之前注册的北极星是什么，然后把它从实例中删除
-		cachedService, ok := p.serviceCache.Load(task.Key())
+		cachedService, ok := p.appliedServiceCache.Load(task.Key())
 		if !ok {
-			if p.syncStateStore == nil {
-				log.SyncNamingScope().Infof("Service %s not in cache. Ignoring the deletion", task.Key())
-				return nil
-			}
-			records, stateErr := p.syncStateStore.MarkPendingForSource(context.Background(),
-				p.config.PolarisController.ClusterName, task.Namespace, task.Name)
+			count, stateErr := p.enqueuePendingSyncStatesForService(task.Namespace, task.Name)
 			if stateErr != nil {
 				return stateErr
 			}
-			for _, record := range records {
-				p.insertTask(record.sourceTask())
+			if count == 0 {
+				log.SyncNamingScope().Infof("Service %s not in applied cache or sync state. Ignoring deletion", task.Key())
 			}
 			return nil
 		}
@@ -174,7 +167,7 @@ func (p *PolarisController) syncService(task *Task) error {
 				processError)
 			return processError
 		}
-		p.serviceCache.Delete(task.Key())
+		p.appliedServiceCache.Delete(task.Key())
 	case err != nil:
 		log.SyncNamingScope().Errorf("Unable to retrieve service %v from store: %v", task.Key(), err)
 		return err
@@ -188,9 +181,21 @@ func (p *PolarisController) syncService(task *Task) error {
 
 		// Namespace 任务同样根据当前对象和 Namespace 注解判断，无需补写 sync 注解。
 		operationService := service
+		isPolarisService := p.IsPolarisService(operationService)
 
-		cachedService, ok := p.serviceCache.Load(task.Key())
+		cachedService, ok := p.appliedServiceCache.Load(task.Key())
 		if !ok {
+			if !isPolarisService {
+				count, stateErr := p.enqueuePendingSyncStatesForService(task.Namespace, task.Name)
+				if stateErr != nil {
+					return stateErr
+				}
+				if count == 0 {
+					log.SyncNamingScope().Infof(
+						"Service %s is not a Polaris service and has no applied state, ignoring", task.Key())
+				}
+				return nil
+			}
 			// 1. cached中没有数据，为首次添加场景
 			log.SyncNamingScope().Infof("Service %s not in cache, begin to add new polaris", task.Key())
 
@@ -200,14 +205,6 @@ func (p *PolarisController) syncService(task *Task) error {
 				return processError
 			}
 
-			if !p.IsPolarisService(operationService) {
-				// 不合法的 service ，只把 service 同步到北极星，不做后续的实例处理
-				log.SyncNamingScope().Infof("service %s is not valid, do not process instance", task.Key())
-				return nil
-			}
-
-			// 实例批量写入可能部分成功；保留归属以便失败重试期间删除 Service 时清理。
-			p.serviceCache.Store(task.Key(), service)
 			if processError := p.processSyncInstance(operationService); processError != nil {
 				log.SyncNamingScope().Errorf("Service %s first add failed: %v", task.Key(), processError)
 				return processError
@@ -219,7 +216,11 @@ func (p *PolarisController) syncService(task *Task) error {
 				return processError
 			}
 		}
-		p.serviceCache.Store(task.Key(), service)
+		if isPolarisService {
+			p.appliedServiceCache.Store(task.Key(), service.DeepCopy())
+		} else {
+			p.appliedServiceCache.Delete(task.Key())
+		}
 	}
 	return nil
 }
@@ -288,10 +289,10 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	// 更新分情况
 	// 1. service 服务参数有变更[customWeight, ttl, autoRegister]
 	//    * 同步该service
-	//    * 更新serviceCache缓存
+	//    * 更新appliedServiceCache缓存
 	// 2. service 无变更，那么可能只有endpoint变化
 	//    * 仅需要同步对应的endpoint即可
-	//    * 更新serviceCache缓存
+	//    * 更新appliedServiceCache缓存
 	if cur.GetDeletionTimestamp() != nil {
 		return p.deleteServiceWithState(cur)
 	}

@@ -36,7 +36,7 @@ func TestResyncUsesFullCacheKeysAndObjectTypes(t *testing.T) {
 					svc.ObjectMeta = meta
 					p.resyncServiceCache.Store(task.Key(), svc)
 					if cached {
-						p.serviceCache.Store(task.Key(), svc)
+						p.appliedServiceCache.Store(task.Key(), svc)
 					}
 				} else {
 					cm := &v1.ConfigMap{ObjectMeta: meta}

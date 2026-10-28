@@ -37,7 +37,7 @@ func (p *PolarisController) resyncWorker() {
 	}
 
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
-		v, ok := p.serviceCache.Load(key)
+		v, ok := p.appliedServiceCache.Load(key)
 		if !ok {
 			task := &Task{
 				Namespace:  value.GetNamespace(),
@@ -82,7 +82,7 @@ func (p *PolarisController) checkHealth() {
 		// failed -> healthy, clear service cache and start full resync
 		if !p.isPolarisServerHealthy.Load() {
 			p.isPolarisServerHealthy.Store(true)
-			p.serviceCache.Clear()
+			p.appliedServiceCache.Clear()
 			log.Info("Polaris server health check: clear local cache and resync")
 		}
 

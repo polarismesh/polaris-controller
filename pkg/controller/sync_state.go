@@ -183,6 +183,21 @@ func (p *PolarisController) processPendingSyncState(task *Task) error {
 	return p.syncStateStore.Remove(context.Background(), record)
 }
 
+func (p *PolarisController) enqueuePendingSyncStatesForService(namespace, name string) (int, error) {
+	if p.syncStateStore == nil {
+		return 0, nil
+	}
+	records, err := p.syncStateStore.MarkPendingForSource(context.Background(),
+		p.config.PolarisController.ClusterName, namespace, name)
+	if err != nil {
+		return 0, err
+	}
+	for _, record := range records {
+		p.insertTask(record.sourceTask())
+	}
+	return len(records), nil
+}
+
 func (p *PolarisController) recordSyncStateFailure(record serviceSyncState, failure error) {
 	if p.syncStateStore == nil {
 		return

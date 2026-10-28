@@ -168,7 +168,7 @@ func TestEnableRegisterToggleReconciles(t *testing.T) {
 		p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
 		task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
 		key := task.QueueKey()
-		p.serviceCache.Store(task.Key(), old)
+		p.appliedServiceCache.Store(task.Key(), old)
 		p.onServiceUpdate(old, cur)
 		if p.queue.Len() != 1 {
 			t.Fatal("enableRegister removal not enqueued")
@@ -317,7 +317,7 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 	storeObject(t, stores.services, svc)
 	addTestEndpoint(t, stores, "10.0.0.1")
 	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
-	p.serviceCache.Store(task.Key(), svc)
+	p.appliedServiceCache.Store(task.Key(), svc)
 	p.resyncServiceCache.Store(task.Key(), svc)
 	current := ownedInstance("10.0.0.1")
 	current.metadata["app"] = "old"
@@ -466,7 +466,7 @@ func TestPodLookupRecoveryConverges(t *testing.T) {
 			consumer.instances = []model.Instance{current}
 			task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
 			key := task.QueueKey()
-			p.serviceCache.Store(task.Key(), svc)
+			p.appliedServiceCache.Store(task.Key(), svc)
 			p.resyncServiceCache.Store(task.Key(), svc)
 			p.insertTask(task)
 			p.handleTask(p.process)

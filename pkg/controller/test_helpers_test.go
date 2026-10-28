@@ -96,13 +96,13 @@ func newTestController(t *testing.T) (*PolarisController, testStores) {
 	p := &PolarisController{
 		client: client,
 		queue:  q, consumer: &testConsumer{}, eventRecorder: record.NewFakeRecorder(100),
-		syncStateStore:  newSyncStateStore(client),
-		serviceLister:   corelisters.NewServiceLister(stores.services),
-		endpointsLister: corelisters.NewEndpointsLister(stores.endpoints),
-		podLister:       corelisters.NewPodLister(stores.pods),
-		namespaceLister: corelisters.NewNamespaceLister(stores.namespaces),
-		configMapLister: corelisters.NewConfigMapLister(stores.configs),
-		serviceCache:    localCache.NewCachedServiceMap(), resyncServiceCache: localCache.NewCachedServiceMap(),
+		syncStateStore:      newSyncStateStore(client),
+		serviceLister:       corelisters.NewServiceLister(stores.services),
+		endpointsLister:     corelisters.NewEndpointsLister(stores.endpoints),
+		podLister:           corelisters.NewPodLister(stores.pods),
+		namespaceLister:     corelisters.NewNamespaceLister(stores.namespaces),
+		configMapLister:     corelisters.NewConfigMapLister(stores.configs),
+		appliedServiceCache: localCache.NewCachedServiceMap(), resyncServiceCache: localCache.NewCachedServiceMap(),
 		configFileCache: localCache.NewCachedConfigFileMap(), resyncConfigFileCache: localCache.NewCachedConfigFileMap(),
 	}
 	p.config.PolarisController.ClusterName = "test"
