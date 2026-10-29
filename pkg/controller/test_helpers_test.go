@@ -79,11 +79,9 @@ func (i testInstance) GetVersion() string             { return i.version }
 func ownedInstance(host string) testInstance {
 	return testInstance{host: host, weight: util.DefaultWeight, protocol: string(v1.ProtocolTCP),
 		metadata: map[string]string{
-			util.PolarisSource:       Source,
-			util.PolarisClusterName:  "test",
-			util.K8sServiceNamespace: "ns",
-			util.K8sServiceName:      "svc",
-			util.K8sServiceUID:       "",
+			util.PolarisSource:      Source,
+			util.PolarisClusterName: "test",
+			util.K8sServiceUID:      "",
 		}}
 }
 

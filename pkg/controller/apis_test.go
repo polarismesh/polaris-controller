@@ -37,21 +37,32 @@ func TestMergeMetadataProtectsOwnership(t *testing.T) {
 	for _, annotation := range []string{"", `{"source":"foreign","clusterName":"foreign","tenant":"service"}`, "null"} {
 		t.Run(annotation, func(t *testing.T) {
 			svc := testService()
+			svc.UID = "uid-test"
 			svc.Annotations[util.PolarisMetadata] = annotation
-			labels := map[string]string{util.PolarisSource: "foreign", util.PolarisClusterName: "foreign", "tenant": "pod"}
+			labels := map[string]string{
+				util.PolarisSource:      "foreign",
+				util.PolarisClusterName: "foreign",
+				util.K8sServiceUID:      "foreign",
+				"tenant":                "pod",
+			}
 			original := maps.Clone(labels)
 			metadata := mergeMetadataWithService(svc, address.Address{Metadata: labels}, "test")
 			if metadata[util.PolarisSource] != Source || metadata[util.PolarisClusterName] != "test" || metadata["tenant"] != "pod" {
 				t.Fatalf("unexpected merged metadata: %v", metadata)
 			}
-			if metadata[util.K8sServiceNamespace] != svc.Namespace || metadata[util.K8sServiceName] != svc.Name {
-				t.Fatalf("unexpected service ownership metadata: %v", metadata)
+			if metadata[util.K8sServiceUID] != string(svc.UID) {
+				t.Fatalf("unexpected service generation metadata: %v", metadata)
+			}
+			for _, removedKey := range []string{"k8sServiceNamespace", "k8sServiceName"} {
+				if _, exists := metadata[removedKey]; exists {
+					t.Fatalf("removed service identity metadata %q is still written: %v", removedKey, metadata)
+				}
 			}
 			if !maps.Equal(labels, original) {
 				t.Fatal("mutated Pod labels")
 			}
 			p, _ := newTestController(t)
-			if !p.isSyncInstance(svc, testInstance{metadata: metadata}) {
+			if !p.isControllerInstance(testInstance{metadata: metadata}) {
 				t.Fatal("lost instance ownership")
 			}
 		})
@@ -76,6 +87,10 @@ func TestCompareInstanceMetadata(t *testing.T) {
 		{name: "removed Service metadata key", annotation: `{"tenant":"t"}`,
 			current: map[string]string{"tenant": "t", "obsolete": "value"}, want: true},
 		{name: "removed Service annotation", current: map[string]string{"tenant": "t"}, want: true},
+		{name: "remove legacy Service identity metadata", current: map[string]string{
+			"k8sServiceNamespace": "ns",
+			"k8sServiceName":      "svc",
+		}, want: true},
 		{name: "Pod takes precedence", annotation: `{"app":"service"}`, pod: map[string]string{"app": "pod"},
 			current: map[string]string{"app": "pod"}},
 		{name: "preserve legacy defaults", current: map[string]string{"version": "v1", "protocol": "http", "platform": Source}},
@@ -90,8 +105,6 @@ func TestCompareInstanceMetadata(t *testing.T) {
 			if metadata != nil {
 				metadata[util.PolarisSource] = Source
 				metadata[util.PolarisClusterName] = "test"
-				metadata[util.K8sServiceNamespace] = svc.Namespace
-				metadata[util.K8sServiceName] = svc.Name
 				metadata[util.K8sServiceUID] = string(svc.UID)
 			}
 			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP", Metadata: tt.pod}

@@ -226,6 +226,12 @@ func (p *PolarisController) syncService(task *Task) error {
 }
 
 func (p *PolarisController) processDeleteService(service *v1.Service) (err error) {
+	return p.processDeleteServiceWithUID(service, "")
+}
+
+// processDeleteServiceWithUID 删除当前集群 controller 管理的实例。
+// targetUID 非空时只清理指定 Service 代次，避免旧 pending-delete 删除同名新 Service 的实例。
+func (p *PolarisController) processDeleteServiceWithUID(service *v1.Service, targetUID string) (err error) {
 	log.SyncNamingScope().Infof("Delete Service %s/%s", service.GetNamespace(), service.GetName())
 	instances, err := p.getAllInstance(service)
 	if err != nil {
@@ -234,7 +240,7 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 	// 筛选出来只属于这个service的IP
 	// 更简单的做法，直接从cachedEndpoint删除，处理简单
 	// 通过查询北极星得到被注册的实例，直接删除，更加可靠。
-	polarisIPs := p.filterPolarisMetadata(service, instances)
+	polarisIPs := p.filterControllerInstances(instances, targetUID)
 
 	log.SyncNamingScope().Infof("Deregister Service %s/%s instances=%d",
 		service.GetNamespace(), service.GetName(), len(polarisIPs))

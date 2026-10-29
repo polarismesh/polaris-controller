@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -30,6 +31,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
@@ -161,7 +163,9 @@ func TestProcessPendingSyncStateDeletesAndRemovesRecord(t *testing.T) {
 	}
 	instance := ownedInstance("10.0.0.1")
 	instance.metadata[util.K8sServiceUID] = "uid-pending"
-	p.consumer.(*testConsumer).instances = []model.Instance{instance}
+	newGeneration := ownedInstance("10.0.0.2")
+	newGeneration.metadata[util.K8sServiceUID] = "uid-new"
+	p.consumer.(*testConsumer).instances = []model.Instance{instance, newGeneration}
 
 	task := newServiceSyncState(service, "test", syncStatePendingDelete).sourceTask()
 	if err := p.processPendingSyncState(task); err != nil {
@@ -172,6 +176,13 @@ func TestProcessPendingSyncStateDeletesAndRemovesRecord(t *testing.T) {
 	}
 	if len(tr.requests) != 1 || tr.requests[0].path != "/naming/v1/instances/delete" {
 		t.Fatalf("unexpected delete requests: %+v", tr.requests)
+	}
+	var payload []polarisapi.Instance
+	if err := json.Unmarshal(tr.requests[0].body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != 1 || payload[0].Host != "10.0.0.1" {
+		t.Fatalf("pending cleanup removed another Service generation: %+v", payload)
 	}
 }
 

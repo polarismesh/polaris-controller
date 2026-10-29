@@ -266,11 +266,9 @@ func TestSyncInstanceStopsManagingRemovedVersionSource(t *testing.T) {
 		}
 
 		current.metadata = map[string]string{
-			util.PolarisSource:       Source,
-			util.PolarisClusterName:  "test",
-			util.K8sServiceNamespace: "ns",
-			util.K8sServiceName:      "svc",
-			util.K8sServiceUID:       "",
+			util.PolarisSource:      Source,
+			util.PolarisClusterName: "test",
+			util.K8sServiceUID:      "",
 		}
 		p.consumer.(*testConsumer).instances = []model.Instance{current}
 		resetRequests(tr)

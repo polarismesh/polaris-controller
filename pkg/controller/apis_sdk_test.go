@@ -136,20 +136,22 @@ func TestSyncInstanceDeletionPreservesOwnership(t *testing.T) {
 	}
 }
 
-func TestDeleteServiceDoesNotRemoveInstanceForAnotherServiceUID(t *testing.T) {
+func TestDeleteServiceTreatsUIDAsGenerationNotOwnership(t *testing.T) {
 	p, _ := newTestController(t)
 	tr := mockPolarisHTTP(t)
 	service := testService()
 	service.UID = "uid-current"
 	instance := ownedInstance("10.0.0.1")
+	instance.metadata["k8sServiceNamespace"] = "legacy-ns"
+	instance.metadata["k8sServiceName"] = "legacy-svc"
 	instance.metadata[util.K8sServiceUID] = "uid-old"
 	p.consumer.(*testConsumer).instances = []model.Instance{instance}
 
 	if err := p.processDeleteService(service); err != nil {
 		t.Fatal(err)
 	}
-	if len(tr.requests) != 0 {
-		t.Fatalf("deleted instance owned by another Service UID: %+v", tr.requests)
+	if len(tr.requests) != 1 || tr.requests[0].path != "/naming/v1/instances/delete" {
+		t.Fatalf("did not delete controller generation for deleted Service: %+v", tr.requests)
 	}
 }
 

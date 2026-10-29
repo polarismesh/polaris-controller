@@ -364,31 +364,29 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthChe
 	return managedVersion && cur.PolarisInstance.GetVersion() != desiredVersion
 }
 
-// filterPolarisMetadata 过滤属于TKE注册的服务
-func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances []model.Instance) []address.Address {
+// filterControllerInstances 过滤当前集群 controller 管理的实例。
+// targetUID 非空时只匹配该 Service 代次，用于 pending-delete 的定向清理。
+func (p *PolarisController) filterControllerInstances(
+	instances []model.Instance, targetUID string,
+) []address.Address {
 	var ins []address.Address
 
-	// 根据metadata要过滤出来对应的实例列表
-	/*
-		"clusterName":  p.config.PolarisController.ClusterName,
-		"namespace":    service.GetNamespace(),
-		"workloadName": service.GetAnnotations()[WorkloadName],
-		"workloadKind": service.GetAnnotations()[WorkloadKind],
-		"serviceName":  service.GetName,
-	*/
 	for _, instance := range instances {
-		// 新增字段flag，或者使用原来判断条件
-		if p.isSyncInstance(service, instance) {
-			ins = append(ins, address.Address{
-				IP:   instance.GetHost(),
-				Port: int(instance.GetPort()),
-			})
+		if !p.isControllerInstance(instance) {
+			continue
 		}
+		if targetUID != "" && instance.GetMetadata()[util.K8sServiceUID] != targetUID {
+			continue
+		}
+		ins = append(ins, address.Address{
+			IP:   instance.GetHost(),
+			Port: int(instance.GetPort()),
+		})
 	}
 	return ins
 }
 
-func (p *PolarisController) isSyncInstance(service *v1.Service, ins model.Instance) bool {
+func (p *PolarisController) isControllerInstance(ins model.Instance) bool {
 	clusterName := ins.GetMetadata()[util.PolarisClusterName]
 	source := ins.GetMetadata()[util.PolarisSource]
 
@@ -397,20 +395,7 @@ func (p *PolarisController) isSyncInstance(service *v1.Service, ins model.Instan
 
 	match := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
 		(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
-	if !match {
-		return false
-	}
-
-	if instanceNamespace := ins.GetMetadata()[util.K8sServiceNamespace]; instanceNamespace != "" &&
-		instanceNamespace != service.GetNamespace() {
-		return false
-	}
-	if instanceName := ins.GetMetadata()[util.K8sServiceName]; instanceName != "" &&
-		instanceName != service.GetName() {
-		return false
-	}
-	instanceUID := ins.GetMetadata()[util.K8sServiceUID]
-	return instanceUID == "" || service.GetUID() == "" || instanceUID == string(service.GetUID())
+	return match
 }
 
 // getCustomWeight 将用户配置的权重
@@ -453,8 +438,6 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	// 实例归属不能被 Service 自定义 metadata 或 Pod 标签覆盖。
 	metadata[util.PolarisSource] = Source
 	metadata[util.PolarisClusterName] = clusterName
-	metadata[util.K8sServiceNamespace] = service.GetNamespace()
-	metadata[util.K8sServiceName] = service.GetName()
 	metadata[util.K8sServiceUID] = string(service.GetUID())
 
 	return metadata

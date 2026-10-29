@@ -176,7 +176,7 @@ func (p *PolarisController) processPendingSyncState(task *Task) error {
 	}
 
 	service := record.service()
-	if err = p.processDeleteService(service); err != nil {
+	if err = p.processDeleteServiceWithUID(service, string(service.GetUID())); err != nil {
 		p.recordSyncStateFailure(record, err)
 		return err
 	}
