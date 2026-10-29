@@ -179,6 +179,15 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	log.SyncNamingScope().Infof("Begin to sync instance %s", serviceMsg)
 
+	healthCheck, err := resolveHealthCheck(service)
+	if err != nil {
+		log.SyncNamingScope().Errorf("Invalid health check config for Service %s/%s: %v",
+			service.Namespace, service.Name, err)
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Invalid health check config: %v", err)
+		return err
+	}
+
 	endpoints, err := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
 	if err != nil {
 		log.SyncNamingScope().Errorf("Get endpoint of service %s error %v, ignore", serviceMsg, err)
@@ -204,7 +213,8 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	}
 	currentController, currentAll := address.GetAddressMapFromPolarisInstance(
 		instances, p.config.PolarisController.ClusterName)
-	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentController, currentAll)
+	addIns, deleteIns, updateIns := p.CompareInstance(
+		service, healthCheck, specIPs, currentController, currentAll)
 
 	log.SyncNamingScope().Infof(
 		"Reconcile instances %s: current=%d desired=%d managed=%d add=%d update=%d delete=%d",
@@ -221,13 +231,13 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 
 	var addInsErr, deleteInsErr, updateInsErr error
 
-	if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
+	if addInsErr = p.addInstances(service, healthCheck, addIns); addInsErr != nil {
 		log.SyncNamingScope().Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
 	}
 
-	if updateInsErr = p.updateInstances(service, updateIns); updateInsErr != nil {
+	if updateInsErr = p.updateInstances(service, healthCheck, updateIns); updateInsErr != nil {
 		log.SyncNamingScope().Errorf("Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())

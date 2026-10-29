@@ -56,16 +56,19 @@ func (c *testConsumer) GetAllInstances(*api.GetAllInstancesRequest) (*model.Inst
 
 type testInstance struct {
 	model.Instance
-	host     string
-	metadata map[string]string
-	weight   int
-	protocol string
+	host              string
+	metadata          map[string]string
+	weight            int
+	protocol          string
+	enableHealthCheck bool
+	ttl               int64
 }
 
 func (i testInstance) GetMetadata() map[string]string { return i.metadata }
 func (i testInstance) IsHealthy() bool                { return true }
 func (i testInstance) IsIsolated() bool               { return false }
-func (i testInstance) IsEnableHealthCheck() bool      { return false }
+func (i testInstance) IsEnableHealthCheck() bool      { return i.enableHealthCheck }
+func (i testInstance) GetTtl() int64                  { return i.ttl }
 func (i testInstance) GetHost() string                { return i.host }
 func (i testInstance) GetPort() uint32                { return 80 }
 func (i testInstance) GetWeight() int                 { return i.weight }

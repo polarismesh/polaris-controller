@@ -200,7 +200,8 @@ func TestCompareInstanceMixedOwnership(t *testing.T) {
 		sdkTestInstance{testInstance: testInstance{host: "10.0.0.1"}, port: 8080},
 		sdkTestInstance{testInstance: testInstance{host: "2001:db8::1"}, port: 80},
 	}, "test")
-	add, del, update := p.CompareInstance(testService(), spec, currentController, currentAll)
+	add, del, update := p.CompareInstance(
+		testService(), desiredHealthCheck{}, spec, currentController, currentAll)
 	for _, tc := range []struct {
 		name      string
 		instances []address.Address

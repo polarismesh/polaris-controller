@@ -579,14 +579,25 @@ StatefulSet
 
 类型：Service Annotation。
 
-作用：启用实例心跳健康检查并设置 TTL，单位为秒。
+作用：声明 controller 是否管理实例心跳健康检查，以及心跳 TTL。
 
-有效范围：`1` 到 `60`。非法值或越界值会被忽略。
+`polarismesh.cn/ttl` 使用三态语义：
+
+- Annotation 不存在：controller 不管理健康检查，实例 Update 不发送 `enableHealthCheck` 和
+  `healthCheck`，保留控制台或其他写入方的设置。
+- `0`：明确关闭健康检查。
+- `1` 到 `60`：开启心跳健康检查，并设置对应 TTL。
+
+非法值、负数或大于 `60` 的值不会被当成“关闭健康检查”。controller 会记录错误、产生
+Event，并停止本轮实例写入，避免一次配置错误改变现有健康状态。
 
 ```yaml
 annotations:
   polarismesh.cn/ttl: "10"
 ```
+
+修改有效 TTL（例如从 `10` 改为 `20`）会触发实例 Update。删除该 Annotation 后，controller
+不再管理该 Service 下实例的健康检查，不会主动恢复或关闭修改前的状态。
 
 controller 只负责注册带 TTL 的实例，不负责代替业务持续发送心跳。使用 TTL 时，必须确认业务实例或外部组件会发送心跳。
 

@@ -96,18 +96,19 @@ func TestCompareInstanceMetadata(t *testing.T) {
 			}
 			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP", Metadata: tt.pod}
 			cur := &address.Address{IP: spec.IP, Port: 80, Weight: 100, Protocol: spec.Protocol, PolarisInstance: testInstance{metadata: metadata}}
-			if got := p.compareInstanceUpdate(svc, spec, cur); got != tt.want {
+			if got := p.compareInstanceUpdate(svc, desiredHealthCheck{}, spec, cur); got != tt.want {
 				t.Fatalf("update=%v, want %v", got, tt.want)
 			}
 			if tt.want {
 				current := address.InstanceSet{"ip": cur}
-				add, del, updates := p.CompareInstance(svc, address.InstanceSet{"ip": spec}, current, current)
+				add, del, updates := p.CompareInstance(
+					svc, desiredHealthCheck{}, address.InstanceSet{"ip": spec}, current, current)
 				if len(add) != 0 || len(del) != 0 || len(updates) != 1 {
 					t.Fatalf("unexpected diff: %v %v %v", add, del, updates)
 				}
 				merged := mergeMetadataWithService(svc, updates[0], "test")
 				cur.PolarisInstance = testInstance{metadata: merged}
-				if p.compareInstanceUpdate(svc, spec, cur) {
+				if p.compareInstanceUpdate(svc, desiredHealthCheck{}, spec, cur) {
 					t.Fatal("metadata update did not converge")
 				}
 			}

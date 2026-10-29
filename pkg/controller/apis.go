@@ -21,6 +21,7 @@ import (
 	"maps"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -39,6 +40,57 @@ const (
 	defaultMetaNum = 8
 	globalToken    = "polaris@12345678"
 )
+
+type desiredHealthCheck struct {
+	managed bool
+	enabled bool
+	ttl     int
+}
+
+func resolveHealthCheck(service *v1.Service) (desiredHealthCheck, error) {
+	value, exists := service.GetAnnotations()[util.PolarisHeartBeatTTL]
+	if !exists {
+		return desiredHealthCheck{}, nil
+	}
+
+	ttl, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || ttl < 0 || ttl > 60 {
+		return desiredHealthCheck{}, fmt.Errorf(
+			"annotation %s=%q on Service %s/%s must be an integer in [0, 60]",
+			util.PolarisHeartBeatTTL, value, service.GetNamespace(), service.GetName())
+	}
+
+	return desiredHealthCheck{
+		managed: true,
+		enabled: ttl > 0,
+		ttl:     ttl,
+	}, nil
+}
+
+func (d desiredHealthCheck) requestFields() (*bool, *polarisapi.HealthCheck) {
+	if !d.managed {
+		return nil, nil
+	}
+	if !d.enabled {
+		return util.Bool(false), nil
+	}
+	return util.Bool(true), &polarisapi.HealthCheck{
+		Type: util.IntPtr(0),
+		Heartbeat: polarisapi.Heartbeat{
+			TTL: d.ttl,
+		},
+	}
+}
+
+func (d desiredHealthCheck) needsUpdate(instance model.Instance) bool {
+	if !d.managed {
+		return false
+	}
+	if instance.IsEnableHealthCheck() != d.enabled {
+		return true
+	}
+	return d.enabled && instance.GetTtl() != int64(d.ttl)
+}
 
 // updateService 根据 Kubernetes Service Label 的实际变化更新 Polaris Service metadata。
 func (p *PolarisController) updateService(old, cur *v1.Service) error {
@@ -104,30 +156,14 @@ func (p *PolarisController) updateService(old, cur *v1.Service) error {
 }
 
 // addInstances 批量增加实例接口
-func (p *PolarisController) addInstances(service *v1.Service, addresses []address.Address) error {
+func (p *PolarisController) addInstances(service *v1.Service, healthCheck desiredHealthCheck,
+	addresses []address.Address) error {
 	if len(addresses) == 0 {
 		return nil
 	}
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	healthy := util.Bool(true)
-	enableHealthCheck := util.Bool(false)
-
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Heartbeat.TTL = ttl
-				*healthy = false
-				*enableHealthCheck = true
-			}
-		}
-	}
+	enableHealthCheck, requestHealthCheck := healthCheck.requestFields()
+	healthy := util.Bool(!healthCheck.enabled)
 
 	instances := make([]polarisapi.Instance, 0, len(addresses))
 
@@ -147,7 +183,7 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 			Service:           service.GetName(),
 			Namespace:         service.GetNamespace(),
 			ServiceToken:      globalToken,
-			HealthCheck:       &healthCheck,
+			HealthCheck:       requestHealthCheck,
 			Host:              addr.IP,
 			Protocol:          addr.Protocol,
 			Version:           version,
@@ -191,7 +227,8 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 }
 
 // updateInstances 批量更新实例接口
-func (p *PolarisController) updateInstances(service *v1.Service, addresses []address.Address) error {
+func (p *PolarisController) updateInstances(service *v1.Service, healthCheck desiredHealthCheck,
+	addresses []address.Address) error {
 	if len(addresses) == 0 {
 		return nil
 	}
@@ -201,24 +238,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 		log.SyncNamingScope().Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	enableHealthCheck := util.Bool(false)
-
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Type = util.IntPtr(0)
-				healthCheck.Heartbeat.TTL = ttl
-				enableHealthCheck = util.Bool(true)
-			}
-		}
-	}
+	enableHealthCheck, requestHealthCheck := healthCheck.requestFields()
 
 	instances := make([]polarisapi.Instance, 0, len(addresses))
 
@@ -236,7 +256,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 			Service:           service.GetName(),
 			Namespace:         service.GetNamespace(),
 			ServiceToken:      globalToken,
-			HealthCheck:       &healthCheck,
+			HealthCheck:       requestHealthCheck,
 			Host:              addr.IP,
 			Protocol:          addr.Protocol,
 			Version:           version,
@@ -275,12 +295,12 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 }
 
 // CompareInstance 使用全量实例判断是否新增，仅更新、删除本集群 controller 托管的实例。
-func (p *PolarisController) CompareInstance(service *v1.Service,
+func (p *PolarisController) CompareInstance(service *v1.Service, healthCheck desiredHealthCheck,
 	spec, currentController, currentAll address.InstanceSet) (addIns,
 	deleteIns, updateIns []address.Address) {
 	for index, instance := range spec {
 		if cur := currentController[index]; cur != nil {
-			if p.compareInstanceUpdate(service, instance, cur) {
+			if p.compareInstanceUpdate(service, healthCheck, instance, cur) {
 				log.SyncNamingScope().Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
 				updated := *instance
 				updated.PolarisInstance = cur.PolarisInstance
@@ -303,36 +323,9 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 }
 
 // CompareInstanceUpdate 比较已存在的实例是否需要更新
-func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *address.Address,
-	cur *address.Address) bool {
-	/*
-		    HealthCheck:       &healthCheck,
-			Weight:            &weight,
-			EnableHealthCheck: enableHealthCheck,
-			Metadata:          metadata,
-	*/
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	enableHealthCheck := util.Bool(false)
-
-	// health check update
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("annotation 'polarismesh.cn/ttl' value: %s, converted to type int error %v",
-				ttlStr, err)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Type = util.IntPtr(0)
-				healthCheck.Heartbeat.TTL = ttl
-				*enableHealthCheck = true
-			}
-		}
-	}
-
-	if cur.PolarisInstance.IsEnableHealthCheck() != *enableHealthCheck {
+func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthCheck desiredHealthCheck,
+	spec *address.Address, cur *address.Address) bool {
+	if healthCheck.needsUpdate(cur.PolarisInstance) {
 		return true
 	}
 
