@@ -192,6 +192,32 @@ func TestNamespaceDisableDeletesInheritedInstances(t *testing.T) {
 	}
 }
 
+func TestNamespaceDisableKeepsEnableRegisterServiceInResync(t *testing.T) {
+	p, stores := newTestController(t)
+	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "ns", Annotations: map[string]string{util.PolarisSync: "true"}}}
+	svc := testService()
+	svc.Annotations = map[string]string{util.PolarisEnableRegister: util.IsEnableSync}
+	storeObject(t, stores.namespaces, ns)
+	storeObject(t, stores.services, svc)
+	key := (&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}).Key()
+	p.resyncServiceCache.Store(key, svc)
+
+	disabled := ns.DeepCopy()
+	disabled.Annotations[util.PolarisSync] = "false"
+	storeObject(t, stores.namespaces, disabled)
+	p.onNamespaceUpdate(ns, disabled)
+
+	if p.queue.Len() != 0 {
+		t.Fatalf("enableRegister Service should not receive Namespace delete task, got %d", p.queue.Len())
+	}
+	if _, ok := p.resyncServiceCache.Load(key); !ok {
+		t.Fatal("Namespace disable removed enableRegister Service from resync cache")
+	}
+	if !p.IsPolarisService(svc) {
+		t.Fatal("enableRegister Service lost sync eligibility")
+	}
+}
+
 func TestConfigMapDeletionRetainsDefaultGroup(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)

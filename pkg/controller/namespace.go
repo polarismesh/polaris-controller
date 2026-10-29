@@ -108,17 +108,29 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 		if util.IgnoreService(service) {
 			continue
 		}
-		// 对象注解优先；关闭 Namespace 同步不能删除显式开启同步的 Service。
-		if sync, ok := service.Annotations[util.PolarisSync]; ok &&
-			(operation == OperationDelete || sync != util.IsEnableSync) {
-			continue
-		}
-
 		task := &Task{
 			Namespace:  service.GetNamespace(),
 			Name:       service.GetName(),
 			ObjectType: KubernetesService,
 			Operation:  operation,
+		}
+		if sync, ok := service.Annotations[util.PolarisSync]; ok {
+			// 对象注解优先；关闭 Namespace 同步不能删除显式开启同步的 Service，
+			// 显式关闭或非法值也不应被 Namespace 继承流程处理。
+			if operation == OperationDelete {
+				if sync == util.IsEnableSync {
+					p.resyncServiceCache.Store(task.Key(), service)
+				}
+				continue
+			}
+			if sync != util.IsEnableSync {
+				continue
+			}
+		}
+		if operation == OperationDelete &&
+			service.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
+			p.resyncServiceCache.Store(task.Key(), service)
+			continue
 		}
 		if operation == OperationAdd {
 			p.resyncServiceCache.Store(task.Key(), service)
