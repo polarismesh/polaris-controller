@@ -182,10 +182,7 @@ func GetAddressMapFromEndpoints(service *v1.Service, endpoint *v1.Endpoints,
 	hasIndex := workloadKind == "statefulset" || workloadKind == "statefulsetplus" ||
 		workloadKind == "StatefulSetPlus" || workloadKind == "StatefulSet"
 
-	res, err := json.Marshal(endpoint)
-	if err == nil {
-		log.Info("get addresses map from endpoints", zap.String("endpoint", string(res)))
-	}
+	log.SyncNamingScope().Debug("get addresses map from endpoints", zap.Any("endpoint", endpoint))
 
 	for _, subset := range endpoint.Subsets {
 		for _, readyAds := range subset.Addresses {
@@ -257,7 +254,8 @@ func GetAddressMapFromPolarisInstance(
 		flag := (clusterName == cluster && source == polarisapi.Source) ||
 			(clusterName == cluster && oldSource == polarisapi.Source)
 
-		log.Infof("old source is %s, source %s, cluster is %s", source, oldSource, cluster)
+		log.SyncNamingScope().Debugf(
+			"instance source=%s legacySource=%s cluster=%s", source, oldSource, cluster)
 
 		// 只有本集群且 controller 注册的实例，才由 controller 管理。
 		if flag {

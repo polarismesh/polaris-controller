@@ -96,7 +96,7 @@ func RunServer(
 		<-stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), shutDownTimeout)
 		if err := server.Shutdown(ctx); err != nil {
-			log.Warnf("server Shutdown error:%+v", err)
+			log.Errorf("server Shutdown error:%+v", err)
 		}
 		cancel()
 	}()
@@ -110,6 +110,7 @@ func RunServer(
 		case <-stopCh:
 			log.Infof("Stop Listening %s", server.Addr)
 		default:
+			log.Errorf("HTTP server %s failed: %v", server.Addr, err)
 			panic(fmt.Sprintf("%s due to error: %v", server.Addr, err))
 		}
 	}()

@@ -28,7 +28,7 @@ import (
 func (p *PolarisController) resyncWorker() {
 	log.Info("start do Resync job")
 	if !p.isPolarisServerHealthy.Load() {
-		log.Info("Resync: Polaris server failed, not sync")
+		log.Error("Resync skipped: Polaris server is unavailable")
 		return
 	}
 	if err := p.recoverSyncStates(context.Background()); err != nil {
@@ -78,12 +78,13 @@ func (p *PolarisController) resyncWorker() {
 
 // checkHealth 健康检查
 func (p *PolarisController) checkHealth() {
-	if polarisapi.CheckHealth() {
+	healthErr := polarisapi.CheckHealth()
+	if healthErr == nil {
 		// failed -> healthy, clear service cache and start full resync
 		if !p.isPolarisServerHealthy.Load() {
 			p.isPolarisServerHealthy.Store(true)
 			p.appliedServiceCache.Clear()
-			log.Info("Polaris server health check: clear local cache and resync")
+			log.Info("Polaris server health check recovered; local cache cleared for full resync")
 		}
 
 		// 清除网络波动导致的健康检测失败记录
@@ -97,6 +98,8 @@ func (p *PolarisController) checkHealth() {
 		if p.polarisServerFailedTimes >= 3 {
 			p.isPolarisServerHealthy.Store(false)
 			p.polarisServerFailedTimes = 0
+			log.Errorf("Polaris server health check failed three consecutive times; sync is paused: %v",
+				healthErr)
 		}
 	}
 }

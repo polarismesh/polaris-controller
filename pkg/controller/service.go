@@ -201,7 +201,7 @@ func (p *PolarisController) syncService(task *Task) error {
 
 			// 同步 k8s 的 namespace 和 service 到 polaris，失败投入队列重试
 			if processError := p.processSyncNamespaceAndService(operationService); processError != nil {
-				log.SyncNamingScope().Errorf("ns/svc %s sync failed", task.Key())
+				log.SyncNamingScope().Errorf("ns/svc %s sync failed: %v", task.Key(), processError)
 				return processError
 			}
 
@@ -236,9 +236,10 @@ func (p *PolarisController) processDeleteService(service *v1.Service) (err error
 	// 通过查询北极星得到被注册的实例，直接删除，更加可靠。
 	polarisIPs := p.filterPolarisMetadata(service, instances)
 
-	log.SyncNamingScope().Infof("deRegistered [%s/%s] IPs , FilterPolarisMetadata \n %v \n %v",
-		service.GetNamespace(), service.GetName(),
-		instances, polarisIPs)
+	log.SyncNamingScope().Infof("Deregister Service %s/%s instances=%d",
+		service.GetNamespace(), service.GetName(), len(polarisIPs))
+	log.SyncNamingScope().Debug("Service instance deletion candidates",
+		zap.Any("all-instances", instances), zap.Any("controller-instances", polarisIPs))
 
 	// 平台接口
 	return p.deleteInstances(service, polarisIPs)
@@ -301,6 +302,7 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	}
 	if err := p.ensureActiveSyncState(cur); err != nil {
 		serviceMsg := fmt.Sprintf("[%s,%s]", cur.Namespace, cur.Name)
+		log.SyncNamingScope().Errorf("Failed to persist active sync state for %s: %v", serviceMsg, err)
 		p.eventRecorder.Eventf(cur, v1.EventTypeWarning, "SyncStatePersistFailed",
 			"Failed to persist sync state for %s: %v", serviceMsg, err)
 		return fmt.Errorf("persist active sync state for %s: %w", serviceMsg, err)

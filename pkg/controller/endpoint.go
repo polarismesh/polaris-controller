@@ -170,6 +170,8 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	if raw := service.Annotations[util.PolarisMetadata]; raw != "" {
 		var metadata map[string]string
 		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			log.SyncNamingScope().Errorf("Invalid %s on Service %s/%s: %v",
+				util.PolarisMetadata, service.Namespace, service.Name, err)
 			return fmt.Errorf("invalid %s on Service %s/%s: %w",
 				util.PolarisMetadata, service.Namespace, service.Name, err)
 		}
@@ -196,19 +198,26 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	specIPs, err := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
 	if err != nil {
 		// Pod 数据未完整读取时停止本轮写入，不能将缺失标签或部分地址用于增删改对账。
-		return fmt.Errorf("get endpoint addresses for Service %s/%s: %w", service.Namespace, service.Name, err)
+		err = fmt.Errorf("get endpoint addresses for Service %s/%s: %w", service.Namespace, service.Name, err)
+		log.SyncNamingScope().Error(err.Error())
+		return err
 	}
 	currentController, currentAll := address.GetAddressMapFromPolarisInstance(
 		instances, p.config.PolarisController.ClusterName)
 	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentController, currentAll)
 
-	msg := []string{
-		fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
-		fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
-		fmt.Sprintf("%s Current controller-owned polaris instance is %v", serviceMsg, currentController),
-		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+	log.SyncNamingScope().Infof(
+		"Reconcile instances %s: current=%d desired=%d managed=%d add=%d update=%d delete=%d",
+		serviceMsg, len(instances), len(specIPs), len(currentController), len(addIns), len(updateIns), len(deleteIns))
+	if log.SyncNamingScope().DebugEnabled() {
+		msg := []string{
+			fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
+			fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
+			fmt.Sprintf("%s Current controller-owned polaris instance is %v", serviceMsg, currentController),
+			fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+		}
+		log.SyncNamingScope().Debug(strings.Join(msg, "\n"))
 	}
-	log.SyncNamingScope().Info(strings.Join(msg, "\n"))
 
 	var addInsErr, deleteInsErr, updateInsErr error
 

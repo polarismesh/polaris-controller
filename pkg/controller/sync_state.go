@@ -338,23 +338,35 @@ func (s *syncStateStore) initializeLocked(ctx context.Context) error {
 			}
 			if _, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, configMap, metav1.CreateOptions{}); err != nil {
 				if !apierrors.IsAlreadyExists(err) {
+					log.SyncNamingScope().Errorf("Failed to create sync state ConfigMap %s/%s: %v",
+						s.namespace, name, err)
 					return err
 				}
 				configMap, err = s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, name, metav1.GetOptions{})
 				if err != nil {
+					log.SyncNamingScope().Errorf("Failed to read existing sync state ConfigMap %s/%s: %v",
+						s.namespace, name, err)
 					return err
 				}
+			} else {
+				log.SyncNamingScope().Infof("Created sync state ConfigMap %s/%s", s.namespace, name)
 			}
 		} else if err != nil {
+			log.SyncNamingScope().Errorf("Failed to get sync state ConfigMap %s/%s: %v",
+				s.namespace, name, err)
 			return err
 		}
 
 		shardRecords, err := decodeSyncStateRecords(configMap)
 		if err != nil {
+			log.SyncNamingScope().Errorf("Failed to decode sync state ConfigMap %s/%s: %v",
+				s.namespace, name, err)
 			return fmt.Errorf("decode sync state ConfigMap %s/%s: %w", s.namespace, name, err)
 		}
 		for key, record := range shardRecords {
 			if _, exists := s.records[key]; exists {
+				log.SyncNamingScope().Errorf("Duplicate sync state record %q in ConfigMap %s/%s",
+					key, s.namespace, name)
 				return fmt.Errorf("duplicate sync state record %q", key)
 			}
 			s.records[key] = record
@@ -365,7 +377,7 @@ func (s *syncStateStore) initializeLocked(ctx context.Context) error {
 }
 
 func (s *syncStateStore) writeRecordLocked(ctx context.Context, record serviceSyncState) error {
-	return retrySyncStateWrite(func() error {
+	err := retrySyncStateWrite(func() error {
 		configMap, err := s.getShardForWriteLocked(ctx, record.key())
 		if err != nil {
 			return err
@@ -381,10 +393,18 @@ func (s *syncStateStore) writeRecordLocked(ctx context.Context, record serviceSy
 		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, configMap, metav1.UpdateOptions{})
 		return err
 	})
+	if err != nil {
+		log.SyncNamingScope().Errorf("Failed to persist sync state %s phase=%s: %v",
+			record.key(), record.Phase, err)
+		return err
+	}
+	log.SyncNamingScope().Infof("Persisted sync state %s phase=%s attempts=%d",
+		record.key(), record.Phase, record.Attempts)
+	return nil
 }
 
 func (s *syncStateStore) deleteRecordLocked(ctx context.Context, record serviceSyncState) error {
-	return retrySyncStateWrite(func() error {
+	err := retrySyncStateWrite(func() error {
 		configMap, err := s.getShardForWriteLocked(ctx, record.key())
 		if err != nil {
 			return err
@@ -400,6 +420,12 @@ func (s *syncStateStore) deleteRecordLocked(ctx context.Context, record serviceS
 		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, configMap, metav1.UpdateOptions{})
 		return err
 	})
+	if err != nil {
+		log.SyncNamingScope().Errorf("Failed to remove sync state %s: %v", record.key(), err)
+		return err
+	}
+	log.SyncNamingScope().Infof("Removed sync state %s", record.key())
+	return nil
 }
 
 func (s *syncStateStore) getShardForWriteLocked(
@@ -430,6 +456,12 @@ func (s *syncStateStore) getShardForWriteLocked(
 	if apierrors.IsAlreadyExists(err) {
 		return s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, name, metav1.GetOptions{})
 	}
+	if err != nil {
+		log.SyncNamingScope().Errorf("Failed to create sync state shard ConfigMap %s/%s: %v",
+			s.namespace, name, err)
+		return nil, err
+	}
+	log.SyncNamingScope().Infof("Created sync state shard ConfigMap %s/%s", s.namespace, name)
 	return configMap, err
 }
 

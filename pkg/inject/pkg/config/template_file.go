@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"os"
-	"strings"
 
 	gyaml "github.com/ghodss/yaml"
 
@@ -41,57 +40,63 @@ func loadConfig(p TemplateFileConfig) (*InjectConfigInfo, error) {
 	// 读取 mesh envoy模式的配置模板
 	meshData, err := os.ReadFile(p.MeshConfigFile)
 	if err != nil {
+		log.InjectScope().Errorf("Failed to read inject mesh config file %s: %v", p.MeshConfigFile, err)
 		return nil, err
 	}
 	var meshConf TemplateConfig
 	if err := gyaml.Unmarshal(meshData, &meshConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject mesh config file %s", string(meshData))
+		log.InjectScope().Errorf("Failed to parse inject mesh config file %s: %v", p.MeshConfigFile, err)
 		return nil, err
 	}
 	log.InjectScope().Infof("[MESH] New inject configuration: sha256sum %x", sha256.Sum256(meshData))
 	log.InjectScope().Infof("[MESH] Policy: %v", meshConf.Policy)
 	log.InjectScope().Infof("[MESH] AlwaysInjectSelector: %v", meshConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[MESH] NeverInjectSelector: %v", meshConf.NeverInjectSelector)
-	log.InjectScope().Infof("[MESH] InjectedAnnotations: %v", meshConf.InjectedAnnotations)
-	log.InjectScope().Infof("[MESH] Template: |\n  %v", strings.Replace(meshConf.Template, "\n", "\n  ", -1))
+	log.InjectScope().Infof("[MESH] InjectedAnnotations: %d", len(meshConf.InjectedAnnotations))
+	log.InjectScope().Infof("[MESH] Template bytes: %d", len(meshConf.Template))
 
 	// 读取 dns 模式的配置模板
 	dnsData, err := os.ReadFile(p.DnsConfigFile)
 	if err != nil {
+		log.InjectScope().Errorf("Failed to read inject dns config file %s: %v", p.DnsConfigFile, err)
 		return nil, err
 	}
 	var dnsConf TemplateConfig
 	if err := gyaml.Unmarshal(dnsData, &dnsConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject dns config file %s", string(dnsData))
+		log.InjectScope().Errorf("Failed to parse inject dns config file %s: %v", p.DnsConfigFile, err)
 		return nil, err
 	}
 	log.InjectScope().Infof("[DNS] New inject configuration: sha256sum %x", sha256.Sum256(dnsData))
 	log.InjectScope().Infof("[DNS] Policy: %v", dnsConf.Policy)
 	log.InjectScope().Infof("[DNS] AlwaysInjectSelector: %v", dnsConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[DNS] NeverInjectSelector: %v", dnsConf.NeverInjectSelector)
-	log.InjectScope().Infof("[DNS] InjectedAnnotations: %v", dnsConf.InjectedAnnotations)
-	log.InjectScope().Infof("[DNS] Template: |\n  %v", strings.Replace(dnsConf.Template, "\n", "\n  ", -1))
+	log.InjectScope().Infof("[DNS] InjectedAnnotations: %d", len(dnsConf.InjectedAnnotations))
+	log.InjectScope().Infof("[DNS] Template bytes: %d", len(dnsConf.Template))
 
 	// 读取 javaagent 模式的配置模板
 	javaAgentData, err := os.ReadFile(p.JavaAgentConfigFile)
 	if err != nil {
+		log.InjectScope().Errorf("Failed to read inject java-agent config file %s: %v",
+			p.JavaAgentConfigFile, err)
 		return nil, err
 	}
 	var javaAgentConf TemplateConfig
 	if err := gyaml.Unmarshal(javaAgentData, &javaAgentConf); err != nil {
-		log.InjectScope().Warnf("Failed to parse inject java-agent config file %s", string(dnsData))
+		log.InjectScope().Errorf("Failed to parse inject java-agent config file %s: %v",
+			p.JavaAgentConfigFile, err)
 		return nil, err
 	}
 	log.InjectScope().Infof("[JavaAgent] New inject configuration: sha256sum %x", sha256.Sum256(javaAgentData))
 	log.InjectScope().Infof("[JavaAgent] Policy: %v", javaAgentConf.Policy)
 	log.InjectScope().Infof("[JavaAgent] AlwaysInjectSelector: %v", javaAgentConf.AlwaysInjectSelector)
 	log.InjectScope().Infof("[JavaAgent] NeverInjectSelector: %v", javaAgentConf.NeverInjectSelector)
-	log.InjectScope().Infof("[JavaAgent] InjectedAnnotations: %v", javaAgentConf.InjectedAnnotations)
-	log.InjectScope().Infof("[JavaAgent] Template: |\n  %v", strings.Replace(javaAgentConf.Template, "\n", "\n  ", -1))
+	log.InjectScope().Infof("[JavaAgent] InjectedAnnotations: %d", len(javaAgentConf.InjectedAnnotations))
+	log.InjectScope().Infof("[JavaAgent] Template bytes: %d", len(javaAgentConf.Template))
 
 	// 读取 values
 	valuesConfig, err := os.ReadFile(p.ValuesFile)
 	if err != nil {
+		log.InjectScope().Errorf("Failed to read inject values file %s: %v", p.ValuesFile, err)
 		return nil, err
 	}
 	log.InjectScope().Infof("[ValuesConfig] New inject configuration: sha256sum %x", sha256.Sum256(valuesConfig))
@@ -99,6 +104,7 @@ func loadConfig(p TemplateFileConfig) (*InjectConfigInfo, error) {
 	// 读取 inject 配置
 	meshEnvoyConfig, err := mesh.ReadMeshEnvoyConfig(p.BootstrapConfigFile)
 	if err != nil {
+		log.InjectScope().Errorf("Failed to read mesh Envoy config %s: %v", p.BootstrapConfigFile, err)
 		return nil, err
 	}
 	log.InjectScope().Infof("[MeshEnvoyConfig] New inject configuration: sha256sum %x", sha256.Sum256([]byte(

@@ -170,6 +170,32 @@ func TestDeleteInstancesDoesNotHidePerInstanceFailure(t *testing.T) {
 	}
 }
 
+func TestUpdateInstancesChecksHTTP200ResponseBody(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":401000,"info":"unauthorized"}`)
+	})
+
+	err := UpdateInstances([]Instance{{Service: "svc", Namespace: "ns", Host: "10.0.0.1", Port: util.IntPtr(80)}},
+		10, "svc")
+	if err == nil || !strings.Contains(err.Error(), "401000") {
+		t.Fatalf("HTTP 200 update failure was treated as success: %v", err)
+	}
+}
+
+func TestUpdateInstancesDoesNotHidePerInstanceFailure(t *testing.T) {
+	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":200000,"info":"success","responses":[{"code":401000,"info":"unauthorized","instance":{"host":"10.0.0.1","port":80}}]}`)
+	})
+
+	err := UpdateInstances([]Instance{{Service: "svc", Namespace: "ns", Host: "10.0.0.1", Port: util.IntPtr(80)}},
+		10, "svc")
+	if err == nil || !strings.Contains(err.Error(), "401000") {
+		t.Fatalf("per-instance update failure was treated as success: %v", err)
+	}
+}
+
 type polarisTestRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f polarisTestRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -277,6 +303,40 @@ func TestDealAddInstanceResponseTopLevel400208WithResponses(t *testing.T) {
 	}
 	if got := addInstanceRequestStatus(response); got != "Failed" {
 		t.Fatalf("status=%q want Failed", got)
+	}
+}
+
+func TestDealAddInstanceResponseRejectsUnauthorized(t *testing.T) {
+	tests := []struct {
+		name     string
+		response AddResponse
+	}{
+		{
+			name:     "top level",
+			response: AddResponse{Code: 401000, Info: "unauthorized"},
+		},
+		{
+			name: "per instance",
+			response: AddResponse{
+				Code: 200000,
+				Responses: []InstanceResponse{{
+					Code:     401000,
+					Info:     "unauthorized",
+					Instance: SimpleInstance{Host: "10.0.0.1", Port: 80},
+				}},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			polarisErrors := NewPErrors()
+			dealAddInstanceResponse(test.response, "svc", 0, 1, "request", polarisErrors)
+			err := polarisErrors.GetError()
+			if err == nil || !strings.Contains(err.Error(), "401000") {
+				t.Fatalf("unauthorized add was treated as success: %v", err)
+			}
+		})
 	}
 }
 

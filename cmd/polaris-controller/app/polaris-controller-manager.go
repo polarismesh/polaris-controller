@@ -133,11 +133,13 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 			initControllerConfig(s)
 			c, err := s.Config()
 			if err != nil {
+				log.Errorf("Failed to build controller configuration: %v", err)
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
 
 			if err := Run(c.Complete(), wait.NeverStop); err != nil {
+				log.Errorf("Controller manager stopped with error: %v", err)
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
@@ -240,9 +242,16 @@ func closeGrpcLog() {
 	var (
 		infoW    = io.Discard
 		warningW = io.Discard
-		errorW   = os.Stderr
+		errorW   = grpcErrorLogWriter{}
 	)
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(infoW, warningW, errorW))
+}
+
+type grpcErrorLogWriter struct{}
+
+func (grpcErrorLogWriter) Write(p []byte) (int, error) {
+	log.Errorf("gRPC: %s", strings.TrimSpace(string(p)))
+	return len(p), nil
 }
 
 func initPolarisSidecarInjector(c *options.CompletedConfig) error {
@@ -268,7 +277,7 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 	wh, err := inject.NewWebhook(parameters)
 	if err != nil {
-		fmt.Printf("failed to create injection webhook, %s \n", err)
+		log.InjectScope().Errorf("Failed to create injection webhook: %v", err)
 		return err
 	}
 
@@ -345,6 +354,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 			EventRecorder: c.EventRecorder,
 		})
 	if err != nil {
+		log.Errorf("Failed to create leader election lock: %v", err)
 		panic(err)
 	}
 
@@ -370,6 +380,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 func hostname() string {
 	hostname, err := os.Hostname()
 	if err != nil {
+		log.Errorf("Failed to get hostname: %v", err)
 		panic(err)
 	}
 	return hostname
@@ -454,7 +465,7 @@ func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, un
 		log.Infof("Starting %q", controllerName)
 		debugHandler, err := initFn(ctx)
 		if err != nil {
-			log.Errorf("Error starting %q", controllerName)
+			log.Errorf("Error starting %q: %v", controllerName, err)
 			return err
 		}
 
@@ -585,7 +596,10 @@ func registerController(c *options.KubeControllerManagerConfiguration, provider 
 	_, err := provider.RegisterInstance(req)
 	if err != nil {
 		log.Errorf("Sync: Failed to register controller to polaris server, %v", err)
+		return
 	}
+	log.Infof("Registered controller to polaris server: service=%s host=%s port=%d",
+		req.Service, req.Host, req.Port)
 }
 
 // deregisterController deregister controller from server
@@ -599,5 +613,8 @@ func deregisterController(c *options.KubeControllerManagerConfiguration, provide
 
 	if err := provider.Deregister(req); err != nil {
 		log.Errorf("Sync: Failed to deregister controller from polaris server, %v", err)
+		return
 	}
+	log.Infof("Deregistered controller from polaris server: service=%s host=%s port=%d",
+		req.Service, req.Host, req.Port)
 }
