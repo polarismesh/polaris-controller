@@ -328,15 +328,15 @@ func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 
 // IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
 func (p *PolarisController) IsNamespaceSyncEnable(ns *v1.Namespace) bool {
-	sync, ok := ns.Annotations[util.PolarisSync]
+	syncEnabled, ok := ns.Annotations[util.PolarisSync]
 	switch p.SyncMode() {
 	case util.SyncModeDemand:
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	default:
 		if !ok {
 			return true
 		}
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	}
 }
 
@@ -351,10 +351,10 @@ func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
 		return false
 	}
 
-	sync, ok := svc.Annotations[util.PolarisSync]
+	syncEnabled, ok := svc.Annotations[util.PolarisSync]
 	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	}
 	// enableRegister 是历史兼容的同步开关：仅在 sync 缺失时生效。
 	// 存量 Service 只设置该注解，且依赖 controller 正常注册实例。
@@ -395,10 +395,10 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 		}
 	}
 
-	sync, ok := svc.Annotations[util.PolarisSync]
+	syncEnabled, ok := svc.Annotations[util.PolarisSync]
 	// 优先看 ConfigMap 的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	}
 	ns, err := p.namespaceLister.Get(svc.GetNamespace())
 	if err != nil {

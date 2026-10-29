@@ -72,7 +72,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 	// 从这里开始拆分
 	instanceArray := splitArray(instances, size)
 
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, addInstances)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, addInstances)
 
 	var wg sync.WaitGroup
 	page := len(instanceArray)
@@ -95,7 +95,7 @@ func AddInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 
-			_, body, times, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+			_, body, times, err := polarisHttpRequest(requestID, http.MethodPost, requestURL, requestByte)
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed request %s [%d/%d], err %v. (%s)", msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
@@ -240,7 +240,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 	// 从这里开始拆分
 	instanceArray := splitArray(instances, size)
 
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, deleteInstances)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, deleteInstances)
 	// 查看并发请求过程中，是否有失败的情况，只要存在，就应该放入队列中，重新同步
 	var wg sync.WaitGroup
 	page := len(instanceArray)
@@ -265,7 +265,7 @@ func DeleteInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			var response AddResponse
-			statusCode, body, times, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+			statusCode, body, times, err := polarisHttpRequest(requestID, http.MethodPost, requestURL, requestByte)
 
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed to request %s [%d/%d], err %v. (%s)",
@@ -380,7 +380,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 
 	// 从这里开始拆分
 	instanceArray := splitArray(instances, size)
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, addInstances)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, addInstances)
 
 	var wg sync.WaitGroup
 	page := len(instanceArray)
@@ -403,7 +403,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 				return
 			}
 			log.SyncNamingScope().Debugf("Update msg body is %s", string(requestByte))
-			httpCode, body, times, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
+			httpCode, body, times, err := polarisHttpRequest(requestID, http.MethodPut, requestURL, requestByte)
 			if err != nil {
 				log.SyncNamingScope().Errorf("Failed request %s [%d/%d], err %v. requestId: %s", msg, i+1, page, err, requestID)
 				polarisErrors.Append(PError{
@@ -522,10 +522,10 @@ func GetService(service *v1.Service) (res GetServiceResponse, err error) {
 		return response, fmt.Errorf("failed service is invalid, polarisService is empty")
 	}
 
-	url := fmt.Sprintf("%s%s?namespace=%s&name=%s&offset=%d&limit=%d",
+	requestURL := fmt.Sprintf("%s%s?namespace=%s&name=%s&offset=%d&limit=%d",
 		PolarisHttpURL, getService, polarisNamespace, polarisName, 0, 100)
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, requestURL, nil)
 
 	log.SyncNamingScope().Debugf("Get service %s, body %s", serviceMsg, string(body))
 
@@ -560,10 +560,10 @@ func ListService(clusterID string) (res GetServiceResponse, err error) {
 	var response GetServiceResponse
 	requestID := uuid.New().String()
 
-	url := fmt.Sprintf("%s%s?keys=platform&values=tke&offset=%d&limit=%d",
+	requestURL := fmt.Sprintf("%s%s?keys=platform&values=tke&offset=%d&limit=%d",
 		PolarisHttpURL, getService, 0, 100)
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodGet, requestURL, nil)
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to get platform service list %v", err)
@@ -606,7 +606,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 	var response CreateServicesResponse
 	requestID := uuid.New().String()
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, createService)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, createService)
 
 	createRequest := []CreateServiceRequest{
 		{
@@ -626,7 +626,7 @@ func CreateService(service *v1.Service) (CreateServicesResponse, error) {
 
 	log.SyncNamingScope().Debugf("create service %s, body %s", serviceMsg, string(requestByte))
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, requestURL, requestByte)
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to create service %s %v", serviceMsg, err)
@@ -681,7 +681,7 @@ func CreateServiceAlias(service *v1.Service, owners string) (CreateServiceAliasR
 	}
 
 	requestID := uuid.New().String()
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, createServiceAlias)
 
 	createRequest := newServiceAliasRequest(service, owners, "", "")
 
@@ -693,7 +693,7 @@ func CreateServiceAlias(service *v1.Service, owners string) (CreateServiceAliasR
 
 	log.SyncNamingScope().Debugf("create service alias %s, body %s", serviceAliasMsg, string(requestByte))
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, requestURL, requestByte)
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to create service alias %s %v", serviceAliasMsg, err)
@@ -831,7 +831,7 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 	var response PutServicesResponse
 	requestID := uuid.New().String()
 
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, updateService)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, updateService)
 
 	requestByte, err := json.Marshal(request)
 	if err != nil {
@@ -841,7 +841,7 @@ func UpdateService(service *v1.Service, request []Service) (int, PutServicesResp
 
 	log.SyncNamingScope().Debugf("Put service %s, body %s", serviceMsg, string(requestByte))
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, url, requestByte)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPut, requestURL, requestByte)
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to get request %s %v", serviceMsg, err)
@@ -872,7 +872,7 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 
 	var response CreateNamespacesResponse
 	requestID := uuid.New().String()
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, createNamespace)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, createNamespace)
 
 	createRequest := []CreateNamespacesRequest{
 		{
@@ -889,7 +889,7 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 
 	log.SyncNamingScope().Debugf("create namespace %s, body %s", namespace, string(requestByte))
 
-	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, url, requestByte)
+	statusCode, body, _, err := polarisHttpRequest(requestID, http.MethodPost, requestURL, requestByte)
 
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to get result %s %v", namespace, err)
@@ -918,9 +918,9 @@ func CreateNamespaces(namespace string) (CreateNamespacesResponse, error) {
 // CheckHealth checks whether the polaris server is healthy.
 func CheckHealth() error {
 	requestID := uuid.New().String()
-	url := fmt.Sprintf("%s%s", PolarisHttpURL, checkHealth)
+	requestURL := fmt.Sprintf("%s%s", PolarisHttpURL, checkHealth)
 
-	statusCode, _, _, err := polarisHttpRequest(requestID, http.MethodGet, url, nil)
+	statusCode, _, _, err := polarisHttpRequest(requestID, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return fmt.Errorf("request Polaris health endpoint: %w", err)
 	}
@@ -952,10 +952,14 @@ func splitArray(instances []Instance, size int) [][]Instance {
 }
 
 // polarisHttpRequest
-func polarisHttpRequest(requestID string, method string, url string, requestByte []byte) (int, []byte, time.Duration,
-	error) {
+func polarisHttpRequest(
+	requestID string,
+	method string,
+	requestURL string,
+	requestByte []byte,
+) (int, []byte, time.Duration, error) {
 	startTime := time.Now()
-	req, err := http.NewRequest(method, url, bytes.NewReader(requestByte))
+	req, err := http.NewRequest(method, requestURL, bytes.NewReader(requestByte))
 	if err != nil {
 		return 0, nil, 0, err
 	}
@@ -989,8 +993,8 @@ func lookAccessToken() (string, error) {
 	if len(PolarisOperator) == 0 {
 		return PolarisAccessToken, nil
 	}
-	url := fmt.Sprintf("%s%s?id=%s", PolarisHttpURL, getUserToken, PolarisOperator)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	requestURL := fmt.Sprintf("%s%s?id=%s", PolarisHttpURL, getUserToken, PolarisOperator)
+	req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
 		log.Errorf("Failed to set request %v", err)
 		return "", err
