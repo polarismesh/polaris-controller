@@ -477,7 +477,26 @@ annotations:
 
 1. metadata 中的 `polarismesh.cn/customVersion`。
 2. Pod Label `version`。
-3. 空值。
+3. 两者都不存在时，controller 不管理实例顶层 Version，保留 Polaris 当前值。
+
+控制台手工修改的实例顶层 Version：
+
+- 存在上述 Kubernetes 来源时，会在下一轮对账恢复为 Kubernetes 的值。
+- 两个来源都不存在时，由用户或控制台管理，controller 不会在后续对账中覆盖。
+
+Version 生命周期：
+
+- 新增实例时，按 `customVersion`、Pod Label `version` 的优先级写入顶层 Version。
+- 修改 `customVersion` 或 Pod Label `version` 时，metadata 和顶层 Version 会随实例 Update 收敛。
+- 删除全部 Version 来源时，controller 停止管理顶层 Version，保留删除前的值；之后控制台修改的
+  值也不会被覆盖。
+- 周期对账只在 Version 来源存在时检查顶层 Version；来源不存在时不会清理控制台手工值。
+- 删除 Endpoint、Service 或关闭同步时，实例仍按 Service、host、port 删除，Version 不参与实例
+  身份和删除判断。
+
+如果需要让 Service Annotation 中的 `version` 只作为 Instance metadata，而不影响顶层 Version，
+可以继续使用 `polarismesh.cn/metadata`；它不会驱动顶层 Version。Pod Label `version` 则会同时
+写入 Instance metadata 和顶层 Version。
 
 ### Polaris Service metadata 和 Service Label
 

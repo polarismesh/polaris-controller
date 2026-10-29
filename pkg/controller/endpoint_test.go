@@ -357,6 +357,7 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 				t.Fatalf("label removal not propagated: %v", written.Metadata)
 			}
 			current.metadata = written.Metadata
+			current.version = written.Version
 			consumer.instances = []model.Instance{current}
 		}
 		if updates != 1 {

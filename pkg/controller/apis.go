@@ -92,6 +92,16 @@ func (d desiredHealthCheck) needsUpdate(instance model.Instance) bool {
 	return d.enabled && instance.GetTtl() != int64(d.ttl)
 }
 
+func resolveInstanceVersion(metadata map[string]string, podVersion string) (string, bool) {
+	if version := metadata[util.PolarisCustomVersion]; version != "" {
+		return version, true
+	}
+	if podVersion != "" {
+		return podVersion, true
+	}
+	return "", false
+}
+
 // updateService 根据 Kubernetes Service Label 的实际变化更新 Polaris Service metadata。
 func (p *PolarisController) updateService(old, cur *v1.Service) error {
 	resp, err := polarisapi.GetService(cur)
@@ -172,11 +182,7 @@ func (p *PolarisController) addInstances(service *v1.Service, healthCheck desire
 		addr := addresses[i]
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
-		version := metadata[util.PolarisCustomVersion]
-		// 如果没有读取到用户显示设置的自定义版本号，则从 addr 中读取
-		if version == "" {
-			version = addr.Version
-		}
+		version, _ := resolveInstanceVersion(metadata, addr.Version)
 
 		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
@@ -247,10 +253,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, healthCheck des
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
-		version := metadata[util.PolarisCustomVersion]
-		if version == "" {
-			version = addr.Version
-		}
+		version, _ := resolveInstanceVersion(metadata, addr.Version)
 		healthy := util.Bool(addr.Healthy)
 		tmpInstance := polarisapi.Instance{
 			Service:           service.GetName(),
@@ -353,7 +356,12 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthChe
 	desired := *spec
 	desired.PolarisInstance = cur.PolarisInstance
 	metadata := mergeMetadataWithService(service, desired, p.config.PolarisController.ClusterName)
-	return !maps.Equal(metadata, cur.PolarisInstance.GetMetadata())
+	if !maps.Equal(metadata, cur.PolarisInstance.GetMetadata()) {
+		return true
+	}
+
+	desiredVersion, managedVersion := resolveInstanceVersion(metadata, desired.Version)
+	return managedVersion && cur.PolarisInstance.GetVersion() != desiredVersion
 }
 
 // filterPolarisMetadata 过滤属于TKE注册的服务
