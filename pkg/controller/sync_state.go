@@ -35,6 +35,7 @@ import (
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/util"
+	"github.com/polarismesh/polaris-controller/pkg/util/address"
 )
 
 const (
@@ -47,6 +48,7 @@ const (
 	syncStateMaxSize    = 1024 * 1024
 	syncStateLabelKey   = "polarismesh.cn/sync-state"
 	syncStateLabelValue = "true"
+	syncStateTimeout    = 10 * time.Second
 )
 
 type serviceSyncState struct {
@@ -57,6 +59,7 @@ type serviceSyncState struct {
 	PolarisNamespace string `json:"polarisNamespace"`
 	PolarisService   string `json:"polarisService"`
 	Phase            string `json:"phase"`
+	Revision         uint64 `json:"revision,omitempty"`
 	Attempts         int    `json:"attempts,omitempty"`
 	LastError        string `json:"lastError,omitempty"`
 	UpdatedAt        string `json:"updatedAt"`
@@ -90,7 +93,10 @@ func (s serviceSyncState) service() *v1.Service {
 type syncStateStore struct {
 	client      kubernetes.Interface
 	namespace   string
+	initMu      sync.Mutex
+	refreshMu   sync.RWMutex
 	mu          sync.Mutex
+	recordLocks sync.Map
 	initialized bool
 	records     map[string]serviceSyncState
 }
@@ -125,7 +131,8 @@ func (p *PolarisController) ensureActiveSyncState(service *v1.Service) error {
 		return nil
 	}
 	record := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStateActive)
-	return p.syncStateStore.Upsert(context.Background(), record)
+	_, err := p.syncStateStore.Upsert(context.Background(), record)
+	return err
 }
 
 func (p *PolarisController) markPendingSyncState(service *v1.Service) error {
@@ -133,29 +140,21 @@ func (p *PolarisController) markPendingSyncState(service *v1.Service) error {
 		return nil
 	}
 	record := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStatePendingDelete)
-	return p.syncStateStore.Upsert(context.Background(), record)
+	_, err := p.syncStateStore.Upsert(context.Background(), record)
+	return err
 }
 
 func (p *PolarisController) deleteServiceWithState(service *v1.Service) error {
 	record := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStatePendingDelete)
 	if p.syncStateStore != nil {
-		if err := p.syncStateStore.Upsert(context.Background(), record); err != nil {
+		var err error
+		record, err = p.syncStateStore.Upsert(context.Background(), record)
+		if err != nil {
 			return fmt.Errorf("persist pending deletion for %s/%s: %w",
 				service.GetNamespace(), service.GetName(), err)
 		}
 	}
-
-	if err := p.processDeleteService(service); err != nil {
-		p.recordSyncStateFailure(record, err)
-		return err
-	}
-	if p.syncStateStore != nil {
-		if err := p.syncStateStore.Remove(context.Background(), record); err != nil {
-			return fmt.Errorf("remove sync state for %s/%s: %w",
-				service.GetNamespace(), service.GetName(), err)
-		}
-	}
-	return nil
+	return p.processPendingSyncStateRecord(record)
 }
 
 func (p *PolarisController) processPendingSyncState(task *Task) error {
@@ -169,18 +168,122 @@ func (p *PolarisController) processPendingSyncState(task *Task) error {
 	if !ok || record.Phase != syncStatePendingDelete {
 		return nil
 	}
+
+	unlock := p.lockService(record.SourceNamespace, record.SourceName)
+	defer unlock()
+
+	record, ok, err = p.syncStateStore.Get(context.Background(), task.Name)
+	if err != nil {
+		return err
+	}
+	if !ok || record.Phase != syncStatePendingDelete {
+		return nil
+	}
 	if record.ClusterName != p.config.PolarisController.ClusterName {
 		log.SyncNamingScope().Warnf("skip pending sync state %s owned by cluster %s",
 			record.key(), record.ClusterName)
 		return nil
 	}
+	return p.processPendingSyncStateRecord(record)
+}
 
-	service := record.service()
-	if err = p.processDeleteServiceWithUID(service, string(service.GetUID())); err != nil {
+func (p *PolarisController) processPendingSyncStateRecord(record serviceSyncState) error {
+	currentService, sourceActive, sameGeneration, err := p.currentServiceForSyncState(record)
+	if err != nil {
 		p.recordSyncStateFailure(record, err)
 		return err
 	}
-	return p.syncStateStore.Remove(context.Background(), record)
+	if sourceActive && sameGeneration {
+		log.SyncNamingScope().Infof(
+			"Skip pending sync state %s deletion: current Service is active with the same UID",
+			record.key())
+		return p.ensureActiveSyncState(currentService)
+	}
+
+	service := record.service()
+	instances, err := p.getAllInstance(service)
+	if err != nil {
+		p.recordSyncStateFailure(record, err)
+		return err
+	}
+	candidates := p.filterControllerInstances(instances, record.SourceUID)
+
+	if sourceActive && len(candidates) > 0 {
+		desired, desiredErr := p.desiredAddressesForService(currentService)
+		if desiredErr != nil {
+			err = fmt.Errorf("verify current desired endpoints for %s: %w", record.key(), desiredErr)
+			p.recordSyncStateFailure(record, err)
+			return err
+		}
+		var skipped int
+		candidates, skipped = filterDesiredPendingCandidates(candidates, desired)
+		if skipped > 0 {
+			log.SyncNamingScope().Infof(
+				"Skip deleting %d pending instance(s) for %s: current Service %s/%s UID=%s still owns the endpoint",
+				skipped, record.key(), currentService.GetNamespace(), currentService.GetName(), currentService.GetUID())
+			if err = p.ensureActiveSyncState(currentService); err != nil {
+				p.recordSyncStateFailure(record, err)
+				return err
+			}
+		}
+	}
+
+	if err = p.deleteInstances(service, candidates); err != nil {
+		p.recordSyncStateFailure(record, err)
+		return err
+	}
+	if p.syncStateStore == nil {
+		return nil
+	}
+	removed, err := p.syncStateStore.RemoveIfMatch(context.Background(), record)
+	if err != nil {
+		return fmt.Errorf("remove sync state for %s: %w", record.key(), err)
+	}
+	if !removed {
+		log.SyncNamingScope().Infof(
+			"Keep sync state %s: revision changed while pending deletion was running", record.key())
+	}
+	return nil
+}
+
+func (p *PolarisController) currentServiceForSyncState(
+	record serviceSyncState,
+) (*v1.Service, bool, bool, error) {
+	service, err := p.serviceLister.Services(record.SourceNamespace).Get(record.SourceName)
+	if apierrors.IsNotFound(err) {
+		return nil, false, false, nil
+	}
+	if err != nil {
+		return nil, false, false, err
+	}
+	sourceActive := service.GetDeletionTimestamp() == nil && p.IsPolarisService(service)
+	return service, sourceActive, string(service.GetUID()) == record.SourceUID, nil
+}
+
+func (p *PolarisController) desiredAddressesForService(service *v1.Service) (address.InstanceSet, error) {
+	endpoints, err := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
+	if err != nil {
+		return nil, fmt.Errorf("get current Endpoints %s/%s: %w", service.GetNamespace(), service.GetName(), err)
+	}
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	return address.GetAddressMapFromEndpoints(
+		service, endpoints, p.podLister, getCustomWeight(service, serviceMsg))
+}
+
+func filterDesiredPendingCandidates(
+	candidates []address.Address, desired address.InstanceSet,
+) ([]address.Address, int) {
+	pending := make([]address.Address, 0, len(candidates))
+	skipped := 0
+	for _, candidate := range candidates {
+		key := fmt.Sprintf("%s-%d", candidate.IP, candidate.Port)
+		if desired[key] != nil {
+			skipped++
+			continue
+		}
+		pending = append(pending, candidate)
+	}
+	return pending, skipped
 }
 
 func (p *PolarisController) enqueuePendingSyncStatesForService(namespace, name string) (int, error) {
@@ -202,67 +305,147 @@ func (p *PolarisController) recordSyncStateFailure(record serviceSyncState, fail
 	if p.syncStateStore == nil {
 		return
 	}
-	record.Attempts++
-	record.LastError = failure.Error()
-	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := p.syncStateStore.Upsert(context.Background(), record); err != nil {
+	_, changed, err := p.syncStateStore.UpdateIfMatch(context.Background(), record,
+		func(current *serviceSyncState) {
+			current.Attempts++
+			current.LastError = failure.Error()
+			current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		})
+	if err != nil {
 		log.SyncNamingScope().Errorf("failed to persist sync state error for %s: %v", record.key(), err)
+	}
+	if err == nil && !changed {
+		log.SyncNamingScope().Infof(
+			"Skip recording failure for stale sync state %s revision=%d", record.key(), record.Revision)
 	}
 }
 
-func (s *syncStateStore) Upsert(ctx context.Context, record serviceSyncState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.initializeLocked(ctx); err != nil {
-		return err
+func (s *syncStateStore) Upsert(
+	ctx context.Context, record serviceSyncState,
+) (serviceSyncState, error) {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
+		return serviceSyncState{}, err
 	}
-	if existing, ok := s.records[record.key()]; ok &&
-		existing.Phase == record.Phase &&
-		existing.PolarisNamespace == record.PolarisNamespace &&
-		existing.PolarisService == record.PolarisService &&
-		existing.LastError == record.LastError &&
-		existing.Attempts == record.Attempts {
-		return nil
+	s.refreshMu.RLock()
+	defer s.refreshMu.RUnlock()
+
+	unlock := s.lockRecord(record.key())
+	defer unlock()
+
+	existing, found := s.getLocal(record.key())
+	if found && sameSyncStateContent(existing, record) {
+		return existing, nil
 	}
-	if err := s.writeRecordLocked(ctx, record); err != nil {
-		return err
+	if found {
+		record.Revision = existing.Revision + 1
+	} else {
+		record.Revision = 1
 	}
-	s.records[record.key()] = record
-	return nil
+	if record.UpdatedAt == "" {
+		record.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if _, err := s.writeRecordIfMatchLocked(ctx, record, nil); err != nil {
+		return serviceSyncState{}, err
+	}
+	s.setLocal(record)
+	return record, nil
+}
+
+func (s *syncStateStore) UpdateIfMatch(
+	ctx context.Context, expected serviceSyncState, update func(*serviceSyncState),
+) (serviceSyncState, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
+		return serviceSyncState{}, false, err
+	}
+	s.refreshMu.RLock()
+	defer s.refreshMu.RUnlock()
+
+	unlock := s.lockRecord(expected.key())
+	defer unlock()
+
+	current, found := s.getLocal(expected.key())
+	if !found || !sameSyncStateVersion(current, expected) {
+		return current, false, nil
+	}
+	updated := current
+	update(&updated)
+	if sameSyncStateContent(current, updated) {
+		return current, false, nil
+	}
+	updated.Revision = current.Revision + 1
+	if updated.UpdatedAt == "" {
+		updated.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	changed, err := s.writeRecordIfMatchLocked(ctx, updated, &current)
+	if err != nil {
+		return serviceSyncState{}, false, err
+	}
+	if !changed {
+		return current, false, nil
+	}
+	s.setLocal(updated)
+	return updated, true, nil
 }
 
 func (s *syncStateStore) Remove(ctx context.Context, record serviceSyncState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.initializeLocked(ctx); err != nil {
-		return err
+	_, err := s.RemoveIfMatch(ctx, record)
+	return err
+}
+
+func (s *syncStateStore) RemoveIfMatch(
+	ctx context.Context, expected serviceSyncState,
+) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
+		return false, err
 	}
-	if _, ok := s.records[record.key()]; !ok {
-		return nil
+	s.refreshMu.RLock()
+	defer s.refreshMu.RUnlock()
+
+	unlock := s.lockRecord(expected.key())
+	defer unlock()
+
+	current, found := s.getLocal(expected.key())
+	if !found {
+		return false, nil
 	}
-	if err := s.deleteRecordLocked(ctx, record); err != nil {
-		return err
+	if !sameSyncStateVersion(current, expected) {
+		return false, nil
 	}
-	delete(s.records, record.key())
-	return nil
+	removed, err := s.deleteRecordIfMatchLocked(ctx, current)
+	if err != nil {
+		return false, err
+	}
+	if removed {
+		s.deleteLocal(current.key())
+	}
+	return removed, nil
 }
 
 func (s *syncStateStore) Get(ctx context.Context, key string) (serviceSyncState, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.initializeLocked(ctx); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
 		return serviceSyncState{}, false, err
 	}
-	record, ok := s.records[key]
+	record, ok := s.getLocal(key)
 	return record, ok, nil
 }
 
 func (s *syncStateStore) List(ctx context.Context) ([]serviceSyncState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.initializeLocked(ctx); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
 		return nil, err
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	records := make([]serviceSyncState, 0, len(s.records))
 	for _, record := range s.records {
 		records = append(records, record)
@@ -274,49 +457,107 @@ func (s *syncStateStore) List(ctx context.Context) ([]serviceSyncState, error) {
 }
 
 func (s *syncStateStore) Refresh(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	records, err := s.loadRecords(ctx)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.initialized = false
-	s.records = make(map[string]serviceSyncState)
-	return s.initializeLocked(ctx)
+	s.records = records
+	s.initialized = true
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *syncStateStore) MarkPendingForSource(
 	ctx context.Context, clusterName, namespace, name string,
 ) ([]serviceSyncState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.initializeLocked(ctx); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, syncStateTimeout)
+	defer cancel()
+	if err := s.ensureInitialized(ctx); err != nil {
 		return nil, err
 	}
 
-	var pending []serviceSyncState
-	for key, record := range s.records {
-		if record.ClusterName != clusterName ||
-			record.SourceNamespace != namespace || record.SourceName != name {
+	s.mu.Lock()
+	snapshot := make([]serviceSyncState, 0)
+	for _, record := range s.records {
+		if record.ClusterName == clusterName &&
+			record.SourceNamespace == namespace && record.SourceName == name {
+			snapshot = append(snapshot, record)
+		}
+	}
+	s.mu.Unlock()
+
+	pending := make([]serviceSyncState, 0, len(snapshot))
+	for _, record := range snapshot {
+		if record.Phase == syncStatePendingDelete {
+			pending = append(pending, record)
 			continue
 		}
-		if record.Phase != syncStatePendingDelete {
-			record.Phase = syncStatePendingDelete
-			record.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-			if err := s.writeRecordLocked(ctx, record); err != nil {
-				return nil, err
+		updated, changed, err := s.UpdateIfMatch(ctx, record, func(current *serviceSyncState) {
+			current.Phase = syncStatePendingDelete
+			current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		})
+		if err != nil {
+			return nil, err
+		}
+		if changed {
+			record = updated
+		} else {
+			current, found, getErr := s.Get(ctx, record.key())
+			if getErr != nil {
+				return nil, getErr
 			}
-			s.records[key] = record
+			if !found || current.Phase != syncStatePendingDelete {
+				continue
+			}
+			record = current
 		}
 		pending = append(pending, record)
 	}
 	return pending, nil
 }
 
-func (s *syncStateStore) initializeLocked(ctx context.Context) error {
-	if s.initialized {
+func (s *syncStateStore) ensureInitialized(ctx context.Context) error {
+	s.mu.Lock()
+	initialized := s.initialized
+	s.mu.Unlock()
+	if initialized {
 		return nil
 	}
-	if s.client == nil {
-		return fmt.Errorf("kubernetes client is not configured")
+
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+
+	s.mu.Lock()
+	initialized = s.initialized
+	s.mu.Unlock()
+	if initialized {
+		return nil
 	}
-	s.records = make(map[string]serviceSyncState)
+
+	records, err := s.loadRecords(ctx)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.records = records
+	s.initialized = true
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *syncStateStore) loadRecords(ctx context.Context) (map[string]serviceSyncState, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("kubernetes client is not configured")
+	}
+	records := make(map[string]serviceSyncState)
 
 	for shard := 0; shard < syncStateShardCount; shard++ {
 		name := syncStateConfigMapName(shard)
@@ -340,13 +581,13 @@ func (s *syncStateStore) initializeLocked(ctx context.Context) error {
 				if !apierrors.IsAlreadyExists(err) {
 					log.SyncNamingScope().Errorf("Failed to create sync state ConfigMap %s/%s: %v",
 						s.namespace, name, err)
-					return err
+					return nil, err
 				}
 				configMap, err = s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, name, metav1.GetOptions{})
 				if err != nil {
 					log.SyncNamingScope().Errorf("Failed to read existing sync state ConfigMap %s/%s: %v",
 						s.namespace, name, err)
-					return err
+					return nil, err
 				}
 			} else {
 				log.SyncNamingScope().Infof("Created sync state ConfigMap %s/%s", s.namespace, name)
@@ -354,30 +595,33 @@ func (s *syncStateStore) initializeLocked(ctx context.Context) error {
 		} else if err != nil {
 			log.SyncNamingScope().Errorf("Failed to get sync state ConfigMap %s/%s: %v",
 				s.namespace, name, err)
-			return err
+			return nil, err
 		}
 
 		shardRecords, err := decodeSyncStateRecords(configMap)
 		if err != nil {
 			log.SyncNamingScope().Errorf("Failed to decode sync state ConfigMap %s/%s: %v",
 				s.namespace, name, err)
-			return fmt.Errorf("decode sync state ConfigMap %s/%s: %w", s.namespace, name, err)
+			return nil, fmt.Errorf("decode sync state ConfigMap %s/%s: %w", s.namespace, name, err)
 		}
 		for key, record := range shardRecords {
-			if _, exists := s.records[key]; exists {
+			if _, exists := records[key]; exists {
 				log.SyncNamingScope().Errorf("Duplicate sync state record %q in ConfigMap %s/%s",
 					key, s.namespace, name)
-				return fmt.Errorf("duplicate sync state record %q", key)
+				return nil, fmt.Errorf("duplicate sync state record %q", key)
 			}
-			s.records[key] = record
+			records[key] = record
 		}
 	}
-	s.initialized = true
-	return nil
+	return records, nil
 }
 
-func (s *syncStateStore) writeRecordLocked(ctx context.Context, record serviceSyncState) error {
+func (s *syncStateStore) writeRecordIfMatchLocked(
+	ctx context.Context, record serviceSyncState, expected *serviceSyncState,
+) (bool, error) {
+	written := false
 	err := retrySyncStateWrite(func() error {
+		written = false
 		configMap, err := s.getShardForWriteLocked(ctx, record.key())
 		if err != nil {
 			return err
@@ -385,26 +629,40 @@ func (s *syncStateStore) writeRecordLocked(ctx context.Context, record serviceSy
 		records, err := decodeSyncStateRecords(configMap)
 		if err != nil {
 			return err
+		}
+		if expected != nil {
+			current, exists := records[record.key()]
+			if !exists || !sameSyncStateVersion(current, *expected) {
+				return nil
+			}
 		}
 		records[record.key()] = record
 		if err = encodeSyncStateRecords(configMap, records); err != nil {
 			return err
 		}
 		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, configMap, metav1.UpdateOptions{})
+		written = err == nil
 		return err
 	})
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to persist sync state %s phase=%s: %v",
 			record.key(), record.Phase, err)
-		return err
+		return false, err
 	}
-	log.SyncNamingScope().Infof("Persisted sync state %s phase=%s attempts=%d",
-		record.key(), record.Phase, record.Attempts)
-	return nil
+	if !written {
+		return false, nil
+	}
+	log.SyncNamingScope().Infof("Persisted sync state %s phase=%s revision=%d attempts=%d",
+		record.key(), record.Phase, record.Revision, record.Attempts)
+	return true, nil
 }
 
-func (s *syncStateStore) deleteRecordLocked(ctx context.Context, record serviceSyncState) error {
+func (s *syncStateStore) deleteRecordIfMatchLocked(
+	ctx context.Context, record serviceSyncState,
+) (bool, error) {
+	removed := false
 	err := retrySyncStateWrite(func() error {
+		removed = false
 		configMap, err := s.getShardForWriteLocked(ctx, record.key())
 		if err != nil {
 			return err
@@ -413,19 +671,73 @@ func (s *syncStateStore) deleteRecordLocked(ctx context.Context, record serviceS
 		if err != nil {
 			return err
 		}
+		current, exists := records[record.key()]
+		if !exists {
+			removed = true
+			return nil
+		}
+		if !sameSyncStateVersion(current, record) {
+			return nil
+		}
 		delete(records, record.key())
 		if err = encodeSyncStateRecords(configMap, records); err != nil {
 			return err
 		}
 		_, err = s.client.CoreV1().ConfigMaps(s.namespace).Update(ctx, configMap, metav1.UpdateOptions{})
+		removed = err == nil
 		return err
 	})
 	if err != nil {
 		log.SyncNamingScope().Errorf("Failed to remove sync state %s: %v", record.key(), err)
-		return err
+		return false, err
 	}
-	log.SyncNamingScope().Infof("Removed sync state %s", record.key())
-	return nil
+	if !removed {
+		return false, nil
+	}
+	log.SyncNamingScope().Infof("Removed sync state %s revision=%d", record.key(), record.Revision)
+	return true, nil
+}
+
+func (s *syncStateStore) getLocal(key string) (serviceSyncState, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.records[key]
+	return record, ok
+}
+
+func (s *syncStateStore) setLocal(record serviceSyncState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records[record.key()] = record
+}
+
+func (s *syncStateStore) deleteLocal(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.records, key)
+}
+
+func (s *syncStateStore) lockRecord(key string) func() {
+	value, _ := s.recordLocks.LoadOrStore(key, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	return lock.Unlock
+}
+
+func sameSyncStateVersion(current, expected serviceSyncState) bool {
+	return current.Revision == expected.Revision && sameSyncStateContent(current, expected)
+}
+
+func sameSyncStateContent(current, expected serviceSyncState) bool {
+	return current.ClusterName == expected.ClusterName &&
+		current.SourceNamespace == expected.SourceNamespace &&
+		current.SourceName == expected.SourceName &&
+		current.SourceUID == expected.SourceUID &&
+		current.PolarisNamespace == expected.PolarisNamespace &&
+		current.PolarisService == expected.PolarisService &&
+		current.Phase == expected.Phase &&
+		current.Attempts == expected.Attempts &&
+		current.LastError == expected.LastError
 }
 
 func (s *syncStateStore) getShardForWriteLocked(
@@ -557,10 +869,21 @@ func (p *PolarisController) recoverSyncStates(ctx context.Context) error {
 
 		if record.Phase != syncStatePendingDelete {
 			log.SyncNamingScope().Warnf("mark persisted sync state %s pending deletion", record.key())
-			record.Phase = syncStatePendingDelete
-			record.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-			if err = p.syncStateStore.Upsert(ctx, record); err != nil {
-				return err
+			updated, changed, updateErr := p.syncStateStore.UpdateIfMatch(ctx, record,
+				func(current *serviceSyncState) {
+					current.Phase = syncStatePendingDelete
+					current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+				})
+			if updateErr != nil {
+				return updateErr
+			}
+			if changed {
+				record = updated
+			}
+			if !changed {
+				log.SyncNamingScope().Infof(
+					"skip enqueue for sync state %s whose revision changed during recovery", record.key())
+				continue
 			}
 		}
 		log.SyncNamingScope().Infof("enqueue persisted pending deletion %s", record.key())

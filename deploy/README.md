@@ -48,12 +48,12 @@ The script also removes the sync-state ConfigMaps created by the controller in `
 ClusterRole/ClusterRoleBinding left behind by an interrupted uninstall.
 ```shell
 cd deploy
-$ sh uninstall_helm.sh polaris-controller
+$ ./uninstall_helm.sh polaris-controller
 ```
 
 The script looks up the release in the current kubeconfig context. Pass the release namespace as the second argument if the chart was installed with `--namespace`:
 ```shell
-$ sh uninstall_helm.sh polaris-controller ${release_namespace}
+$ ./uninstall_helm.sh polaris-controller ${release_namespace}
 ```
 
 The controller namespace defaults to `polaris-system` and can be overridden with the `CONTROLLER_NAMESPACE` environment variable.

@@ -433,7 +433,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 				})
 				return
 			}
-			if httpCode != http.StatusOK && response.Code == 200000 {
+			if httpCode != http.StatusOK && (response.Code == 200000 || response.Code == 200002) {
 				log.SyncNamingScope().Errorf(
 					"Failed update %s [%d/%d], unexpected HTTP status=%d. requestId: %s",
 					msg, i+1, page, httpCode, requestID)
@@ -453,7 +453,7 @@ func UpdateInstances(instances []Instance, size int, msg string) (err error) {
 func dealUpdateInstanceResponse(response AddResponse, msg string, i int, page int, polarisErrors *PErrors) {
 	if len(response.Responses) != 0 {
 		failed := false
-		if response.Code != 200000 {
+		if response.Code != 200000 && response.Code != 200002 {
 			log.SyncNamingScope().Errorf("Failed update %s top-level [%d/%d], code=%d, info %s.",
 				msg, i+1, page, response.Code, response.Info)
 			failed = true
@@ -489,7 +489,7 @@ func dealUpdateInstanceResponse(response AddResponse, msg string, i int, page in
 		return
 	}
 
-	if response.Code == 200000 {
+	if response.Code == 200000 || response.Code == 200002 {
 		log.SyncNamingScope().Infof("Success update all %s [%d/%d], info %s.", msg, i+1, page, response.Info)
 		return
 	}

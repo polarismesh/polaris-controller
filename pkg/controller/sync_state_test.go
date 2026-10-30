@@ -20,14 +20,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/polarismesh/polaris-go/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
@@ -186,6 +193,125 @@ func TestProcessPendingSyncStateDeletesAndRemovesRecord(t *testing.T) {
 	}
 }
 
+func TestProcessPendingSyncStateSkipsEndpointOwnedByRecreatedService(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	oldService := testService()
+	oldService.UID = types.UID("uid-old")
+	if err := p.markPendingSyncState(oldService); err != nil {
+		t.Fatal(err)
+	}
+
+	currentService := oldService.DeepCopy()
+	currentService.UID = types.UID("uid-new")
+	storeObject(t, stores.services, currentService)
+	addTestEndpoint(t, stores, "10.0.0.1")
+
+	oldInstance := ownedInstance("10.0.0.1")
+	oldInstance.metadata[util.K8sServiceUID] = "uid-old"
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{oldInstance}
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/naming/v1/instances/delete" {
+			return nil, errors.New("pending cleanup deleted an endpoint owned by the new Service UID")
+		}
+		if request.Method == http.MethodPut && request.URL.Path == "/naming/v1/instances" {
+			var instances []polarisapi.Instance
+			if err := json.NewDecoder(request.Body).Decode(&instances); err != nil {
+				return nil, err
+			}
+			if len(instances) == 1 {
+				updated := ownedInstance(instances[0].Host)
+				updated.metadata = instances[0].Metadata
+				consumer.instances = []model.Instance{updated}
+			}
+		}
+		return successResponse(), nil
+	}
+
+	task := newServiceSyncState(oldService, "test", syncStatePendingDelete).sourceTask()
+	if err := p.processPendingSyncState(task); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != 0 {
+		t.Fatalf("pending cleanup deleted an endpoint owned by the new Service UID: %+v", tr.requests)
+	}
+	if _, found, err := p.syncStateStore.Get(context.Background(), "test|uid-old"); err != nil || found {
+		t.Fatalf("stale pending state found=%v error=%v", found, err)
+	}
+	newRecord, found, err := p.syncStateStore.Get(context.Background(), "test|uid-new")
+	if err != nil || !found || newRecord.Phase != syncStateActive {
+		t.Fatalf("new Service state=%+v found=%v error=%v", newRecord, found, err)
+	}
+	if err := p.syncService(&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}); err != nil {
+		t.Fatal(err)
+	}
+	if len(consumer.instances) != 1 ||
+		consumer.instances[0].GetMetadata()[util.K8sServiceUID] != "uid-new" {
+		t.Fatalf("new Service did not take over the endpoint: %+v", consumer.instances)
+	}
+}
+
+func TestProcessPendingSyncStateReactivatesCurrentService(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.UID = types.UID("uid-reenabled")
+	storeObject(t, stores.services, service)
+	if err := p.markPendingSyncState(service); err != nil {
+		t.Fatal(err)
+	}
+
+	instance := ownedInstance("10.0.0.1")
+	instance.metadata[util.K8sServiceUID] = string(service.UID)
+	p.consumer.(*testConsumer).instances = []model.Instance{instance}
+
+	task := newServiceSyncState(service, "test", syncStatePendingDelete).sourceTask()
+	if err := p.processPendingSyncState(task); err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.requests) != 0 {
+		t.Fatalf("reactivated Service was deleted: %+v", tr.requests)
+	}
+	record, found, err := p.syncStateStore.Get(context.Background(), "test|uid-reenabled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || record.Phase != syncStateActive {
+		t.Fatalf("record=%+v found=%v", record, found)
+	}
+}
+
+func TestRemoveSyncStateIfMatchKeepsReactivatedRecord(t *testing.T) {
+	p, _ := newTestController(t)
+	service := testService()
+	service.UID = types.UID("uid-cas")
+	if err := p.markPendingSyncState(service); err != nil {
+		t.Fatal(err)
+	}
+	pending, found, err := p.syncStateStore.Get(context.Background(), "test|uid-cas")
+	if err != nil || !found {
+		t.Fatalf("pending record found=%v error=%v", found, err)
+	}
+	if err = p.ensureActiveSyncState(service); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := p.syncStateStore.RemoveIfMatch(context.Background(), pending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("stale pending record removed the reactivated state")
+	}
+	record, found, err := p.syncStateStore.Get(context.Background(), "test|uid-cas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || record.Phase != syncStateActive {
+		t.Fatalf("record=%+v found=%v", record, found)
+	}
+}
+
 func TestProcessPendingSyncStateRetainsRecordOnFailure(t *testing.T) {
 	p, _ := newTestController(t)
 	service := testService()
@@ -205,6 +331,148 @@ func TestProcessPendingSyncStateRetainsRecordOnFailure(t *testing.T) {
 	}
 	if !found || record.Phase != syncStatePendingDelete || record.Attempts != 1 {
 		t.Fatalf("pending record was not retained: %+v, found=%v", record, found)
+	}
+}
+
+type blockingStateTransport struct {
+	started chan bool
+	release chan struct{}
+	once    sync.Once
+}
+
+func (tr *blockingStateTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	tr.once.Do(func() {
+		_, hasDeadline := request.Context().Deadline()
+		tr.started <- hasDeadline
+		<-tr.release
+	})
+	body := `{"apiVersion":"v1","kind":"ConfigMap",` +
+		`"metadata":{"name":"polaris-controller-sync-state-00","namespace":"polaris-system","resourceVersion":"1"},` +
+		`"data":{"records":"{}"}}`
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    request,
+	}, nil
+}
+
+func TestSyncStateNetworkRequestDoesNotBlockUnrelatedService(t *testing.T) {
+	p, _ := newTestController(t)
+	transport := &blockingStateTransport{
+		started: make(chan bool, 1),
+		release: make(chan struct{}),
+	}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(transport.release) }) }
+	t.Cleanup(unblock)
+	client, err := kubernetes.NewForConfigAndClient(
+		&rest.Config{Host: "http://sync-state.invalid"}, &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.syncStateStore.client = client
+	p.syncStateStore.initialized = true
+	p.syncStateStore.records = make(map[string]serviceSyncState)
+
+	service := testService()
+	service.UID = types.UID("uid-network")
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- p.ensureActiveSyncState(service)
+	}()
+
+	var hasDeadline bool
+	select {
+	case hasDeadline = <-transport.started:
+	case <-time.After(time.Second):
+		unblock()
+		<-writeDone
+		t.Fatal("state write did not reach the Kubernetes request")
+	}
+
+	readDone := make(chan error, 1)
+	go func() {
+		_, _, readErr := p.syncStateStore.Get(context.Background(), "test|uid-unrelated")
+		readDone <- readErr
+	}()
+	select {
+	case err = <-readDone:
+		if err != nil {
+			unblock()
+			<-writeDone
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		unblock()
+		<-writeDone
+		t.Fatal("unrelated Service state lookup blocked on another record's network request")
+	}
+
+	unblock()
+	if err = <-writeDone; err != nil {
+		t.Fatal(err)
+	}
+	if !hasDeadline {
+		t.Fatal("sync state request did not carry a deadline")
+	}
+}
+
+func TestSyncStateGetDoesNotBlockOnRefresh(t *testing.T) {
+	p, _ := newTestController(t)
+	service := testService()
+	service.UID = types.UID("uid-refresh")
+	if err := p.markPendingSyncState(service); err != nil {
+		t.Fatal(err)
+	}
+
+	transport := &blockingStateTransport{
+		started: make(chan bool, 1),
+		release: make(chan struct{}),
+	}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(transport.release) }) }
+	t.Cleanup(unblock)
+	client, err := kubernetes.NewForConfigAndClient(
+		&rest.Config{Host: "http://sync-state-refresh.invalid"}, &http.Client{Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.syncStateStore.client = client
+
+	refreshDone := make(chan error, 1)
+	go func() {
+		refreshDone <- p.syncStateStore.Refresh(context.Background())
+	}()
+	select {
+	case <-transport.started:
+	case <-time.After(time.Second):
+		unblock()
+		<-refreshDone
+		t.Fatal("refresh did not reach the Kubernetes request")
+	}
+
+	getDone := make(chan error, 1)
+	go func() {
+		_, _, getErr := p.syncStateStore.Get(context.Background(), "test|uid-refresh")
+		getDone <- getErr
+	}()
+	select {
+	case err = <-getDone:
+		if err != nil {
+			unblock()
+			<-refreshDone
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		unblock()
+		<-refreshDone
+		t.Fatal("state lookup blocked behind a network-bound refresh")
+	}
+
+	unblock()
+	if err = <-refreshDone; err != nil {
+		t.Fatal(err)
 	}
 }
 

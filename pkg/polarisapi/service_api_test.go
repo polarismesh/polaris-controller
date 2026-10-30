@@ -340,6 +340,88 @@ func TestDealAddInstanceResponseRejectsUnauthorized(t *testing.T) {
 	}
 }
 
+func TestDealUpdateInstanceResponseAcceptsNoNeedUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		response AddResponse
+	}{
+		{
+			name: "top level without responses",
+			response: AddResponse{
+				Code: NoNeedUpdate,
+				Info: "no need update",
+			},
+		},
+		{
+			name: "top level and child",
+			response: AddResponse{
+				Code: NoNeedUpdate,
+				Info: "no need update",
+				Responses: []InstanceResponse{{
+					Code:     NoNeedUpdate,
+					Info:     "no need update",
+					Instance: SimpleInstance{Host: "10.0.0.1", Port: 80},
+				}},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			polarisErrors := NewPErrors()
+			dealUpdateInstanceResponse(test.response, "svc", 0, 1, polarisErrors)
+			if err := polarisErrors.GetError(); err != nil {
+				t.Fatalf("NoNeedUpdate was returned as a failure: %v", err)
+			}
+		})
+	}
+}
+
+func TestDealUpdateInstanceResponseNoNeedUpdateDoesNotHideFailure(t *testing.T) {
+	polarisErrors := NewPErrors()
+	response := AddResponse{
+		Code: NoNeedUpdate,
+		Responses: []InstanceResponse{
+			{Code: NoNeedUpdate, Instance: SimpleInstance{Host: "10.0.0.1", Port: 80}},
+			{
+				Code:     500001,
+				Info:     "real failure",
+				Instance: SimpleInstance{Host: "10.0.0.2", Port: 80},
+			},
+		},
+	}
+
+	dealUpdateInstanceResponse(response, "svc", 0, 1, polarisErrors)
+	err := polarisErrors.GetError()
+	if err == nil || !strings.Contains(err.Error(), `"code":500001`) {
+		t.Fatalf("real child failure was not preserved: %v", err)
+	}
+}
+
+func TestUpdateInstancesAcceptsTopLevelNoNeedUpdate(t *testing.T) {
+	newPolarisTestClient(t, func(*http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusOK,
+			`{"code":200002,"info":"no need update","responses":[`+
+				`{"code":200002,"info":"no need update","instance":{"host":"10.0.0.1","port":80}}]}`)
+	})
+	if err := UpdateInstances(
+		[]Instance{{Host: "10.0.0.1", Port: util.IntPtr(80)}}, 100, "review"); err != nil {
+		t.Fatalf("successful unchanged batch was returned as a failure: %v", err)
+	}
+}
+
+func TestUpdateInstancesRejectsNoNeedUpdateWithHTTPError(t *testing.T) {
+	newPolarisTestClient(t, func(*http.Request) (*http.Response, error) {
+		return aliasAPIResponse(http.StatusInternalServerError,
+			`{"code":200002,"info":"unexpected response","responses":[]}`)
+	})
+	err := UpdateInstances(
+		[]Instance{{Host: "10.0.0.1", Port: util.IntPtr(80)}}, 100, "review")
+	if err == nil {
+		t.Fatal("HTTP 500 with NoNeedUpdate body was accepted")
+	}
+}
+
 func simpleCodeName(code uint32) string {
 	switch code {
 	case 200000:

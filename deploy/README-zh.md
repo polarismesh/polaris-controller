@@ -48,12 +48,12 @@ helm upgrade -i polaris-controller .
 以及异常中断卸载后残留的 ClusterRole/ClusterRoleBinding。
 ```shell
 cd deploy
-$ sh uninstall_helm.sh polaris-controller
+$ ./uninstall_helm.sh polaris-controller
 ```
 
 脚本默认在当前 kubeconfig 上下文中查找 release；如果安装时使用了 `--namespace`，把该命名空间作为第二个参数传入：
 ```shell
-$ sh uninstall_helm.sh polaris-controller ${release_namespace}
+$ ./uninstall_helm.sh polaris-controller ${release_namespace}
 ```
 
 controller 所在命名空间默认为 `polaris-system`，可通过 `CONTROLLER_NAMESPACE` 环境变量覆盖。

@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
@@ -449,6 +450,28 @@ func TestReconcileServiceAliasIgnoresRemovedAnnotations(t *testing.T) {
 	}
 	if _, ok := state.aliases[aliasTestKey("Production", "order")]; !ok {
 		t.Fatal("alias was deleted")
+	}
+}
+
+func TestReconcileServiceAliasOwnershipConflictIsDeduplicated(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	state := newAliasAPITestState()
+	state.aliases[aliasTestKey("Production", "order")] = polarisapi.Alias{
+		Service: "manual-service", Namespace: "manual", Alias: "order",
+		AliasNamespace: "Production", Owners: "manual-owner",
+	}
+	tr.respond = state.responder
+
+	service := aliasTestService("order", "uid-claim", time.Unix(100, 0))
+	storeObject(t, stores.services, service)
+	for round := 0; round < 2; round++ {
+		if err := p.reconcileServiceAlias(service); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if events := len(p.eventRecorder.(*record.FakeRecorder).Events); events != 1 {
+		t.Fatalf("unchanged alias ownership conflict emitted %d events, want 1", events)
 	}
 }
 

@@ -78,7 +78,6 @@ func (p *PolarisController) reconcileServiceAlias(service *v1.Service) error {
 		p.reportAliasWaiting(service, key, winner, claims)
 		return nil
 	}
-	p.clearAliasClaimState(service, key)
 
 	actual, found, err := polarisapi.GetServiceAlias(key.Namespace, key.Service)
 	if err != nil {
@@ -88,10 +87,15 @@ func (p *PolarisController) reconcileServiceAlias(service *v1.Service) error {
 		if _, err = polarisapi.CreateServiceAlias(service, p.aliasOwner(service)); err != nil {
 			return fmt.Errorf("create alias %s: %w", key.String(), err)
 		}
-		return p.verifyServiceAlias(service, key)
+		if err = p.verifyServiceAlias(service, key); err != nil {
+			return err
+		}
+		p.clearAliasClaimState(service, key)
+		return nil
 	}
 
 	if actual.Service == service.GetName() && actual.Namespace == service.GetNamespace() {
+		p.clearAliasClaimState(service, key)
 		return nil
 	}
 	if !p.canUpdateAlias(service, actual) {
@@ -102,7 +106,11 @@ func (p *PolarisController) reconcileServiceAlias(service *v1.Service) error {
 	if _, err = polarisapi.UpdateServiceAlias(service, actual, p.aliasOwner(service)); err != nil {
 		return fmt.Errorf("update alias %s: %w", key.String(), err)
 	}
-	return p.verifyServiceAlias(service, key)
+	if err = p.verifyServiceAlias(service, key); err != nil {
+		return err
+	}
+	p.clearAliasClaimState(service, key)
+	return nil
 }
 
 func (p *PolarisController) aliasOwner(service *v1.Service) string {

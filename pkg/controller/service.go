@@ -18,6 +18,8 @@ package controller
 import (
 	stderrors "errors"
 	"fmt"
+	"maps"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -137,6 +139,12 @@ func (p *PolarisController) enqueueService(task *Task, service *v1.Service, even
 }
 
 func (p *PolarisController) syncService(task *Task) error {
+	unlock := p.lockService(task.Namespace, task.Name)
+	defer unlock()
+	return p.syncServiceLocked(task)
+}
+
+func (p *PolarisController) syncServiceLocked(task *Task) error {
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("finished syncing service %q. (%v)", task.String(), time.Since(startTime))
@@ -326,6 +334,8 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	metadataErr := p.updateService(old, cur)
 	if metadataErr != nil {
 		log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(metadataErr))
+	} else {
+		p.recordAppliedServiceLabels(old, cur)
 	}
 
 	changeType := p.CompareServiceChange(old, cur)
@@ -349,4 +359,23 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 		instanceErr = p.processSyncInstance(cur)
 	}
 	return stderrors.Join(aliasErr, metadataErr, instanceErr)
+}
+
+func (p *PolarisController) recordAppliedServiceLabels(old, cur *v1.Service) {
+	applied := old.DeepCopy()
+	applied.Labels = maps.Clone(cur.GetLabels())
+	key := (&Task{
+		Namespace:  cur.GetNamespace(),
+		Name:       cur.GetName(),
+		ObjectType: KubernetesService,
+	}).Key()
+	p.appliedServiceCache.Store(key, applied)
+}
+
+func (p *PolarisController) lockService(namespace, name string) func() {
+	key := namespace + "/" + name
+	value, _ := p.serviceLocks.LoadOrStore(key, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	return lock.Unlock
 }

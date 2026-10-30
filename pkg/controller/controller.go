@@ -87,6 +87,8 @@ type PolarisController struct {
 	aliasLocks sync.Map
 	// aliasClaimStates deduplicates repeated waiting/conflict events.
 	aliasClaimStates sync.Map
+	// serviceLocks serializes Service reconciliation and generation cleanup.
+	serviceLocks sync.Map
 
 	syncStateStore *syncStateStore
 

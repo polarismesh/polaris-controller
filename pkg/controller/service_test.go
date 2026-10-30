@@ -17,6 +17,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/polarismesh/polaris-go/pkg/model"
 	"k8s.io/client-go/util/workqueue"
 
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
@@ -175,6 +177,61 @@ func TestServiceUpdateFailureKeepsAppliedCache(t *testing.T) {
 	applied, found := p.appliedServiceCache.Load(task.Key())
 	if !found || applied.Annotations[util.PolarisMetadata] != old.Annotations[util.PolarisMetadata] {
 		t.Fatal("failed update advanced applied cache")
+	}
+}
+
+func TestServiceLabelRollbackAfterPartialSuccessConverges(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	old := testService()
+	old.UID = "uid-label"
+	old.Labels = map[string]string{"env": "v1"}
+	current := old.DeepCopy()
+	current.Labels = map[string]string{"env": "v2"}
+	storeObject(t, stores.services, current)
+	addTestEndpoint(t, stores, "10.0.0.1")
+
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	p.appliedServiceCache.Store(task.Key(), old.DeepCopy())
+	p.consumer.(*testConsumer).err = errors.New("discovery unavailable after Service write")
+
+	remoteMetadata := map[string]string{"env": "v1", "manual": "keep"}
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/naming/v1/services":
+			return serviceMetadataResponse(t, remoteMetadata), nil
+		case request.Method == http.MethodPut && request.URL.Path == "/naming/v1/services":
+			var services []polarisapi.Service
+			if err := json.NewDecoder(request.Body).Decode(&services); err != nil {
+				return nil, err
+			}
+			if len(services) == 1 {
+				remoteMetadata = services[0].Metadata
+			}
+		}
+		return successResponse(), nil
+	}
+
+	if err := p.syncService(task); err == nil {
+		t.Fatal("expected instance sync failure after Service metadata write")
+	}
+	applied, found := p.appliedServiceCache.Load(task.Key())
+	if !found || applied.Labels["env"] != "v2" {
+		t.Fatalf("successful Service metadata write was not recorded: %+v found=%v", applied, found)
+	}
+
+	rolledBack := current.DeepCopy()
+	rolledBack.Labels = map[string]string{"env": "v1"}
+	if err := stores.services.Update(rolledBack); err != nil {
+		t.Fatal(err)
+	}
+	p.consumer.(*testConsumer).err = nil
+	p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	if remoteMetadata["env"] != "v1" {
+		t.Fatalf("Kubernetes Label rollback did not converge: %v", remoteMetadata)
 	}
 }
 
