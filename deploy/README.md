@@ -45,7 +45,9 @@ helm upgrade -i polaris-controller .
 ### uninstall
 Use `uninstall_helm.sh` to remove the release, replacing `${release_name}` with the release name you need.
 The script also removes the sync-state ConfigMaps created by the controller in `polaris-system` and any
-ClusterRole/ClusterRoleBinding left behind by an interrupted uninstall.
+ClusterRole/ClusterRoleBinding left behind by an interrupted uninstall, after verifying the release name,
+namespace, and controller ownership. Install `jq` alongside Helm and kubectl before running the script.
+If the release cannot be confirmed or Helm uninstall fails, the script exits without performing cleanup.
 ```shell
 cd deploy
 $ ./uninstall_helm.sh polaris-controller

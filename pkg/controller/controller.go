@@ -89,6 +89,9 @@ type PolarisController struct {
 	aliasClaimStates sync.Map
 	// serviceLocks serializes Service reconciliation and generation cleanup.
 	serviceLocks sync.Map
+	// serviceRecoveryApplied records which health-recovery generation checked each Service.
+	serviceRecoveryApplied    sync.Map
+	serviceRecoveryGeneration atomic.Uint64
 
 	syncStateStore *syncStateStore
 

@@ -17,6 +17,7 @@ package controller
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -167,6 +168,70 @@ type testTransport struct {
 	sync.Mutex
 	requests []capturedRequest
 	respond  func(*http.Request) (*http.Response, error)
+}
+
+func mockPolarisInstances(tr *testTransport, consumer *testConsumer) {
+	handler := tr.respond
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		if request.Method == http.MethodGet && request.URL.Path == "/naming/v1/instances" {
+			if consumer.err != nil {
+				return nil, consumer.err
+			}
+			instances := make([]polarisapi.Instance, 0, len(consumer.instances))
+			for _, instance := range consumer.instances {
+				instances = append(instances, polarisapi.Instance{
+					Namespace: request.URL.Query().Get("namespace"), Service: request.URL.Query().Get("service"),
+					Host: instance.GetHost(), Port: util.IntPtr(int(instance.GetPort())), Metadata: instance.GetMetadata(),
+				})
+			}
+			return instanceQueryResponse(instances), nil
+		}
+		response, err := successResponse(), error(nil)
+		if handler != nil {
+			response, err = handler(request)
+		}
+		if err == nil && response.StatusCode == http.StatusOK && request.URL.Path == "/naming/v1/instances/delete" {
+			var payload []polarisapi.Instance
+			if err = json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				return nil, err
+			}
+			remaining := make([]model.Instance, 0, len(consumer.instances))
+			for _, instance := range consumer.instances {
+				deleted := false
+				for _, candidate := range payload {
+					if candidate.Host == instance.GetHost() && candidate.Port != nil &&
+						uint32(*candidate.Port) == instance.GetPort() {
+						deleted = true
+					}
+				}
+				if !deleted {
+					remaining = append(remaining, instance)
+				}
+			}
+			consumer.instances = remaining
+		}
+		return response, err
+	}
+}
+
+func instanceQueryResponse(instances []polarisapi.Instance) *http.Response {
+	amount := uint32(len(instances))
+	body, _ := json.Marshal(polarisapi.GetInstancesResponse{
+		Code: polarisapi.ExecuteSuccess, Amount: &amount, Size: &amount, Instances: instances,
+	})
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body))}
+}
+
+func (tr *testTransport) writes() []capturedRequest {
+	tr.Lock()
+	defer tr.Unlock()
+	var writes []capturedRequest
+	for _, request := range tr.requests {
+		if request.method != http.MethodGet {
+			writes = append(writes, request)
+		}
+	}
+	return writes
 }
 
 func (tr *testTransport) RoundTrip(r *http.Request) (*http.Response, error) {

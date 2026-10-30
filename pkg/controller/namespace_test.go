@@ -167,6 +167,7 @@ func TestNamespaceConfigMapTaskDoesNotMutateInformer(t *testing.T) {
 func TestNamespaceDisableDeletesInheritedInstances(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)
+	mockPolarisInstances(tr, p.consumer.(*testConsumer))
 	ns := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "ns", Annotations: map[string]string{util.PolarisSync: "true"}}}
 	svc := testService()
 	svc.Annotations = nil
@@ -186,7 +187,8 @@ func TestNamespaceDisableDeletesInheritedInstances(t *testing.T) {
 		t.Fatalf("expected inherited Service delete task, got %d", p.queue.Len())
 	}
 	p.handleTask(p.process)
-	last := tr.requests[len(tr.requests)-1]
+	writes := tr.writes()
+	last := writes[len(writes)-1]
 	if last.path != "/naming/v1/instances/delete" {
 		t.Fatalf("Namespace disable did not delete instances: %+v", last)
 	}

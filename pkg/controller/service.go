@@ -176,6 +176,7 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 			return processError
 		}
 		p.appliedServiceCache.Delete(task.Key())
+		p.serviceRecoveryApplied.Delete(task.Key())
 	case err != nil:
 		log.SyncNamingScope().Errorf("Unable to retrieve service %v from store: %v", task.Key(), err)
 		return err
@@ -192,6 +193,16 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 		isPolarisService := p.IsPolarisService(operationService)
 
 		cachedService, ok := p.appliedServiceCache.Load(task.Key())
+		recoveryGeneration := p.serviceRecoveryGeneration.Load()
+		if ok && isPolarisService && operationService.GetDeletionTimestamp() == nil {
+			appliedRecovery, _ := p.serviceRecoveryApplied.Load(task.Key())
+			if appliedRecovery != recoveryGeneration && recoveryGeneration > 0 {
+				if processError := p.processSyncNamespaceAndService(operationService); processError != nil {
+					return processError
+				}
+				p.serviceRecoveryApplied.Store(task.Key(), recoveryGeneration)
+			}
+		}
 		if !ok {
 			if !isPolarisService {
 				count, stateErr := p.enqueuePendingSyncStatesForService(task.Namespace, task.Name)
@@ -212,7 +223,6 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 				log.SyncNamingScope().Errorf("ns/svc %s sync failed: %v", task.Key(), processError)
 				return processError
 			}
-
 			if processError := p.processSyncInstance(operationService); processError != nil {
 				log.SyncNamingScope().Errorf("Service %s first add failed: %v", task.Key(), processError)
 				return processError
@@ -226,8 +236,10 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 		}
 		if isPolarisService {
 			p.appliedServiceCache.Store(task.Key(), service.DeepCopy())
+			p.serviceRecoveryApplied.Store(task.Key(), recoveryGeneration)
 		} else {
 			p.appliedServiceCache.Delete(task.Key())
+			p.serviceRecoveryApplied.Delete(task.Key())
 		}
 	}
 	return nil

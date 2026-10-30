@@ -80,11 +80,11 @@ func (p *PolarisController) resyncWorker() {
 func (p *PolarisController) checkHealth() {
 	healthErr := polarisapi.CheckHealth()
 	if healthErr == nil {
-		// failed -> healthy, clear service cache and start full resync
+		// Keep the last-applied Labels while forcing Namespace/Service checks.
 		if !p.isPolarisServerHealthy.Load() {
+			p.serviceRecoveryGeneration.Inc()
 			p.isPolarisServerHealthy.Store(true)
-			p.appliedServiceCache.Clear()
-			log.Info("Polaris server health check recovered; local cache cleared for full resync")
+			log.Info("Polaris server health check recovered; full resync requested with applied Labels preserved")
 		}
 
 		// 清除网络波动导致的健康检测失败记录

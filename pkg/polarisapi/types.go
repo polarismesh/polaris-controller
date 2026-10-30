@@ -28,6 +28,14 @@ type Response struct {
 	Mtime     bool       `json:"mtime"`
 }
 
+type GetInstancesResponse struct {
+	Code      uint32     `json:"code"`
+	Info      string     `json:"info"`
+	Amount    *uint32    `json:"amount"`
+	Size      *uint32    `json:"size"`
+	Instances []Instance `json:"instances"`
+}
+
 // Instance
 type Instance struct {
 	ID                string            `json:"id,omitempty"`

@@ -173,6 +173,7 @@ func TestProcessPendingSyncStateDeletesAndRemovesRecord(t *testing.T) {
 	newGeneration := ownedInstance("10.0.0.2")
 	newGeneration.metadata[util.K8sServiceUID] = "uid-new"
 	p.consumer.(*testConsumer).instances = []model.Instance{instance, newGeneration}
+	mockPolarisInstances(tr, p.consumer.(*testConsumer))
 
 	task := newServiceSyncState(service, "test", syncStatePendingDelete).sourceTask()
 	if err := p.processPendingSyncState(task); err != nil {
@@ -181,11 +182,12 @@ func TestProcessPendingSyncStateDeletesAndRemovesRecord(t *testing.T) {
 	if _, found, err := p.syncStateStore.Get(context.Background(), "test|uid-pending"); err != nil || found {
 		t.Fatalf("record found=%v error=%v", found, err)
 	}
-	if len(tr.requests) != 1 || tr.requests[0].path != "/naming/v1/instances/delete" {
+	writes := tr.writes()
+	if len(writes) != 1 || writes[0].path != "/naming/v1/instances/delete" {
 		t.Fatalf("unexpected delete requests: %+v", tr.requests)
 	}
 	var payload []polarisapi.Instance
-	if err := json.Unmarshal(tr.requests[0].body, &payload); err != nil {
+	if err := json.Unmarshal(writes[0].body, &payload); err != nil {
 		t.Fatal(err)
 	}
 	if len(payload) != 1 || payload[0].Host != "10.0.0.1" {
@@ -228,16 +230,17 @@ func TestProcessPendingSyncStateSkipsEndpointOwnedByRecreatedService(t *testing.
 		}
 		return successResponse(), nil
 	}
+	mockPolarisInstances(tr, consumer)
 
 	task := newServiceSyncState(oldService, "test", syncStatePendingDelete).sourceTask()
 	if err := p.processPendingSyncState(task); err != nil {
 		t.Fatal(err)
 	}
-	if len(tr.requests) != 0 {
+	if len(tr.writes()) != 0 {
 		t.Fatalf("pending cleanup deleted an endpoint owned by the new Service UID: %+v", tr.requests)
 	}
-	if _, found, err := p.syncStateStore.Get(context.Background(), "test|uid-old"); err != nil || found {
-		t.Fatalf("stale pending state found=%v error=%v", found, err)
+	if record, found, err := p.syncStateStore.Get(context.Background(), "test|uid-old"); err != nil || !found || record.Phase != syncStatePendingDelete {
+		t.Fatalf("old cleanup responsibility lost: state=%+v found=%v error=%v", record, found, err)
 	}
 	newRecord, found, err := p.syncStateStore.Get(context.Background(), "test|uid-new")
 	if err != nil || !found || newRecord.Phase != syncStateActive {
@@ -249,6 +252,12 @@ func TestProcessPendingSyncStateSkipsEndpointOwnedByRecreatedService(t *testing.
 	if len(consumer.instances) != 1 ||
 		consumer.instances[0].GetMetadata()[util.K8sServiceUID] != "uid-new" {
 		t.Fatalf("new Service did not take over the endpoint: %+v", consumer.instances)
+	}
+	if err := p.processPendingSyncState(task); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := p.syncStateStore.Get(context.Background(), "test|uid-old"); err != nil || found {
+		t.Fatalf("confirmed takeover did not release old state: found=%v error=%v", found, err)
 	}
 }
 
@@ -314,12 +323,14 @@ func TestRemoveSyncStateIfMatchKeepsReactivatedRecord(t *testing.T) {
 
 func TestProcessPendingSyncStateRetainsRecordOnFailure(t *testing.T) {
 	p, _ := newTestController(t)
+	tr := mockPolarisHTTP(t)
 	service := testService()
 	service.UID = types.UID("uid-retry")
 	if err := p.markPendingSyncState(service); err != nil {
 		t.Fatal(err)
 	}
 	p.consumer.(*testConsumer).err = errors.New("discovery unavailable")
+	mockPolarisInstances(tr, p.consumer.(*testConsumer))
 
 	task := newServiceSyncState(service, "test", syncStatePendingDelete).sourceTask()
 	if err := p.processPendingSyncState(task); err == nil {

@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/polarismesh/polaris-controller/common/log"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 	"github.com/polarismesh/polaris-controller/pkg/util/address"
 )
@@ -201,36 +202,50 @@ func (p *PolarisController) processPendingSyncStateRecord(record serviceSyncStat
 	}
 
 	service := record.service()
-	instances, err := p.getAllInstance(service)
+	instances, err := polarisapi.GetInstances(context.Background(), service)
 	if err != nil {
 		p.recordSyncStateFailure(record, err)
 		return err
 	}
-	candidates := p.filterControllerInstances(instances, record.SourceUID)
+	candidates, protected, reactivated, err := p.pendingDeletionCandidates(record, instances)
+	if err != nil {
+		p.recordSyncStateFailure(record, err)
+		return err
+	}
+	if reactivated {
+		return nil
+	}
 
-	if sourceActive && len(candidates) > 0 {
-		desired, desiredErr := p.desiredAddressesForService(currentService)
-		if desiredErr != nil {
-			err = fmt.Errorf("verify current desired endpoints for %s: %w", record.key(), desiredErr)
+	if len(candidates) > 0 {
+		if err = polarisapi.DeleteInstances(candidates, p.config.PolarisController.Size,
+			fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())); err != nil {
 			p.recordSyncStateFailure(record, err)
 			return err
 		}
-		var skipped int
-		candidates, skipped = filterDesiredPendingCandidates(candidates, desired)
-		if skipped > 0 {
-			log.SyncNamingScope().Infof(
-				"Skip deleting %d pending instance(s) for %s: current Service %s/%s UID=%s still owns the endpoint",
-				skipped, record.key(), currentService.GetNamespace(), currentService.GetName(), currentService.GetUID())
-			if err = p.ensureActiveSyncState(currentService); err != nil {
-				p.recordSyncStateFailure(record, err)
-				return err
-			}
-		}
+	}
+	if protected > 0 {
+		log.SyncNamingScope().Infof("Keep pending sync state %s until %d protected instance(s) are taken over or deleted",
+			record.key(), protected)
+		return nil
 	}
 
-	if err = p.deleteInstances(service, candidates); err != nil {
+	// A successful DELETE (or an empty candidate set) is not a completion proof.
+	instances, err = polarisapi.GetInstances(context.Background(), service)
+	if err != nil {
 		p.recordSyncStateFailure(record, err)
 		return err
+	}
+	candidates, protected, reactivated, err = p.pendingDeletionCandidates(record, instances)
+	if err == nil && !reactivated && protected == 0 && len(candidates) > 0 {
+		err = fmt.Errorf("pending deletion %s still has %d controller instance(s); keep state for retry",
+			record.key(), len(candidates))
+	}
+	if err != nil {
+		p.recordSyncStateFailure(record, err)
+		return err
+	}
+	if reactivated || protected > 0 {
+		return nil
 	}
 	if p.syncStateStore == nil {
 		return nil
@@ -246,6 +261,76 @@ func (p *PolarisController) processPendingSyncStateRecord(record serviceSyncStat
 	return nil
 }
 
+func (p *PolarisController) pendingDeletionCandidates(
+	record serviceSyncState, instances []polarisapi.Instance,
+) ([]polarisapi.Instance, int, bool, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		service, active, sameGeneration, err := p.currentServiceForSyncState(record)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		if active && sameGeneration {
+			log.SyncNamingScope().Infof("Skip pending sync state %s deletion: Service UID=%s became active",
+				record.key(), service.GetUID())
+			return nil, 0, true, p.ensureActiveSyncState(service)
+		}
+
+		var desired address.InstanceSet
+		var endpoints *v1.Endpoints
+		if active {
+			desired, endpoints, err = p.desiredAddressesForService(service)
+			if err != nil {
+				return nil, 0, false, fmt.Errorf("verify current desired endpoints for %s: %w", record.key(), err)
+			}
+		}
+		candidates := make([]polarisapi.Instance, 0, len(instances))
+		protected := 0
+		for _, instance := range instances {
+			uid := instance.Metadata[util.K8sServiceUID]
+			if !p.isControllerMetadata(instance.Metadata) || (uid != "" && uid != record.SourceUID) {
+				continue
+			}
+			key := fmt.Sprintf("%s-%d", instance.Host, *instance.Port)
+			if desired[key] != nil {
+				protected++
+				log.SyncNamingScope().Infof(
+					"Skip deleting pending instance %s/%s host=%s port=%d oldUID=%s currentUID=%s: endpoint is still desired",
+					record.SourceNamespace, record.SourceName, instance.Host, *instance.Port, record.SourceUID, service.GetUID())
+				continue
+			}
+			candidates = append(candidates, polarisapi.Instance{
+				ID: instance.ID, VpcID: instance.VpcID, Namespace: record.PolarisNamespace,
+				Service: record.PolarisService, ServiceToken: globalToken, Host: instance.Host, Port: instance.Port,
+			})
+		}
+		if protected > 0 {
+			if err = p.ensureActiveSyncState(service); err != nil {
+				return nil, 0, false, err
+			}
+			p.insertTask(&Task{Namespace: service.GetNamespace(), Name: service.GetName(), ObjectType: KubernetesService})
+		}
+		// Informer updates can happen during Pod reads and state persistence too.
+		latest, latestActive, _, err := p.currentServiceForSyncState(record)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		if latest != service || latestActive != active {
+			continue
+		}
+		if active {
+			latestEndpoints, getErr := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
+			if getErr != nil {
+				return nil, 0, false, getErr
+			}
+			if latestEndpoints != endpoints {
+				continue
+			}
+		}
+		return candidates, protected, false, nil
+	}
+	return nil, 0, false, fmt.Errorf("Service changed repeatedly while verifying pending deletion %s", record.key())
+}
+
 func (p *PolarisController) currentServiceForSyncState(
 	record serviceSyncState,
 ) (*v1.Service, bool, bool, error) {
@@ -256,34 +341,36 @@ func (p *PolarisController) currentServiceForSyncState(
 	if err != nil {
 		return nil, false, false, err
 	}
-	sourceActive := service.GetDeletionTimestamp() == nil && p.IsPolarisService(service)
+	sourceActive := false
+	if service.GetDeletionTimestamp() == nil && !util.IgnoreService(service) {
+		syncEnabled, explicit := service.GetAnnotations()[util.PolarisSync]
+		switch {
+		case explicit:
+			sourceActive = syncEnabled == util.IsEnableSync
+		case service.GetAnnotations()[util.PolarisEnableRegister] == util.IsEnableSync:
+			sourceActive = true
+		default:
+			namespace, namespaceErr := p.namespaceLister.Get(service.GetNamespace())
+			if namespaceErr != nil {
+				return nil, false, false, fmt.Errorf("verify Namespace for pending deletion %s: %w", record.key(), namespaceErr)
+			}
+			sourceActive = p.IsNamespaceSyncEnable(namespace)
+		}
+	}
 	return service, sourceActive, string(service.GetUID()) == record.SourceUID, nil
 }
 
-func (p *PolarisController) desiredAddressesForService(service *v1.Service) (address.InstanceSet, error) {
+func (p *PolarisController) desiredAddressesForService(
+	service *v1.Service,
+) (address.InstanceSet, *v1.Endpoints, error) {
 	endpoints, err := p.endpointsLister.Endpoints(service.GetNamespace()).Get(service.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("get current Endpoints %s/%s: %w", service.GetNamespace(), service.GetName(), err)
+		return nil, nil, fmt.Errorf("get current Endpoints %s/%s: %w", service.GetNamespace(), service.GetName(), err)
 	}
 	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
-	return address.GetAddressMapFromEndpoints(
+	desired, err := address.GetAddressMapFromEndpoints(
 		service, endpoints, p.podLister, getCustomWeight(service, serviceMsg))
-}
-
-func filterDesiredPendingCandidates(
-	candidates []address.Address, desired address.InstanceSet,
-) ([]address.Address, int) {
-	pending := make([]address.Address, 0, len(candidates))
-	skipped := 0
-	for _, candidate := range candidates {
-		key := fmt.Sprintf("%s-%d", candidate.IP, candidate.Port)
-		if desired[key] != nil {
-			skipped++
-			continue
-		}
-		pending = append(pending, candidate)
-	}
-	return pending, skipped
+	return desired, endpoints, err
 }
 
 func (p *PolarisController) enqueuePendingSyncStatesForService(namespace, name string) (int, error) {

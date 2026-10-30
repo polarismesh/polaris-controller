@@ -158,6 +158,8 @@ func TestEnableRegisterToggleReconciles(t *testing.T) {
 	t.Run("disable", func(t *testing.T) {
 		p, stores := newTestController(t)
 		tr := mockPolarisHTTP(t)
+		mockPolarisInstances(tr, p.consumer.(*testConsumer))
+		storeObject(t, stores.namespaces, &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "ns"}})
 		addTestEndpoint(t, stores)
 		old := testService()
 		delete(old.Annotations, util.PolarisSync)

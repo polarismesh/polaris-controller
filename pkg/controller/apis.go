@@ -387,11 +387,15 @@ func (p *PolarisController) filterControllerInstances(
 }
 
 func (p *PolarisController) isControllerInstance(ins model.Instance) bool {
-	clusterName := ins.GetMetadata()[util.PolarisClusterName]
-	source := ins.GetMetadata()[util.PolarisSource]
+	return p.isControllerMetadata(ins.GetMetadata())
+}
+
+func (p *PolarisController) isControllerMetadata(metadata map[string]string) bool {
+	clusterName := metadata[util.PolarisClusterName]
+	source := metadata[util.PolarisSource]
 
 	// 存量使用 platform 字段，这里兼容存量字段
-	oldSource := ins.GetMetadata()[util.PolarisOldSource]
+	oldSource := metadata[util.PolarisOldSource]
 
 	match := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
 		(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)

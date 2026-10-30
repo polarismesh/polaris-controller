@@ -37,6 +37,7 @@ func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
 	p.queue = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Hour, time.Hour))
 	defer p.queue.ShutDown()
 	consumer := p.consumer.(*testConsumer)
+	mockPolarisInstances(tr, consumer)
 	consumer.err = errors.New("discovery unavailable")
 	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationDelete}
 	key := task.QueueKey()
@@ -52,7 +53,7 @@ func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
 	if _, ok := p.appliedServiceCache.Load(task.Key()); !ok {
 		t.Fatal("lost applied Service on discovery failure")
 	}
-	if len(tr.requests) != 0 {
+	if len(tr.writes()) != 0 {
 		t.Fatal("wrote instances after failed discovery")
 	}
 	consumer.err = nil
@@ -65,7 +66,8 @@ func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
 	if _, ok := p.appliedServiceCache.Load(task.Key()); ok {
 		t.Fatal("successful deletion did not clear applied cache")
 	}
-	if len(tr.requests) != 1 || tr.requests[0].path != "/naming/v1/instances/delete" {
+	writes := tr.writes()
+	if len(writes) != 1 || writes[0].path != "/naming/v1/instances/delete" {
 		t.Fatalf("unexpected requests: %v", tr.requests)
 	}
 }
@@ -74,11 +76,12 @@ func TestFirstRegistrationFailureKeepsOnlyPersistedDeletionState(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)
 	tr.respond = func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path == "/naming/v1/instances" {
+		if r.Method == http.MethodPost && r.URL.Path == "/naming/v1/instances" {
 			return nil, errors.New("partial registration failure")
 		}
 		return successResponse(), nil
 	}
+	mockPolarisInstances(tr, p.consumer.(*testConsumer))
 	svc := testService()
 	storeObject(t, stores.services, svc)
 	addTestEndpoint(t, stores, "10.0.0.1")
@@ -106,7 +109,8 @@ func TestFirstRegistrationFailureKeepsOnlyPersistedDeletionState(t *testing.T) {
 	if err := p.process(cleanupTask); err != nil {
 		t.Fatal(err)
 	}
-	last := tr.requests[len(tr.requests)-1]
+	writes := tr.writes()
+	last := writes[len(writes)-1]
 	if last.path != "/naming/v1/instances/delete" {
 		t.Fatalf("partial registration not cleaned up: %+v", last)
 	}

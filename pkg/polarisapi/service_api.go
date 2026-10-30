@@ -17,6 +17,7 @@ package polarisapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -958,12 +959,18 @@ func polarisHttpRequest(
 	requestURL string,
 	requestByte []byte,
 ) (int, []byte, time.Duration, error) {
+	return polarisHttpRequestWithContext(context.Background(), requestID, method, requestURL, requestByte)
+}
+
+func polarisHttpRequestWithContext(
+	ctx context.Context, requestID, method, requestURL string, requestByte []byte,
+) (int, []byte, time.Duration, error) {
 	startTime := time.Now()
-	req, err := http.NewRequest(method, requestURL, bytes.NewReader(requestByte))
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewReader(requestByte))
 	if err != nil {
 		return 0, nil, 0, err
 	}
-	accessToken, err := lookAccessToken()
+	accessToken, err := lookAccessTokenWithContext(ctx)
 	if err != nil {
 		return 0, nil, 0, err
 	}
@@ -989,12 +996,12 @@ func polarisHttpRequest(
 	return resp.StatusCode, body, time.Since(startTime), err
 }
 
-func lookAccessToken() (string, error) {
+func lookAccessTokenWithContext(ctx context.Context) (string, error) {
 	if len(PolarisOperator) == 0 {
 		return PolarisAccessToken, nil
 	}
 	requestURL := fmt.Sprintf("%s%s?id=%s", PolarisHttpURL, getUserToken, PolarisOperator)
-	req, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		log.Errorf("Failed to set request %v", err)
 		return "", err
