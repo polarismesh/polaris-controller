@@ -13,13 +13,14 @@
 #  CONDITIONS OF ANY KIND, either express or implied. See the License for the
 #  specific language governing permissions and limitations under the License.
 
-FROM alpine:3.22.6
+FROM alpine:3.22.7
 
 ARG TARGETARCH
 
+# Require the zlib release that fixes CVE-2026-85091.
 RUN apk update \
     && apk upgrade --no-cache \
-    && apk add --no-cache bash util-linux
+    && apk add --no-cache 'zlib>=1.3.2-r1' bash util-linux
 
 COPY bootstrap_template.yaml /bootstrap_template.yaml
 COPY bootstrap_template_tls.yaml /bootstrap_template_tls.yaml
