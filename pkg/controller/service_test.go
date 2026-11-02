@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/polarismesh/polaris-go/pkg/model"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
@@ -236,6 +237,74 @@ func TestServiceLabelRollbackAfterPartialSuccessConverges(t *testing.T) {
 	}
 	if remoteMetadata["env"] != "v1" {
 		t.Fatalf("Kubernetes Label rollback did not converge: %v", remoteMetadata)
+	}
+}
+
+func TestHealthRecoveryAliasFailureDoesNotStopInstanceSync(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.Annotations[util.PolarisAliasNamespace] = "Production"
+	service.Annotations[util.PolarisAliasService] = "order"
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	p.appliedServiceCache.Store(task.Key(), service.DeepCopy())
+	p.serviceRecoveryGeneration.Inc()
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/naming/v1/service/aliases" {
+			return aliasJSONResponse(http.StatusInternalServerError,
+				`{"code":500000,"info":"alias query failed"}`)
+		}
+		return successResponse(), nil
+	}
+
+	err := p.syncService(task)
+	if err == nil {
+		t.Fatal("alias failure was hidden")
+	}
+	if got := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances"); got != 1 {
+		t.Fatalf("instance writes after alias failure=%d, want 1", got)
+	}
+	if _, found := p.serviceRecoveryApplied.Load(task.Key()); !found {
+		t.Fatal("recovery generation was not advanced")
+	}
+}
+
+func TestTerminatingServiceDoesNotReactivateOnRestart(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.UID = "uid-terminating"
+	now := metav1.Now()
+	service.DeletionTimestamp = &now
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{ownedInstance("10.0.0.1")}
+	mockPolarisInstances(tr, consumer)
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationAdd}
+
+	p.onServiceAdd(service)
+	if p.queue.Len() != 1 {
+		t.Fatalf("terminating Service queue length=%d, want 1", p.queue.Len())
+	}
+	queued, _ := takeQueueTask(t, p)
+	if queued.Name != "svc" {
+		t.Fatalf("terminating Service task=%+v, want svc", queued)
+	}
+	if _, found := p.resyncServiceCache.Load(task.Key()); found {
+		t.Fatal("terminating Service was added to the resync cache")
+	}
+
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := p.appliedServiceCache.Load(task.Key()); found {
+		t.Fatal("terminating Service was reactivated")
+	}
+	if got := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances/delete"); got != 1 {
+		t.Fatalf("terminating Service instance deletes=%d, want 1", got)
 	}
 }
 

@@ -88,6 +88,12 @@ const (
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
 	K8sServiceUID      = "k8sServiceUID"
+	// PolarisInternalLastHeartbeat is written by the Polaris server while
+	// heartbeat health checking is enabled.
+	PolarisInternalLastHeartbeat = "internal-lastheartbeat"
+	PolarisLocationRegion        = "region"
+	PolarisLocationZone          = "zone"
+	PolarisLocationCampus        = "campus"
 
 	// PolarisOldSource 旧版本 controller 用来标志是 controller 同步的服务实例。
 	// 已经废弃，项目中当前用来兼容存量的实例。
@@ -142,6 +148,16 @@ var PolarisDefaultMetaSet = map[string]struct{}{
 	PolarisVersion:     {},
 	PolarisProtocol:    {},
 	K8sServiceUID:      {},
+}
+
+// PolarisServerMetaSet contains metadata keys injected by the Polaris server.
+// They are not part of the Kubernetes desired state and must not cause a
+// reconciliation loop.
+var PolarisServerMetaSet = map[string]struct{}{
+	PolarisInternalLastHeartbeat: {},
+	PolarisLocationRegion:        {},
+	PolarisLocationZone:          {},
+	PolarisLocationCampus:        {},
 }
 
 // ServiceChangeType 发升变更的类型

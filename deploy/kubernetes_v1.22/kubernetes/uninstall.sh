@@ -10,11 +10,12 @@ delete_manifest() {
   "${KUBECTL_BIN}" delete -f "${SCRIPT_DIR}/${manifest}" --ignore-not-found=true --wait=true
 }
 
-# Stop writers before removing cluster-scoped resources and the namespace.
+# Remove the Fail webhook before its backend so a partial uninstall cannot
+# block Pod or Namespace creation.
+delete_manifest injector.yaml
 delete_manifest polaris-controller.yaml
 delete_manifest polaris-metrics-svc.yaml
 delete_manifest javaagent-configmap.yaml
-delete_manifest injector.yaml
 delete_manifest configmap.yaml
 delete_manifest polaris-client-config-tpl.yaml
 delete_manifest rbac.yaml

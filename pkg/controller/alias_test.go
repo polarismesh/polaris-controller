@@ -157,6 +157,90 @@ func TestReconcileServiceAliasCreatesMissingAlias(t *testing.T) {
 	}
 }
 
+func TestReconcileServiceAliasContinuesWhenOrdinaryServiceUsesAliasName(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	tr.respond = func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/naming/v1/service/aliases":
+			return aliasJSONResponse(http.StatusOK, `{"code":200000,"info":"success","aliases":[]}`)
+		case "/naming/v1/namespaces":
+			return aliasJSONResponse(http.StatusOK,
+				`{"code":200000,"info":"success","responses":[{"code":200000}]}`)
+		case "/naming/v1/service/alias":
+			return aliasJSONResponse(http.StatusBadRequest,
+				`{"code":400201,"info":"resource exists"}`)
+		default:
+			return aliasJSONResponse(http.StatusInternalServerError,
+				`{"code":500,"info":"unexpected request"}`)
+		}
+	}
+
+	service := aliasTestService("order", "uid-order", time.Unix(100, 0))
+	storeObject(t, stores.services, service)
+	if err := p.reconcileServiceAlias(service); err != nil {
+		t.Fatal(err)
+	}
+	if got := requestPaths(tr.requests); !equalStrings(got, []string{
+		"/naming/v1/service/aliases",
+		"/naming/v1/namespaces",
+		"/naming/v1/service/alias",
+	}) {
+		t.Fatalf("ordinary Service conflict did not remain idempotent: %v", got)
+	}
+}
+
+func TestReconcileServiceAliasDoesNotAdoptLegacyGlobalOwner(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	state := newAliasAPITestState()
+	state.aliases[aliasTestKey("Production", "order")] = polarisapi.Alias{
+		Service:        "order-other-cluster",
+		Namespace:      "ns",
+		Alias:          "order",
+		AliasNamespace: "Production",
+		Owners:         polarisapi.Source,
+	}
+	tr.respond = state.responder
+
+	service := aliasTestService("order", "uid-order", time.Unix(100, 0))
+	storeObject(t, stores.services, service)
+	if err := p.reconcileServiceAlias(service); err != nil {
+		t.Fatal(err)
+	}
+	actual := state.aliases[aliasTestKey("Production", "order")]
+	if actual.Service != "order-other-cluster" {
+		t.Fatalf("legacy global owner was adopted: %+v", actual)
+	}
+	if got := requestPaths(tr.requests); !equalStrings(got, []string{"/naming/v1/service/aliases"}) {
+		t.Fatalf("ownership conflict caused writes: %v", got)
+	}
+}
+
+func TestAliasWinnerDeleteEnqueuesNextClaimant(t *testing.T) {
+	p, stores := newTestController(t)
+	first := aliasTestService("order-old", "uid-old", time.Unix(100, 0))
+	second := aliasTestService("order-new", "uid-new", time.Unix(200, 0))
+	storeObject(t, stores.services, first)
+	storeObject(t, stores.services, second)
+
+	p.onServiceDelete(first)
+	if p.queue.Len() != 2 {
+		t.Fatalf("queue length=%d, want delete and next claimant", p.queue.Len())
+	}
+	names := make(map[string]struct{})
+	for i := 0; i < 2; i++ {
+		task, _ := takeQueueTask(t, p)
+		names[task.Name] = struct{}{}
+	}
+	if _, exists := names["order-old"]; !exists {
+		t.Fatalf("winner deletion was not enqueued: %+v", names)
+	}
+	if _, exists := names["order-new"]; !exists {
+		t.Fatalf("next alias claimant was not enqueued: %+v", names)
+	}
+}
+
 func TestReconcileServiceAliasUpdatesWrongSource(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)
@@ -166,7 +250,7 @@ func TestReconcileServiceAliasUpdatesWrongSource(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -198,7 +282,7 @@ func TestReconcileServiceAliasNoOpWhenBindingIsCorrect(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -221,7 +305,7 @@ func TestReconcileServiceAliasUsesEarliestClaim(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -255,7 +339,7 @@ func TestReconcileServiceAliasSerializesConcurrentClaims(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -296,7 +380,7 @@ func TestReconcileServiceAliasAllowsNextOwnerAfterWinnerStopsClaiming(t *testing
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -434,7 +518,7 @@ func TestReconcileServiceAliasIgnoresRemovedAnnotations(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -484,7 +568,7 @@ func TestReconcileServiceAliasKeepsOldAliasAfterRename(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order-old",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 
@@ -512,7 +596,7 @@ func TestReconcileServiceAliasKeepsAliasWhenServiceStopsSync(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         polarisapi.Source,
+		Owners:         "polaris-controller/test/legacy",
 	}
 	tr.respond = state.responder
 

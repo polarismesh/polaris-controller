@@ -108,7 +108,8 @@ func TestCompareInstanceMetadata(t *testing.T) {
 				metadata[util.K8sServiceUID] = string(svc.UID)
 			}
 			spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP", Metadata: tt.pod}
-			cur := &address.Address{IP: spec.IP, Port: 80, Weight: 100, Protocol: spec.Protocol, PolarisInstance: testInstance{metadata: metadata}}
+			cur := &address.Address{IP: spec.IP, Port: 80, Weight: 100, Protocol: spec.Protocol,
+				PolarisInstance: testInstance{metadata: metadata, region: "server-region"}}
 			if got := p.compareInstanceUpdate(svc, desiredHealthCheck{}, spec, cur); got != tt.want {
 				t.Fatalf("update=%v, want %v", got, tt.want)
 			}
@@ -126,5 +127,28 @@ func TestCompareInstanceMetadata(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestServerLocationMetadataDoesNotCauseUpdateLoop(t *testing.T) {
+	p, _ := newTestController(t)
+	service := testService()
+	spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP"}
+	instance := ownedInstance("10.0.0.1")
+	instance.metadata[util.PolarisLocationRegion] = ""
+	instance.metadata[util.PolarisLocationZone] = ""
+	instance.metadata[util.PolarisLocationCampus] = ""
+	current := &address.Address{
+		IP: spec.IP, Port: spec.Port, Weight: spec.Weight, Protocol: spec.Protocol, PolarisInstance: instance,
+	}
+
+	if p.compareInstanceUpdate(service, desiredHealthCheck{}, spec, current) {
+		t.Fatal("server location metadata caused an update")
+	}
+	merged := mergeMetadataWithService(service, *current, "test")
+	for _, key := range []string{util.PolarisLocationRegion, util.PolarisLocationZone, util.PolarisLocationCampus} {
+		if _, exists := merged[key]; !exists {
+			t.Fatalf("server metadata key %q was not preserved: %+v", key, merged)
+		}
 	}
 }

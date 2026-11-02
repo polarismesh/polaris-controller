@@ -41,8 +41,6 @@ func GetInstances(ctx context.Context, service *v1.Service) (instances []Instanc
 	if service == nil || service.GetNamespace() == "" || service.GetName() == "" {
 		return nil, fmt.Errorf("instance query requires a Service namespace and name")
 	}
-	ctx, cancel := context.WithTimeout(ctx, instanceQueryTimeout)
-	defer cancel()
 	started := time.Now()
 	defer func() {
 		status, code := "Success", "200000"
@@ -98,6 +96,8 @@ func GetInstances(ctx context.Context, service *v1.Service) (instances []Instanc
 }
 
 func getInstancesPage(ctx context.Context, service *v1.Service, query url.Values) (GetInstancesResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, instanceQueryTimeout)
+	defer cancel()
 	requestURL := fmt.Sprintf("%s%s?%s", PolarisHttpURL, addInstances, query.Encode())
 	status, body, _, err := polarisHttpRequestWithContext(ctx, uuid.NewString(), http.MethodGet, requestURL, nil)
 	if err != nil {

@@ -52,6 +52,9 @@ func resolveHealthCheck(service *v1.Service) (desiredHealthCheck, error) {
 	if !exists {
 		return desiredHealthCheck{}, nil
 	}
+	if strings.TrimSpace(value) == "" {
+		return desiredHealthCheck{}, nil
+	}
 
 	ttl, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || ttl < 0 || ttl > 60 {
@@ -90,6 +93,17 @@ func (d desiredHealthCheck) needsUpdate(instance model.Instance) bool {
 		return true
 	}
 	return d.enabled && instance.GetTtl() != int64(d.ttl)
+}
+
+func instanceHealthyRequest(health desiredHealthCheck, current model.Instance, desired bool) *bool {
+	if health.enabled {
+		return nil
+	}
+	// An unmanaged heartbeat remains owned by the Polaris server.
+	if !health.managed && current != nil && current.IsEnableHealthCheck() {
+		return nil
+	}
+	return util.Bool(desired)
 }
 
 func resolveInstanceVersion(metadata map[string]string, podVersion string) (string, bool) {
@@ -254,7 +268,6 @@ func (p *PolarisController) updateInstances(service *v1.Service, healthCheck des
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
 		version, _ := resolveInstanceVersion(metadata, addr.Version)
-		healthy := util.Bool(addr.Healthy)
 		tmpInstance := polarisapi.Instance{
 			Service:           service.GetName(),
 			Namespace:         service.GetNamespace(),
@@ -265,7 +278,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, healthCheck des
 			Version:           version,
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
-			Healthy:           healthy,
+			Healthy:           instanceHealthyRequest(healthCheck, addr.PolarisInstance, addr.Healthy),
 			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
@@ -332,8 +345,9 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthChe
 		return true
 	}
 
-	// healthy update
-	if cur.PolarisInstance.IsHealthy() != spec.Healthy {
+	// When heartbeat checking is enabled, the server owns the health result.
+	heartbeatOwned := healthCheck.enabled || cur.PolarisInstance.IsEnableHealthCheck()
+	if !heartbeatOwned && cur.PolarisInstance.IsHealthy() != spec.Healthy {
 		return true
 	}
 
@@ -434,7 +448,9 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	if addr.PolarisInstance != nil {
 		for k, v := range addr.PolarisInstance.GetMetadata() {
 			_, isDefault := util.PolarisDefaultMetaSet[k]
-			if _, exists := metadata[k]; !exists && (isDefault || k == util.PolarisOldSource) {
+			_, isServer := util.PolarisServerMetaSet[k]
+			serverOwned := isServer && isServerOwnedMetadata(addr.PolarisInstance, k, v)
+			if _, exists := metadata[k]; !exists && (isDefault || serverOwned || k == util.PolarisOldSource) {
 				metadata[k] = v
 			}
 		}
@@ -445,4 +461,19 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	metadata[util.K8sServiceUID] = string(service.GetUID())
 
 	return metadata
+}
+
+func isServerOwnedMetadata(instance model.Instance, key, value string) bool {
+	switch key {
+	case util.PolarisInternalLastHeartbeat:
+		return true
+	case util.PolarisLocationRegion:
+		return instance.GetRegion() == value
+	case util.PolarisLocationZone:
+		return instance.GetZone() == value
+	case util.PolarisLocationCampus:
+		return instance.GetCampus() == value
+	default:
+		return false
+	}
 }

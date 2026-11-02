@@ -62,12 +62,16 @@ type testInstance struct {
 	weight            int
 	protocol          string
 	version           string
+	region            string
+	zone              string
+	campus            string
+	unhealthy         bool
 	enableHealthCheck bool
 	ttl               int64
 }
 
 func (i testInstance) GetMetadata() map[string]string { return i.metadata }
-func (i testInstance) IsHealthy() bool                { return true }
+func (i testInstance) IsHealthy() bool                { return !i.unhealthy }
 func (i testInstance) IsIsolated() bool               { return false }
 func (i testInstance) IsEnableHealthCheck() bool      { return i.enableHealthCheck }
 func (i testInstance) GetTtl() int64                  { return i.ttl }
@@ -76,6 +80,9 @@ func (i testInstance) GetPort() uint32                { return 80 }
 func (i testInstance) GetWeight() int                 { return i.weight }
 func (i testInstance) GetProtocol() string            { return i.protocol }
 func (i testInstance) GetVersion() string             { return i.version }
+func (i testInstance) GetRegion() string              { return i.region }
+func (i testInstance) GetZone() string                { return i.zone }
+func (i testInstance) GetCampus() string              { return i.campus }
 
 func ownedInstance(host string) testInstance {
 	return testInstance{host: host, weight: util.DefaultWeight, protocol: string(v1.ProtocolTCP),

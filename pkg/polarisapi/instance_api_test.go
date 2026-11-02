@@ -96,6 +96,39 @@ func TestGetInstancesUsesBoundedConsolePagination(t *testing.T) {
 	}
 }
 
+func TestGetInstancesResetsDeadlinePerPage(t *testing.T) {
+	var deadlines []time.Time
+	calls := 0
+	newPolarisTestClient(t, func(request *http.Request) (*http.Response, error) {
+		calls++
+		deadline, hasDeadline := request.Context().Deadline()
+		if !hasDeadline {
+			t.Fatal("instance query page omitted deadline")
+		}
+		deadlines = append(deadlines, deadline)
+		if calls == 1 {
+			time.Sleep(50 * time.Millisecond)
+			instances := make([]Instance, 0, instanceQueryPageSize)
+			for i := 0; i < instanceQueryPageSize; i++ {
+				instances = append(instances, queryTestInstance(i))
+			}
+			return queryPageResponse(t, instanceQueryPageSize+1, instances), nil
+		}
+		return queryPageResponse(t, instanceQueryPageSize+1, []Instance{
+			queryTestInstance(instanceQueryPageSize),
+		}), nil
+	})
+
+	instances, err := GetInstances(context.Background(), queryTestService())
+	if err != nil || len(instances) != instanceQueryPageSize+1 || calls != 2 {
+		t.Fatalf("instances=%d calls=%d error=%v", len(instances), calls, err)
+	}
+	if deadlines[1].Sub(deadlines[0]) < 40*time.Millisecond {
+		t.Fatalf("second page reused the first page deadline: first=%v second=%v",
+			deadlines[0], deadlines[1])
+	}
+}
+
 func TestGetInstancesRejectsIncompleteOrInvalidResponses(t *testing.T) {
 	for _, test := range []struct {
 		name, body string

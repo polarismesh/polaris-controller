@@ -33,7 +33,6 @@ func (p *PolarisController) resyncWorker() {
 	}
 	if err := p.recoverSyncStates(context.Background()); err != nil {
 		log.SyncNamingScope().Errorf("recover persisted sync states failed: %v", err)
-		return
 	}
 
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {

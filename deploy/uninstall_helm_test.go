@@ -51,6 +51,19 @@ printf 'kubectl %s\n' "$*" >> "$CALLS"
 if [[ "$1" == "get" && "$2" == "clusterrole,clusterrolebinding" ]]; then
   printf '%s\n' "$RBAC_JSON"
 fi
+if [[ "$1" == "get" && "$2" == "namespace" ]]; then
+  if [[ "${NAMESPACE_FAIL:-0}" == "1" ]]; then
+    exit 1
+  fi
+  if [[ "${NAMESPACE_MISSING:-0}" != "1" ]]; then
+    printf 'namespace/%s\n' "${CONTROLLER_NAMESPACE:-polaris-system}"
+  fi
+fi
+if [[ "${CLEANUP_FAIL:-0}" == "1" ]]; then
+  case " $* " in
+    *" delete "*) exit 1 ;;
+  esac
+fi
 `
 
 func runUninstall(t *testing.T, args []string, env map[string]string) (string, string, error) {
@@ -128,8 +141,49 @@ func TestUninstallStopsCleanupWhenHelmUninstallFails(t *testing.T) {
 	calls, output, err := runUninstall(t, []string{"polaris-controller", "release-ns"}, map[string]string{
 		"RELEASE_JSON": validRelease, "UNINSTALL_FAIL": "1", "RBAC_JSON": `{"items":[]}`,
 	})
-	if err == nil || strings.Contains(calls, "kubectl") {
+	if err == nil || strings.Contains(calls, "kubectl get clusterrole,clusterrolebinding") {
 		t.Fatalf("failed uninstall reached cleanup: calls=%s output=%s error=%v", calls, output, err)
+	}
+	if !strings.Contains(calls, "kubectl get namespace polaris-system --ignore-not-found -o name") {
+		t.Fatalf("runtime state was not cleaned before Helm uninstall: calls=%s output=%s error=%v", calls, output, err)
+	}
+}
+
+func TestUninstallStopsBeforeHelmWhenNamespaceLookupFails(t *testing.T) {
+	calls, output, err := runUninstall(t, []string{"polaris-controller", "release-ns"}, map[string]string{
+		"RELEASE_JSON": validRelease, "RBAC_JSON": `{"items":[]}`, "NAMESPACE_FAIL": "1",
+	})
+	if err == nil || strings.Contains(calls, "helm uninstall") {
+		t.Fatalf("namespace lookup failure reached Helm uninstall: calls=%s output=%s error=%v", calls, output, err)
+	}
+}
+
+func TestUninstallCleansRuntimeStateBeforeRemovingHelmRelease(t *testing.T) {
+	calls, output, err := runUninstall(t, []string{"polaris-controller", "release-ns"}, map[string]string{
+		"RELEASE_JSON": validRelease, "RBAC_JSON": `{"items":[]}`, "CLEANUP_FAIL": "1",
+	})
+	if err == nil || strings.Contains(calls, "helm uninstall") {
+		t.Fatalf("failed runtime cleanup removed the Helm release: calls=%s output=%s error=%v", calls, output, err)
+	}
+	if !strings.Contains(calls, "--selector polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller") {
+		t.Fatalf("runtime cleanup was not attempted: calls=%s output=%s error=%v", calls, output, err)
+	}
+}
+
+func TestManifestUninstallRemovesWebhookBeforeBackend(t *testing.T) {
+	for _, version := range []string{"v1.21", "v1.22"} {
+		t.Run(version, func(t *testing.T) {
+			script, err := os.ReadFile(filepath.Join(
+				"kubernetes_"+version, "kubernetes", "uninstall.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			webhook := strings.Index(string(script), "delete_manifest injector.yaml")
+			backend := strings.Index(string(script), "delete_manifest polaris-controller.yaml")
+			if webhook < 0 || backend < 0 || webhook > backend {
+				t.Fatalf("webhook is not removed before backend in %s", version)
+			}
+		})
 	}
 }
 

@@ -35,6 +35,8 @@ func TestResolveHealthCheck(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "unmanaged"},
+		{name: "empty", annotation: util.StringPtr("")},
+		{name: "blank", annotation: util.StringPtr("   ")},
 		{name: "disabled", annotation: util.StringPtr("0"), want: desiredHealthCheck{managed: true}},
 		{name: "enabled", annotation: util.StringPtr("10"), want: desiredHealthCheck{managed: true, enabled: true, ttl: 10}},
 		{name: "maximum", annotation: util.StringPtr("60"), want: desiredHealthCheck{managed: true, enabled: true, ttl: 60}},
@@ -42,7 +44,6 @@ func TestResolveHealthCheck(t *testing.T) {
 		{name: "negative", annotation: util.StringPtr("-1"), wantErr: true},
 		{name: "above maximum", annotation: util.StringPtr("61"), wantErr: true},
 		{name: "not a number", annotation: util.StringPtr("abc"), wantErr: true},
-		{name: "empty", annotation: util.StringPtr(""), wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -172,6 +173,65 @@ func TestHealthCheckComparison(t *testing.T) {
 	}
 }
 
+func TestHeartbeatHealthAndMetadataRemainServerOwned(t *testing.T) {
+	for _, name := range []string{"controller managed", "console managed"} {
+		t.Run(name, func(t *testing.T) {
+			p, _ := newTestController(t)
+			tr := mockPolarisHTTP(t)
+			service := testService()
+			if name == "controller managed" {
+				service.Annotations[util.PolarisHeartBeatTTL] = "10"
+			}
+			healthCheck, err := resolveHealthCheck(service)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			spec := &address.Address{
+				IP: "10.0.0.1", Port: 80, Healthy: true, Weight: util.DefaultWeight, Protocol: "TCP",
+			}
+			instance := ownedInstance("10.0.0.1")
+			instance.enableHealthCheck = true
+			instance.ttl = 10
+			instance.unhealthy = true
+			instance.metadata[util.PolarisInternalLastHeartbeat] = "1234567890"
+			current := &address.Address{
+				IP: spec.IP, Port: spec.Port, Healthy: false, Weight: spec.Weight,
+				Protocol: spec.Protocol, PolarisInstance: instance,
+			}
+			if p.compareInstanceUpdate(service, healthCheck, spec, current) {
+				t.Fatal("server-owned heartbeat health or metadata caused an update")
+			}
+
+			updated := *spec
+			updated.PolarisInstance = instance
+			if err = p.updateInstances(service, healthCheck, []address.Address{updated}); err != nil {
+				t.Fatal(err)
+			}
+			if len(tr.requests) != 1 {
+				t.Fatalf("requests=%+v, want exactly one", tr.requests)
+			}
+			var payload []map[string]json.RawMessage
+			if err = json.Unmarshal(tr.requests[0].body, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if len(payload) != 1 {
+				t.Fatalf("instances=%d, want 1", len(payload))
+			}
+			if _, exists := payload[0]["healthy"]; exists {
+				t.Fatalf("update attempted to overwrite server-owned healthy state: %s", tr.requests[0].body)
+			}
+			var instances []polarisapi.Instance
+			if err = json.Unmarshal(tr.requests[0].body, &instances); err != nil {
+				t.Fatal(err)
+			}
+			if instances[0].Metadata[util.PolarisInternalLastHeartbeat] != "1234567890" {
+				t.Fatalf("server heartbeat metadata was dropped: %+v", instances[0].Metadata)
+			}
+		})
+	}
+}
+
 func TestSyncInstancePreservesUnmanagedHealthCheck(t *testing.T) {
 	p, stores := newTestController(t)
 	tr := mockPolarisHTTP(t)
@@ -252,7 +312,7 @@ func TestSyncInstanceExplicitZeroDisablesHealthCheck(t *testing.T) {
 }
 
 func TestSyncInstanceInvalidTTLDoesNotWrite(t *testing.T) {
-	for _, annotation := range []string{"", "abc", "-1", "61"} {
+	for _, annotation := range []string{"abc", "-1", "61"} {
 		t.Run(annotation, func(t *testing.T) {
 			p, stores := newTestController(t)
 			tr := mockPolarisHTTP(t)

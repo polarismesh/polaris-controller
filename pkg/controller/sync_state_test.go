@@ -487,6 +487,53 @@ func TestSyncStateGetDoesNotBlockOnRefresh(t *testing.T) {
 	}
 }
 
+func TestSyncStateRefreshKeepsValidShardWhenAnotherShardIsCorrupt(t *testing.T) {
+	t.Setenv("POD_NAMESPACE", util.RootNamespace)
+	client := fake.NewSimpleClientset()
+	service := testService()
+	service.UID = types.UID("uid-valid-shard")
+	validRecord := newServiceSyncState(service, "test", syncStateActive)
+	validShard := syncStateShard(validRecord.key())
+	validConfigMap := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name: syncStateConfigMapName(validShard), Namespace: util.RootNamespace,
+	}}
+	if err := encodeSyncStateRecords(validConfigMap, map[string]serviceSyncState{
+		validRecord.key(): validRecord,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CoreV1().ConfigMaps(util.RootNamespace).Create(
+		context.Background(), validConfigMap, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	corruptShard := (validShard + 1) % syncStateShardCount
+	corruptConfigMap := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name: syncStateConfigMapName(corruptShard), Namespace: util.RootNamespace,
+	}, Data: map[string]string{syncStateDataKey: "{"}}
+	if _, err := client.CoreV1().ConfigMaps(util.RootNamespace).Create(
+		context.Background(), corruptConfigMap, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	store := newSyncStateStore(client)
+	if err := store.Refresh(context.Background()); err != nil {
+		t.Fatalf("valid shard was blocked by corrupt shard: %v", err)
+	}
+	records, err := store.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, record := range records {
+		if record.key() == validRecord.key() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("valid record was discarded: %+v", records)
+	}
+}
+
 func TestEnsureActiveSyncStateFailureBlocksPolarisWrites(t *testing.T) {
 	p, _ := newTestController(t)
 	tr := mockPolarisHTTP(t)

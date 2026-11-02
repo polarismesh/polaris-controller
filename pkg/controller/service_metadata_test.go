@@ -17,6 +17,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"maps"
@@ -189,6 +190,89 @@ func TestUpdateServiceReturnsWriteFailure(t *testing.T) {
 
 	if err := p.updateService(oldService, currentService); err == nil {
 		t.Fatal("metadata write failure was ignored")
+	}
+}
+
+func TestUpdateServiceSendsEmptyMetadataWhenLabelsAreRemoved(t *testing.T) {
+	p, _ := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		if request.Method == http.MethodGet {
+			return serviceMetadataResponse(t, map[string]string{"app": "foo"}), nil
+		}
+		return successResponse(), nil
+	}
+	oldService := testService()
+	oldService.Labels = map[string]string{"app": "foo"}
+	currentService := testService()
+
+	if err := p.updateService(oldService, currentService); err != nil {
+		t.Fatal(err)
+	}
+	var writes []capturedRequest
+	for _, request := range tr.requests {
+		if request.method == http.MethodPut {
+			writes = append(writes, request)
+		}
+	}
+	if len(writes) != 1 {
+		t.Fatalf("UpdateService writes=%d, want 1", len(writes))
+	}
+	var payload []polarisapi.Service
+	if err := json.Unmarshal(writes[0].body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != 1 || payload[0].Metadata == nil || len(payload[0].Metadata) != 0 {
+		t.Fatalf("empty metadata was omitted: %s", writes[0].body)
+	}
+}
+
+func TestFirstSyncUsesPersistedLabelBaseline(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.UID = "uid-label"
+	service.Labels = map[string]string{"env": "v2"}
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+
+	baseline := newServiceSyncState(service, "test", syncStateActive)
+	baseline.AppliedLabels = map[string]string{"env": "v1", "retired": "old"}
+	if _, err := p.syncStateStore.Upsert(context.Background(), baseline); err != nil {
+		t.Fatal(err)
+	}
+	remote := map[string]string{"env": "v1", "retired": "old", "manual": "keep"}
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/naming/v1/services":
+			return serviceMetadataResponse(t, remote), nil
+		case request.Method == http.MethodPut && request.URL.Path == "/naming/v1/services":
+			var payload []polarisapi.Service
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				return nil, err
+			}
+			if len(payload) == 1 {
+				remote = payload[0].Metadata
+			}
+		}
+		return successResponse(), nil
+	}
+
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationAdd}
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	_, retiredExists := remote["retired"]
+	if remote["env"] != "v2" || retiredExists {
+		t.Fatalf("persisted Label baseline was not reconciled: %+v", remote)
+	}
+	if remote["manual"] != "keep" {
+		t.Fatalf("external metadata was overwritten: %+v", remote)
+	}
+	record, found, err := p.syncStateStore.Get(context.Background(), baseline.key())
+	_, retiredApplied := record.AppliedLabels["retired"]
+	if err != nil || !found || record.AppliedLabels["env"] != "v2" || retiredApplied {
+		t.Fatalf("applied Labels were not persisted: found=%v record=%+v error=%v", found, record, err)
 	}
 }
 

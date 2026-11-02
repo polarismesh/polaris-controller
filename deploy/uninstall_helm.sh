@@ -44,15 +44,20 @@ if ! printf '%s\n' "${release_list_json}" | "${JQ_BIN}" -e \
   exit 1
 fi
 
-"${HELM_BIN}" uninstall "${RELEASE_NAME}" --namespace "${confirmed_namespace}" --wait
-
-# Helm removes the resources it owns. The controller creates the sync-state
-# ConfigMaps at runtime, so they have to be cleaned up separately.
-if "${KUBECTL_BIN}" get namespace "${CONTROLLER_NAMESPACE}" >/dev/null 2>&1; then
+# Clean runtime state before Helm removes the release record. If this step
+# fails, the release remains installed and the script can safely be retried.
+if ! controller_namespace="$("${KUBECTL_BIN}" get namespace "${CONTROLLER_NAMESPACE}" \
+  --ignore-not-found -o name)"; then
+  echo "error: cannot verify controller namespace ${CONTROLLER_NAMESPACE}; no Helm uninstall performed" >&2
+  exit 1
+fi
+if [[ -n "${controller_namespace}" ]]; then
   "${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" delete configmap \
     --selector polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller \
     --ignore-not-found=true --wait=true
 fi
+
+"${HELM_BIN}" uninstall "${RELEASE_NAME}" --namespace "${confirmed_namespace}" --wait
 
 # Only explicitly owned residual RBAC may be removed after uninstall succeeds.
 rbac_json="$("${KUBECTL_BIN}" get clusterrole,clusterrolebinding \

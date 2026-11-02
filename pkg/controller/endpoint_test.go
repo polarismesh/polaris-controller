@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
@@ -438,6 +439,65 @@ func TestPodLookupFailureDoesNotWriteInstances(t *testing.T) {
 				t.Errorf("incomplete Pod data caused %d instance writes", len(tr.requests))
 			}
 		})
+	}
+}
+
+func TestInvalidInstanceConfigStillDeletesRemovedEndpoints(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(*v1.Service)
+	}{
+		{name: "invalid ttl", configure: func(service *v1.Service) {
+			service.Annotations[util.PolarisHeartBeatTTL] = "abc"
+		}},
+		{name: "invalid metadata", configure: func(service *v1.Service) {
+			service.Annotations[util.PolarisMetadata] = `{"tenant":`
+		}},
+		{name: "invalid protocol reference", configure: func(service *v1.Service) {
+			service.Annotations[util.PolarisProtocols] = `{"missing-port":"TCP"}`
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, stores := newTestController(t)
+			tr := mockPolarisHTTP(t)
+			addTestEndpoint(t, stores, "10.0.0.2")
+			service := testService()
+			tc.configure(service)
+			p.consumer.(*testConsumer).instances = []model.Instance{
+				ownedInstance("10.0.0.1"), ownedInstance("10.0.0.2"),
+			}
+
+			if err := p.processSyncInstance(service); err == nil {
+				t.Fatal("invalid instance configuration was accepted")
+			}
+			writes := tr.writes()
+			if len(writes) != 1 || writes[0].method != http.MethodPost ||
+				writes[0].path != "/naming/v1/instances/delete" {
+				t.Fatalf("unexpected writes: %+v", writes)
+			}
+			var instances []polarisapi.Instance
+			if err := json.Unmarshal(writes[0].body, &instances); err != nil {
+				t.Fatal(err)
+			}
+			if len(instances) != 1 || instances[0].Host != "10.0.0.1" {
+				t.Fatalf("removed endpoint was not deleted: %+v", instances)
+			}
+		})
+	}
+}
+
+func TestEndpointDeleteAcceptsTombstone(t *testing.T) {
+	p, stores := newTestController(t)
+	storeObject(t, stores.services, testService())
+	addTestEndpoint(t, stores, "10.0.0.1")
+	endpoint, err := p.endpointsLister.Endpoints("ns").Get("svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p.onEndpointDelete(cache.DeletedFinalStateUnknown{Obj: endpoint})
+	if p.queue.Len() != 1 {
+		t.Fatalf("tombstone delete was not enqueued: queue length=%d", p.queue.Len())
 	}
 }
 

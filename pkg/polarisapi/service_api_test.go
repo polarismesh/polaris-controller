@@ -103,7 +103,7 @@ func TestUpdateServiceAliasChangesSourceService(t *testing.T) {
 	}
 }
 
-func TestCreateServiceAliasDoesNotHideExistedResource(t *testing.T) {
+func TestCreateServiceAliasTreatsExistedResourceAsIdempotent(t *testing.T) {
 	newPolarisTestClient(t, func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/naming/v1/namespaces":
@@ -126,8 +126,12 @@ func TestCreateServiceAliasDoesNotHideExistedResource(t *testing.T) {
 			"polarismesh.cn/aliasService":   "order",
 		},
 	}}
-	if _, err := CreateServiceAlias(service, Source); err == nil || !strings.Contains(err.Error(), "400201") {
-		t.Fatalf("ExistedResource was hidden: %v", err)
+	response, err := CreateServiceAlias(service, Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != ExistedResource {
+		t.Fatalf("response code=%d, want %d", response.Code, ExistedResource)
 	}
 }
 

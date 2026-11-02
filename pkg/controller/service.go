@@ -57,6 +57,16 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	// 5. 如果: [old/not polaris -> new/not polaris] 舍弃
 	oldIsPolaris := p.IsPolarisService(oldService)
 	curIsPolaris := p.IsPolarisService(curService)
+	if oldIsPolaris && (!curIsPolaris || curService.GetDeletionTimestamp() != nil) {
+		p.enqueueOtherAliasClaimants(oldService, "Update")
+	}
+	if oldIsPolaris && curIsPolaris {
+		oldAlias, oldHasAlias := serviceAliasKey(oldService)
+		currentAlias, currentHasAlias := serviceAliasKey(curService)
+		if oldHasAlias && (!currentHasAlias || oldAlias != currentAlias) {
+			p.enqueueOtherAliasClaimants(oldService, "Update")
+		}
+	}
 	if !oldIsPolaris && !curIsPolaris {
 		return
 	}
@@ -89,6 +99,17 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 	}
 
 	if !p.IsPolarisService(service) {
+		return
+	}
+	if service.GetDeletionTimestamp() != nil {
+		task := &Task{
+			Namespace:  service.GetNamespace(),
+			Name:       service.GetName(),
+			ObjectType: KubernetesService,
+			Operation:  OperationDelete,
+		}
+		p.resyncServiceCache.Delete(task.Key())
+		p.enqueueService(task, service, "Delete")
 		return
 	}
 
@@ -131,6 +152,7 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 
 	p.resyncServiceCache.Delete(task.Key())
 	p.enqueueService(task, service, "Delete")
+	p.enqueueOtherAliasClaimants(service, "Update")
 }
 
 func (p *PolarisController) enqueueService(task *Task, service *v1.Service, eventType string) {
@@ -191,6 +213,9 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 		// Namespace 任务同样根据当前对象和 Namespace 注解判断，无需补写 sync 注解。
 		operationService := service
 		isPolarisService := p.IsPolarisService(operationService)
+		if isPolarisService && operationService.GetDeletionTimestamp() != nil {
+			return p.deleteServiceWithState(operationService)
+		}
 
 		cachedService, ok := p.appliedServiceCache.Load(task.Key())
 		recoveryGeneration := p.serviceRecoveryGeneration.Load()
@@ -221,6 +246,11 @@ func (p *PolarisController) syncServiceLocked(task *Task) error {
 			// 同步 k8s 的 namespace 和 service 到 polaris，失败投入队列重试
 			if processError := p.processSyncNamespaceAndService(operationService); processError != nil {
 				log.SyncNamingScope().Errorf("ns/svc %s sync failed: %v", task.Key(), processError)
+				return processError
+			}
+			if processError := p.reconcileInitialServiceLabels(operationService); processError != nil {
+				log.SyncNamingScope().Errorf("Service %s initial metadata reconcile failed: %v",
+					task.Key(), processError)
 				return processError
 			}
 			if processError := p.processSyncInstance(operationService); processError != nil {
@@ -305,7 +335,6 @@ func (p *PolarisController) processSyncNamespaceAndService(service *v1.Service) 
 		log.SyncNamingScope().Errorf("Failed to reconcile service alias %s: %v", serviceMsg, err)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, "AliasReconcileFailed",
 			"Failed to reconcile service alias %s: %v", serviceMsg, err)
-		return err
 	}
 
 	return nil
@@ -344,10 +373,11 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	k8sService := cur.GetNamespace() + "/" + cur.GetName()
 	// 同步 service 的标签变化情况
 	metadataErr := p.updateService(old, cur)
+	if metadataErr == nil {
+		metadataErr = p.recordAppliedServiceLabels(old, cur)
+	}
 	if metadataErr != nil {
 		log.SyncNamingScope().Error("process service update info", zap.String("service", k8sService), zap.Error(metadataErr))
-	} else {
-		p.recordAppliedServiceLabels(old, cur)
 	}
 
 	changeType := p.CompareServiceChange(old, cur)
@@ -373,7 +403,20 @@ func (p *PolarisController) processUpdateService(old, cur *v1.Service) error {
 	return stderrors.Join(aliasErr, metadataErr, instanceErr)
 }
 
-func (p *PolarisController) recordAppliedServiceLabels(old, cur *v1.Service) {
+func (p *PolarisController) reconcileInitialServiceLabels(service *v1.Service) error {
+	baseline, err := p.appliedServiceFromSyncState(service)
+	if err != nil {
+		return err
+	}
+	if len(service.GetLabels()) > 0 || len(baseline.GetLabels()) > 0 {
+		if err = p.updateService(baseline, service); err != nil {
+			return err
+		}
+	}
+	return p.persistAppliedServiceLabels(service, maps.Clone(service.GetLabels()))
+}
+
+func (p *PolarisController) recordAppliedServiceLabels(old, cur *v1.Service) error {
 	applied := old.DeepCopy()
 	applied.Labels = maps.Clone(cur.GetLabels())
 	key := (&Task{
@@ -381,7 +424,11 @@ func (p *PolarisController) recordAppliedServiceLabels(old, cur *v1.Service) {
 		Name:       cur.GetName(),
 		ObjectType: KubernetesService,
 	}).Key()
+	if err := p.persistAppliedServiceLabels(cur, applied.Labels); err != nil {
+		return err
+	}
 	p.appliedServiceCache.Store(key, applied)
+	return nil
 }
 
 func (p *PolarisController) lockService(namespace, name string) func() {

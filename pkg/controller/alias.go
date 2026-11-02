@@ -84,8 +84,15 @@ func (p *PolarisController) reconcileServiceAlias(service *v1.Service) error {
 		return fmt.Errorf("get alias %s: %w", key.String(), err)
 	}
 	if !found {
-		if _, err = polarisapi.CreateServiceAlias(service, p.aliasOwner(service)); err != nil {
+		created, err := polarisapi.CreateServiceAlias(service, p.aliasOwner(service))
+		if err != nil {
 			return fmt.Errorf("create alias %s: %w", key.String(), err)
+		}
+		if created.Code == polarisapi.ExistedResource {
+			// The alias namespace/name is occupied by an ordinary Service.
+			// Instance registration must continue; alias creation is retried by resync.
+			p.clearAliasClaimState(service, key)
+			return nil
 		}
 		if err = p.verifyServiceAlias(service, key); err != nil {
 			return err
@@ -118,11 +125,38 @@ func (p *PolarisController) aliasOwner(service *v1.Service) string {
 }
 
 func (p *PolarisController) canUpdateAlias(service *v1.Service, actual polarisapi.Alias) bool {
-	if actual.Owners == polarisapi.Source || actual.Owners == p.aliasOwner(service) {
+	if actual.Owners == p.aliasOwner(service) {
 		return true
 	}
 	return strings.HasPrefix(actual.Owners,
 		fmt.Sprintf("%s/%s/", polarisapi.Source, p.config.PolarisController.ClusterName))
+}
+
+func (p *PolarisController) enqueueOtherAliasClaimants(service *v1.Service, eventType string) {
+	key, ok := serviceAliasKey(service)
+	if !ok || !p.IsPolarisService(service) {
+		return
+	}
+	services, err := p.serviceLister.List(labels.Everything())
+	if err != nil {
+		log.SyncNamingScope().Errorf("Failed to list alias claimants for %s: %v", key.String(), err)
+		return
+	}
+	for _, claimant := range services {
+		if claimant.GetNamespace() == service.GetNamespace() && claimant.GetName() == service.GetName() {
+			continue
+		}
+		if claimant.GetDeletionTimestamp() != nil || !p.isActiveAliasClaim(claimant, key) {
+			continue
+		}
+		task := &Task{
+			Namespace:  claimant.GetNamespace(),
+			Name:       claimant.GetName(),
+			ObjectType: KubernetesService,
+			Operation:  OperationUpdate,
+		}
+		p.enqueueService(task, claimant, eventType)
+	}
 }
 
 func (p *PolarisController) verifyServiceAlias(service *v1.Service, key aliasKey) error {

@@ -19,8 +19,10 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"os"
 	"sort"
 	"sync"
@@ -53,17 +55,18 @@ const (
 )
 
 type serviceSyncState struct {
-	ClusterName      string `json:"clusterName"`
-	SourceNamespace  string `json:"sourceNamespace"`
-	SourceName       string `json:"sourceName"`
-	SourceUID        string `json:"sourceUID"`
-	PolarisNamespace string `json:"polarisNamespace"`
-	PolarisService   string `json:"polarisService"`
-	Phase            string `json:"phase"`
-	Revision         uint64 `json:"revision,omitempty"`
-	Attempts         int    `json:"attempts,omitempty"`
-	LastError        string `json:"lastError,omitempty"`
-	UpdatedAt        string `json:"updatedAt"`
+	ClusterName      string            `json:"clusterName"`
+	SourceNamespace  string            `json:"sourceNamespace"`
+	SourceName       string            `json:"sourceName"`
+	SourceUID        string            `json:"sourceUID"`
+	PolarisNamespace string            `json:"polarisNamespace"`
+	PolarisService   string            `json:"polarisService"`
+	Phase            string            `json:"phase"`
+	AppliedLabels    map[string]string `json:"appliedLabels,omitempty"`
+	Revision         uint64            `json:"revision,omitempty"`
+	Attempts         int               `json:"attempts,omitempty"`
+	LastError        string            `json:"lastError,omitempty"`
+	UpdatedAt        string            `json:"updatedAt"`
 }
 
 func (s serviceSyncState) key() string {
@@ -132,7 +135,57 @@ func (p *PolarisController) ensureActiveSyncState(service *v1.Service) error {
 		return nil
 	}
 	record := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStateActive)
-	_, err := p.syncStateStore.Upsert(context.Background(), record)
+	existing, found, err := p.syncStateStore.Get(context.Background(), record.key())
+	if err != nil {
+		return err
+	}
+	if found {
+		record.AppliedLabels = maps.Clone(existing.AppliedLabels)
+	}
+	_, err = p.syncStateStore.Upsert(context.Background(), record)
+	return err
+}
+
+func (p *PolarisController) appliedServiceFromSyncState(service *v1.Service) (*v1.Service, error) {
+	baseline := service.DeepCopy()
+	baseline.Labels = nil
+	if p.syncStateStore == nil {
+		return baseline, nil
+	}
+	key := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStateActive).key()
+	record, ok, err := p.syncStateStore.Get(context.Background(), key)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		baseline.Labels = maps.Clone(record.AppliedLabels)
+	}
+	return baseline, nil
+}
+
+func (p *PolarisController) persistAppliedServiceLabels(service *v1.Service, appliedLabels map[string]string) error {
+	if p.syncStateStore == nil {
+		return nil
+	}
+	key := newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStateActive).key()
+	record, ok, err := p.syncStateStore.Get(context.Background(), key)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		record = newServiceSyncState(service, p.config.PolarisController.ClusterName, syncStateActive)
+		record.AppliedLabels = maps.Clone(appliedLabels)
+		_, err = p.syncStateStore.Upsert(context.Background(), record)
+		return err
+	}
+	if record.Phase != syncStateActive {
+		return nil
+	}
+	_, _, err = p.syncStateStore.UpdateIfMatch(context.Background(), record,
+		func(current *serviceSyncState) {
+			current.AppliedLabels = maps.Clone(appliedLabels)
+			current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		})
 	return err
 }
 
@@ -552,13 +605,16 @@ func (s *syncStateStore) Refresh(ctx context.Context) error {
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
 	records, err := s.loadRecords(ctx)
-	if err != nil {
-		return err
-	}
 	s.mu.Lock()
 	s.records = records
 	s.initialized = true
 	s.mu.Unlock()
+	if err != nil {
+		log.SyncNamingScope().Errorf("Loaded %d sync state records with shard failures: %v", len(records), err)
+		if len(records) == 0 {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -630,13 +686,17 @@ func (s *syncStateStore) ensureInitialized(ctx context.Context) error {
 	}
 
 	records, err := s.loadRecords(ctx)
-	if err != nil {
-		return err
-	}
 	s.mu.Lock()
 	s.records = records
 	s.initialized = true
 	s.mu.Unlock()
+	if err != nil {
+		log.SyncNamingScope().Errorf("Loaded %d sync state records with shard failures: %v", len(records), err)
+		if len(records) > 0 {
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 
@@ -645,6 +705,7 @@ func (s *syncStateStore) loadRecords(ctx context.Context) (map[string]serviceSyn
 		return nil, fmt.Errorf("kubernetes client is not configured")
 	}
 	records := make(map[string]serviceSyncState)
+	var shardErrs []error
 
 	for shard := 0; shard < syncStateShardCount; shard++ {
 		name := syncStateConfigMapName(shard)
@@ -668,13 +729,17 @@ func (s *syncStateStore) loadRecords(ctx context.Context) (map[string]serviceSyn
 				if !apierrors.IsAlreadyExists(err) {
 					log.SyncNamingScope().Errorf("Failed to create sync state ConfigMap %s/%s: %v",
 						s.namespace, name, err)
-					return nil, err
+					shardErrs = append(shardErrs, fmt.Errorf("create sync state ConfigMap %s/%s: %w",
+						s.namespace, name, err))
+					continue
 				}
 				configMap, err = s.client.CoreV1().ConfigMaps(s.namespace).Get(ctx, name, metav1.GetOptions{})
 				if err != nil {
 					log.SyncNamingScope().Errorf("Failed to read existing sync state ConfigMap %s/%s: %v",
 						s.namespace, name, err)
-					return nil, err
+					shardErrs = append(shardErrs, fmt.Errorf("read sync state ConfigMap %s/%s: %w",
+						s.namespace, name, err))
+					continue
 				}
 			} else {
 				log.SyncNamingScope().Infof("Created sync state ConfigMap %s/%s", s.namespace, name)
@@ -682,25 +747,30 @@ func (s *syncStateStore) loadRecords(ctx context.Context) (map[string]serviceSyn
 		} else if err != nil {
 			log.SyncNamingScope().Errorf("Failed to get sync state ConfigMap %s/%s: %v",
 				s.namespace, name, err)
-			return nil, err
+			shardErrs = append(shardErrs, fmt.Errorf("get sync state ConfigMap %s/%s: %w",
+				s.namespace, name, err))
+			continue
 		}
 
 		shardRecords, err := decodeSyncStateRecords(configMap)
 		if err != nil {
 			log.SyncNamingScope().Errorf("Failed to decode sync state ConfigMap %s/%s: %v",
 				s.namespace, name, err)
-			return nil, fmt.Errorf("decode sync state ConfigMap %s/%s: %w", s.namespace, name, err)
+			shardErrs = append(shardErrs, fmt.Errorf("decode sync state ConfigMap %s/%s: %w",
+				s.namespace, name, err))
+			continue
 		}
 		for key, record := range shardRecords {
 			if _, exists := records[key]; exists {
 				log.SyncNamingScope().Errorf("Duplicate sync state record %q in ConfigMap %s/%s",
 					key, s.namespace, name)
-				return nil, fmt.Errorf("duplicate sync state record %q", key)
+				shardErrs = append(shardErrs, fmt.Errorf("duplicate sync state record %q", key))
+				continue
 			}
 			records[key] = record
 		}
 	}
-	return records, nil
+	return records, errors.Join(shardErrs...)
 }
 
 func (s *syncStateStore) writeRecordIfMatchLocked(
@@ -823,6 +893,7 @@ func sameSyncStateContent(current, expected serviceSyncState) bool {
 		current.PolarisNamespace == expected.PolarisNamespace &&
 		current.PolarisService == expected.PolarisService &&
 		current.Phase == expected.Phase &&
+		maps.Equal(current.AppliedLabels, expected.AppliedLabels) &&
 		current.Attempts == expected.Attempts &&
 		current.LastError == expected.LastError
 }
@@ -934,6 +1005,7 @@ func (p *PolarisController) recoverSyncStates(ctx context.Context) error {
 		current[service.GetNamespace()+"/"+service.GetName()] = service
 	}
 
+	var recoveryErrs []error
 	for _, record := range records {
 		if record.ClusterName != p.config.PolarisController.ClusterName {
 			continue
@@ -948,7 +1020,8 @@ func (p *PolarisController) recoverSyncStates(ctx context.Context) error {
 			if record.Phase != syncStateActive {
 				log.SyncNamingScope().Infof("reactivate persisted sync state %s", record.key())
 				if err = p.ensureActiveSyncState(service); err != nil {
-					return err
+					recoveryErrs = append(recoveryErrs, fmt.Errorf("reactivate sync state %s: %w", record.key(), err))
+					continue
 				}
 			}
 			continue
@@ -962,7 +1035,8 @@ func (p *PolarisController) recoverSyncStates(ctx context.Context) error {
 					current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 				})
 			if updateErr != nil {
-				return updateErr
+				recoveryErrs = append(recoveryErrs, fmt.Errorf("mark sync state %s pending: %w", record.key(), updateErr))
+				continue
 			}
 			if changed {
 				record = updated
@@ -976,5 +1050,5 @@ func (p *PolarisController) recoverSyncStates(ctx context.Context) error {
 		log.SyncNamingScope().Infof("enqueue persisted pending deletion %s", record.key())
 		p.insertTask(record.sourceTask())
 	}
-	return nil
+	return errors.Join(recoveryErrs...)
 }

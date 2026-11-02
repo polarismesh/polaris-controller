@@ -705,7 +705,11 @@ func CreateServiceAlias(service *v1.Service, owners string) (CreateServiceAliasR
 		log.SyncNamingScope().Errorf("Failed to unmarshal result %s, %v, %s", serviceAliasMsg, err, string(body))
 		return CreateServiceAliasResponse{}, err
 	}
-	if statusCode != http.StatusOK || response.Code != ExecuteSuccess {
+	if response.Code == ExistedResource {
+		log.SyncNamingScope().Infof("Service alias %s already exists", serviceAliasMsg)
+		return response, nil
+	}
+	if statusCode != http.StatusOK || (response.Code != ExecuteSuccess && response.Code != ExistedResource) {
 		log.SyncNamingScope().Errorf("Failed to create service alias %s, code %d, info %s",
 			serviceAliasMsg, response.Code, response.Info)
 		return response, fmt.Errorf("create service alias failed, code=%d, info=%s", response.Code, response.Info)

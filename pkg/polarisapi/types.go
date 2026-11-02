@@ -106,7 +106,7 @@ type Service struct {
 	Name       string            `json:"name"`
 	Token      string            `json:"token,omitempty"`
 	Namespace  string            `json:"namespace,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
+	Metadata   map[string]string `json:"metadata"`
 	Ports      string            `json:"ports,omitempty"`
 	Business   string            `json:"business,omitempty"`
 	Department string            `json:"department,omitempty"`

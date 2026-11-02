@@ -159,6 +159,13 @@ func parseCustomProtocols(service *v1.Service) (map[string]string, error) {
 	return protocols, nil
 }
 
+// ValidateCustomProtocols exposes deterministic Service annotation validation
+// without requiring a complete Pod snapshot.
+func ValidateCustomProtocols(service *v1.Service) error {
+	_, err := parseCustomProtocols(service)
+	return err
+}
+
 var _emptyPodLabels = map[string]string{}
 
 func noEmptyMap(m map[string]string) map[string]string {

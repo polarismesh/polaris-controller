@@ -88,6 +88,19 @@ func TestResyncSkipsUnhealthyServerAndDisabledConfigSync(t *testing.T) {
 	}
 }
 
+func TestResyncContinuesWhenSyncStateRecoveryFails(t *testing.T) {
+	p, _ := newTestController(t)
+	service := testService()
+	task := &Task{Namespace: service.Namespace, Name: service.Name, ObjectType: KubernetesService}
+	p.resyncServiceCache.Store(task.Key(), service)
+	p.syncStateStore.client = nil
+
+	p.resyncWorker()
+	if p.queue.Len() != 1 {
+		t.Fatalf("sync-state recovery failure stopped Service resync: queue length=%d", p.queue.Len())
+	}
+}
+
 func TestHealthRecoveryKeepsPendingServiceLabelChanges(t *testing.T) {
 	for _, operation := range []string{"changed", "removed", "unchanged external drift"} {
 		t.Run(operation, func(t *testing.T) {
