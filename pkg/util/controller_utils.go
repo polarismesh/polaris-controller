@@ -40,7 +40,7 @@ func GenObjectQueueKey(obj interface{}) (string, error) {
 
 // GetOriginKeyWithResyncQueueKey 通过同步任务key生成原始key
 func GetOriginKeyWithResyncQueueKey(key string) string {
-	return key[:len(key)-len("~resync")]
+	return strings.TrimSuffix(key, "~resync")
 }
 
 // GenResourceResyncQueueKey 通过原始key生成用于同步任务的key便于区分不同的任务
@@ -119,19 +119,4 @@ func IsConfigMapKey(key string) (string, bool) {
 		return strings.TrimPrefix(key, ConfigMapPrefix), true
 	}
 	return key, false
-}
-
-func GetNamespace(svr *v1.Service) string {
-	if v, ok := svr.GetAnnotations()[PolarisOverideNamespace]; ok && v != "" {
-		return v
-	}
-
-	return svr.GetNamespace()
-}
-
-func GetServiceName(svr *v1.Service) string {
-	if v, ok := svr.GetAnnotations()[PolarisOverideService]; ok && v != "" {
-		return v
-	}
-	return svr.GetName()
 }

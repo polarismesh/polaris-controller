@@ -18,8 +18,10 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -39,8 +41,83 @@ const (
 	globalToken    = "polaris@12345678"
 )
 
-// updateService 批量增加实例接口
-func (p *PolarisController) updateService(cur *v1.Service) error {
+type desiredHealthCheck struct {
+	managed bool
+	enabled bool
+	ttl     int
+}
+
+func resolveHealthCheck(service *v1.Service) (desiredHealthCheck, error) {
+	value, exists := service.GetAnnotations()[util.PolarisHeartBeatTTL]
+	if !exists {
+		return desiredHealthCheck{}, nil
+	}
+	if strings.TrimSpace(value) == "" {
+		return desiredHealthCheck{}, nil
+	}
+
+	ttl, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || ttl < 0 || ttl > 60 {
+		return desiredHealthCheck{}, fmt.Errorf(
+			"annotation %s=%q on Service %s/%s must be an integer in [0, 60]",
+			util.PolarisHeartBeatTTL, value, service.GetNamespace(), service.GetName())
+	}
+
+	return desiredHealthCheck{
+		managed: true,
+		enabled: ttl > 0,
+		ttl:     ttl,
+	}, nil
+}
+
+func (d desiredHealthCheck) requestFields() (*bool, *polarisapi.HealthCheck) {
+	if !d.managed {
+		return nil, nil
+	}
+	if !d.enabled {
+		return util.Bool(false), nil
+	}
+	return util.Bool(true), &polarisapi.HealthCheck{
+		Type: util.IntPtr(0),
+		Heartbeat: polarisapi.Heartbeat{
+			TTL: d.ttl,
+		},
+	}
+}
+
+func (d desiredHealthCheck) needsUpdate(instance model.Instance) bool {
+	if !d.managed {
+		return false
+	}
+	if instance.IsEnableHealthCheck() != d.enabled {
+		return true
+	}
+	return d.enabled && instance.GetTtl() != int64(d.ttl)
+}
+
+func instanceHealthyRequest(health desiredHealthCheck, current model.Instance, desired bool) *bool {
+	if health.enabled {
+		return nil
+	}
+	// An unmanaged heartbeat remains owned by the Polaris server.
+	if !health.managed && current != nil && current.IsEnableHealthCheck() {
+		return nil
+	}
+	return util.Bool(desired)
+}
+
+func resolveInstanceVersion(metadata map[string]string, podVersion string) (string, bool) {
+	if version := metadata[util.PolarisCustomVersion]; version != "" {
+		return version, true
+	}
+	if podVersion != "" {
+		return podVersion, true
+	}
+	return "", false
+}
+
+// updateService 根据 Kubernetes Service Label 的实际变化更新 Polaris Service metadata。
+func (p *PolarisController) updateService(old, cur *v1.Service) error {
 	resp, err := polarisapi.GetService(cur)
 	if err != nil {
 		return err
@@ -51,43 +128,66 @@ func (p *PolarisController) updateService(cur *v1.Service) error {
 	}
 	polarisSvc := resp.Services[0]
 
-	// 合并服务的 labels 信息
-	newLabels := cur.Labels
-	curLabels := polarisSvc.Metadata
-	for k, v := range newLabels {
-		curLabels[k] = v
+	metadata := maps.Clone(polarisSvc.Metadata)
+	if metadata == nil {
+		metadata = make(map[string]string)
 	}
 
-	polarisSvc.Metadata = curLabels
+	changed := false
+	for key, value := range cur.Labels {
+		remoteValue, exists := metadata[key]
+		if !exists {
+			metadata[key] = value
+			changed = true
+			continue
+		}
+
+		oldValue, hadLabel := old.Labels[key]
+		if !hadLabel || oldValue != value {
+			if remoteValue != value {
+				metadata[key] = value
+				changed = true
+			}
+		}
+	}
+
+	for key, oldValue := range old.Labels {
+		if _, exists := cur.Labels[key]; exists {
+			continue
+		}
+
+		remoteValue, exists := metadata[key]
+		if !exists {
+			continue
+		}
+		if remoteValue != oldValue {
+			log.SyncNamingScope().Warnf(
+				"Service %s/%s preserved metadata key %q because its value changed outside the removed Label",
+				cur.GetNamespace(), cur.GetName(), key)
+			continue
+		}
+		delete(metadata, key)
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	polarisSvc.Metadata = metadata
 	_, _, err = polarisapi.UpdateService(cur, []polarisapi.Service{polarisSvc})
 	return err
 }
 
 // addInstances 批量增加实例接口
-func (p *PolarisController) addInstances(service *v1.Service, addresses []address.Address) error {
+func (p *PolarisController) addInstances(service *v1.Service, healthCheck desiredHealthCheck,
+	addresses []address.Address) error {
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	healthy := util.Bool(true)
-	enableHealthCheck := util.Bool(false)
-
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Heartbeat.TTL = ttl
-				*healthy = false
-				*enableHealthCheck = true
-			}
-		}
-	}
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
+	enableHealthCheck, requestHealthCheck := healthCheck.requestFields()
+	healthy := util.Bool(!healthCheck.enabled)
 
 	instances := make([]polarisapi.Instance, 0, len(addresses))
 
@@ -96,18 +196,14 @@ func (p *PolarisController) addInstances(service *v1.Service, addresses []addres
 		addr := addresses[i]
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
-		version := metadata[util.PolarisCustomVersion]
-		// 如果没有读取到用户显示设置的自定义版本号，则从 addr 中读取
-		if version == "" {
-			version = addr.Version
-		}
+		version, _ := resolveInstanceVersion(metadata, addr.Version)
 
 		*healthy = *healthy && addr.Healthy
 		tmpInstance := polarisapi.Instance{
-			Service:           util.GetServiceName(service),
-			Namespace:         util.GetNamespace(service),
+			Service:           service.GetName(),
+			Namespace:         service.GetNamespace(),
 			ServiceToken:      globalToken,
-			HealthCheck:       &healthCheck,
+			HealthCheck:       requestHealthCheck,
 			Host:              addr.IP,
 			Protocol:          addr.Protocol,
 			Version:           version,
@@ -129,7 +225,7 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("Finish to delete all instance %s (%v)", serviceMsg, time.Since(startTime))
@@ -139,8 +235,8 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 
 	for _, i := range addresses {
 		tmpInstance := polarisapi.Instance{
-			Service:      util.GetServiceName(service),
-			Namespace:    util.GetNamespace(service),
+			Service:      service.GetName(),
+			Namespace:    service.GetNamespace(),
 			ServiceToken: globalToken,
 			Host:         i.IP,
 			Port:         util.IntPtr(i.Port),
@@ -151,34 +247,18 @@ func (p *PolarisController) deleteInstances(service *v1.Service, addresses []add
 }
 
 // updateInstances 批量更新实例接口
-func (p *PolarisController) updateInstances(service *v1.Service, addresses []address.Address) error {
+func (p *PolarisController) updateInstances(service *v1.Service, healthCheck desiredHealthCheck,
+	addresses []address.Address) error {
 	if len(addresses) == 0 {
 		return nil
 	}
-	serviceMsg := fmt.Sprintf("[%s/%s]", util.GetNamespace(service), util.GetServiceName(service))
+	serviceMsg := fmt.Sprintf("[%s/%s]", service.GetNamespace(), service.GetName())
 	startTime := time.Now()
 	defer func() {
 		log.SyncNamingScope().Infof("Finish to update all %s (%v)", serviceMsg, time.Since(startTime))
 	}()
 
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	enableHealthCheck := util.Bool(false)
-
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("PolarisHeartBeatTTL params %s is invalid, must [1, 60], now %s", serviceMsg, ttlStr)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Type = util.IntPtr(0)
-				healthCheck.Heartbeat.TTL = ttl
-				enableHealthCheck = util.Bool(true)
-			}
-		}
-	}
+	enableHealthCheck, requestHealthCheck := healthCheck.requestFields()
 
 	instances := make([]polarisapi.Instance, 0, len(addresses))
 
@@ -187,16 +267,18 @@ func (p *PolarisController) updateInstances(service *v1.Service, addresses []add
 
 		metadata := mergeMetadataWithService(service, addr, p.config.PolarisController.ClusterName)
 
-		healthy := util.Bool(addr.Healthy)
+		version, _ := resolveInstanceVersion(metadata, addr.Version)
 		tmpInstance := polarisapi.Instance{
-			Service:           util.GetServiceName(service),
-			Namespace:         util.GetNamespace(service),
+			Service:           service.GetName(),
+			Namespace:         service.GetNamespace(),
 			ServiceToken:      globalToken,
-			HealthCheck:       &healthCheck,
+			HealthCheck:       requestHealthCheck,
 			Host:              addr.IP,
+			Protocol:          addr.Protocol,
+			Version:           version,
 			Port:              util.IntPtr(addr.Port),
 			Weight:            util.IntPtr(addr.Weight),
-			Healthy:           healthy,
+			Healthy:           instanceHealthyRequest(healthCheck, addr.PolarisInstance, addr.Healthy),
 			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
@@ -212,15 +294,15 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	startTime := time.Now()
 	getInstancesReq := &api.GetAllInstancesRequest{}
 	getInstancesReq.FlowID = rand.Uint64()
-	getInstancesReq.Namespace = util.GetNamespace(service)
-	getInstancesReq.Service = util.GetServiceName(service)
+	getInstancesReq.Namespace = service.GetNamespace()
+	getInstancesReq.Service = service.GetName()
 	registered, err := p.consumer.GetAllInstances(getInstancesReq)
 	if err != nil {
 		metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Failed", "500").
 			Observe(time.Since(startTime).Seconds())
-		log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v, return empty",
+		log.SyncNamingScope().Errorf("Fail [%s/%s] sync GetAllInstances, err is %v",
 			service.GetNamespace(), service.GetName(), err)
-		return []model.Instance{}, nil
+		return nil, err
 	}
 	metrics.InstanceRequestSync.WithLabelValues("Get", "SDK", "Success", "200").
 		Observe(time.Since(startTime).Seconds())
@@ -228,26 +310,26 @@ func (p *PolarisController) getAllInstance(service *v1.Service) (instances []mod
 	return registered.GetInstances(), nil
 }
 
-// CompareInstance 比较预期示例和现有实例的区别
-func (p *PolarisController) CompareInstance(service *v1.Service,
-	spec, cur address.InstanceSet) (addIns,
+// CompareInstance 使用全量实例判断是否新增，仅更新、删除本集群 controller 托管的实例。
+func (p *PolarisController) CompareInstance(service *v1.Service, healthCheck desiredHealthCheck,
+	spec, currentController, currentAll address.InstanceSet) (addIns,
 	deleteIns, updateIns []address.Address) {
-	// 对比预期的endpoint和当前的北极星获取的值，如果没有就增加，如果更新
 	for index, instance := range spec {
-		if cur[index] != nil {
-			// 如果存在，判断是否要更新
-			if p.compareInstanceUpdate(service, instance, cur[index]) {
+		if cur := currentController[index]; cur != nil {
+			if p.compareInstanceUpdate(service, healthCheck, instance, cur) {
 				log.SyncNamingScope().Warnf("%s %s need update %v", service.Namespace, service.Name, instance.IP)
-				updateIns = append(updateIns, *instance)
+				updated := *instance
+				updated.PolarisInstance = cur.PolarisInstance
+				updateIns = append(updateIns, updated)
 			}
-		} else {
-			// 如果不存在，增加到add列表
+		} else if currentAll[index] == nil {
+			// SDK/Java Agent 或其他集群已注册相同地址时，不重复 Add。
 			addIns = append(addIns, *instance)
 		}
 	}
 
-	// 对比当前北极星的跟预期列表，删除没有用的。
-	for i, ins := range cur {
+	// 删除范围保持原有归属限制，不能遍历全量实例。
+	for i, ins := range currentController {
 		if spec[i] == nil {
 			log.SyncNamingScope().Warnf("%s %s need delete %v-%v", service.Namespace, service.Name, ins.IP, ins.Port)
 			deleteIns = append(deleteIns, *ins)
@@ -257,41 +339,15 @@ func (p *PolarisController) CompareInstance(service *v1.Service,
 }
 
 // CompareInstanceUpdate 比较已存在的实例是否需要更新
-func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *address.Address,
-	cur *address.Address) bool {
-	/*
-		    HealthCheck:       &healthCheck,
-			Weight:            &weight,
-			EnableHealthCheck: enableHealthCheck,
-			Metadata:          metadata,
-	*/
-	// 处理健康检查
-	var healthCheck polarisapi.HealthCheck
-	enableHealthCheck := util.Bool(false)
-
-	// health check update
-	ttlStr := service.GetAnnotations()[util.PolarisHeartBeatTTL]
-	if ttlStr != "" {
-		// ttl 默认是5s
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil {
-			log.SyncNamingScope().Errorf("annotation 'polarismesh.cn/ttl' value: %s, converted to type int error %v",
-				ttlStr, err)
-		} else {
-			if ttl > 0 && ttl <= 60 {
-				healthCheck.Type = util.IntPtr(0)
-				healthCheck.Heartbeat.TTL = ttl
-				*enableHealthCheck = true
-			}
-		}
-	}
-
-	if cur.PolarisInstance.IsEnableHealthCheck() != *enableHealthCheck {
+func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthCheck desiredHealthCheck,
+	spec *address.Address, cur *address.Address) bool {
+	if healthCheck.needsUpdate(cur.PolarisInstance) {
 		return true
 	}
 
-	// healthy update
-	if cur.PolarisInstance.IsHealthy() != spec.Healthy {
+	// When heartbeat checking is enabled, the server owns the health result.
+	heartbeatOwned := healthCheck.enabled || cur.PolarisInstance.IsEnableHealthCheck()
+	if !heartbeatOwned && cur.PolarisInstance.IsHealthy() != spec.Healthy {
 		return true
 	}
 
@@ -310,78 +366,50 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, spec *add
 		return true
 	}
 
-	// custom meta update
-	newMetadataStr := service.GetAnnotations()[util.PolarisMetadata]
-	oldMetadata := cur.PolarisInstance.GetMetadata()
-	if oldMetadata == nil {
+	// 使用与写入完全相同的 metadata，覆盖 Pod/Service 字段的增加、变更和删除。
+	desired := *spec
+	desired.PolarisInstance = cur.PolarisInstance
+	metadata := mergeMetadataWithService(service, desired, p.config.PolarisController.ClusterName)
+	if !maps.Equal(metadata, cur.PolarisInstance.GetMetadata()) {
 		return true
 	}
 
-	if newMetadataStr == "" {
-		return isPolarisInstanceHasCustomMeta(oldMetadata)
-	}
-	newMetaMap := make(map[string]string)
-	err := json.Unmarshal([]byte(newMetadataStr), &newMetaMap)
-	if err != nil {
-		log.SyncNamingScope().Errorf("fail to unmarshal json from service annotations %s, error %v", newMetadataStr, err)
-		return false
-	}
-
-	for k, v := range newMetaMap {
-		// 这里的 meta ，后面的流程会覆盖掉，不用处理
-		if _, ok := util.PolarisSystemMetaSet[k]; ok {
-			continue
-		}
-		// 不是系统 meta ，查看 polaris ins 中是否有这个 meta key
-		curV, ok := oldMetadata[k]
-		if !ok {
-			// polaris ins 中没有，则是修改
-			return true
-		}
-		// polaris ins 中有，查看 value 是否相同
-		if curV != v {
-			// 不同，则是修改
-			return true
-		}
-	}
-	return false
+	desiredVersion, managedVersion := resolveInstanceVersion(metadata, desired.Version)
+	return managedVersion && cur.PolarisInstance.GetVersion() != desiredVersion
 }
 
-// 判断当前 polaris 实例是否有自定义 meta
-func isPolarisInstanceHasCustomMeta(m map[string]string) bool {
-	return len(m) > len(util.PolarisDefaultMetaSet)
-}
-
-// filterPolarisMetadata 过滤属于TKE注册的服务
-func (p *PolarisController) filterPolarisMetadata(service *v1.Service, instances []model.Instance) []address.Address {
+// filterControllerInstances 过滤当前集群 controller 管理的实例。
+// targetUID 非空时只匹配该 Service 代次，用于 pending-delete 的定向清理。
+func (p *PolarisController) filterControllerInstances(
+	instances []model.Instance, targetUID string,
+) []address.Address {
 	var ins []address.Address
 
-	// 根据metadata要过滤出来对应的实例列表
-	/*
-		"clusterName":  p.config.PolarisController.ClusterName,
-		"namespace":    service.GetNamespace(),
-		"workloadName": service.GetAnnotations()[WorkloadName],
-		"workloadKind": service.GetAnnotations()[WorkloadKind],
-		"serviceName":  service.GetName,
-	*/
 	for _, instance := range instances {
-		// 新增字段flag，或者使用原来判断条件
-		if p.isSyncInstance(instance) {
-			ins = append(ins, address.Address{
-				IP:   instance.GetHost(),
-				Port: int(instance.GetPort()),
-			})
+		if !p.isControllerInstance(instance) {
+			continue
 		}
+		if targetUID != "" && instance.GetMetadata()[util.K8sServiceUID] != targetUID {
+			continue
+		}
+		ins = append(ins, address.Address{
+			IP:   instance.GetHost(),
+			Port: int(instance.GetPort()),
+		})
 	}
 	return ins
 }
 
-func (p *PolarisController) isSyncInstance(ins model.Instance) bool {
-	clusterName := ins.GetMetadata()[util.PolarisClusterName]
-	source := ins.GetMetadata()[util.PolarisSource]
+func (p *PolarisController) isControllerInstance(ins model.Instance) bool {
+	return p.isControllerMetadata(ins.GetMetadata())
+}
+
+func (p *PolarisController) isControllerMetadata(metadata map[string]string) bool {
+	clusterName := metadata[util.PolarisClusterName]
+	source := metadata[util.PolarisSource]
 
 	// 存量使用 platform 字段，这里兼容存量字段
-	oldSource := ins.GetMetadata()[util.PolarisOldSource]
+	oldSource := metadata[util.PolarisOldSource]
 
 	match := (clusterName == p.config.PolarisController.ClusterName && source == Source) ||
 		(clusterName == p.config.PolarisController.ClusterName && oldSource == Source)
@@ -408,13 +436,44 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	if metadataStr != "" {
 		_ = json.Unmarshal([]byte(metadataStr), &metadata)
 	}
-
-	metadata[util.PolarisSource] = Source
-	metadata[util.PolarisClusterName] = clusterName
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
 
 	for k, v := range addr.Metadata {
 		metadata[k] = v
 	}
 
+	// 保留历史默认字段；其余业务 metadata 由 Service 注解和 Pod 标签完整声明。
+	if addr.PolarisInstance != nil {
+		for k, v := range addr.PolarisInstance.GetMetadata() {
+			_, isDefault := util.PolarisDefaultMetaSet[k]
+			_, isServer := util.PolarisServerMetaSet[k]
+			serverOwned := isServer && isServerOwnedMetadata(addr.PolarisInstance, k, v)
+			if _, exists := metadata[k]; !exists && (isDefault || serverOwned || k == util.PolarisOldSource) {
+				metadata[k] = v
+			}
+		}
+	}
+	// 实例归属不能被 Service 自定义 metadata 或 Pod 标签覆盖。
+	metadata[util.PolarisSource] = Source
+	metadata[util.PolarisClusterName] = clusterName
+	metadata[util.K8sServiceUID] = string(service.GetUID())
+
 	return metadata
+}
+
+func isServerOwnedMetadata(instance model.Instance, key, value string) bool {
+	switch key {
+	case util.PolarisInternalLastHeartbeat:
+		return true
+	case util.PolarisLocationRegion:
+		return instance.GetRegion() == value
+	case util.PolarisLocationZone:
+		return instance.GetZone() == value
+	case util.PolarisLocationCampus:
+		return instance.GetCampus() == value
+	default:
+		return false
+	}
 }

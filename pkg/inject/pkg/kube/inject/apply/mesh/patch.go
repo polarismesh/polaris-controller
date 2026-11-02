@@ -119,8 +119,8 @@ func (pb *PodPatchBuilder) handlePolarisSidecarEnvInject(opt *inject.PatchOption
 		}
 		fillEnv(envMap, config, opt.SidecarMode)
 	}
-	log.InjectScope().Infof("pod=[%s, %s] inject polaris-sidecar mode %s, env map %v",
-		pod.Namespace, pod.Name, utils.ParseSidecarModeName(opt.SidecarMode), envMap)
+	log.InjectScope().Infof("pod=%s/%s inject polaris-sidecar mode=%s env-count=%d",
+		pod.Namespace, pod.Name, utils.ParseSidecarModeName(opt.SidecarMode), len(envMap))
 	for k, v := range envMap {
 		add.Env = append(add.Env, corev1.EnvVar{Name: k, Value: v})
 	}
@@ -138,10 +138,13 @@ func (pb *PodPatchBuilder) ensureRootCertExist(k8sClient kubernetes.Interface, p
 		return nil
 	}
 	if !errors.IsNotFound(err) {
+		log.InjectScope().Errorf("Failed to get root certificate Secret %s/%s: %v", ns, utils.PolarisSidecarRootCert, err)
 		return err
 	}
 	secret, err := k8sClient.CoreV1().Secrets(util.RootNamespace).Get(context.TODO(), utils.PolarisSidecarRootCert, metav1.GetOptions{})
 	if err != nil {
+		log.InjectScope().Errorf("Failed to get source root certificate Secret %s/%s: %v",
+			util.RootNamespace, utils.PolarisSidecarRootCert, err)
 		return err
 	}
 
@@ -152,8 +155,16 @@ func (pb *PodPatchBuilder) ensureRootCertExist(k8sClient kubernetes.Interface, p
 	s.Name = utils.PolarisSidecarRootCert
 	_, err = k8sClient.CoreV1().Secrets(ns).Create(context.TODO(), s, metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) || errors.IsConflict(err) {
+		log.InjectScope().Infof("Root certificate Secret %s/%s already exists",
+			ns, utils.PolarisSidecarRootCert)
 		return nil
 	}
+	if err != nil {
+		log.InjectScope().Errorf("Failed to create root certificate Secret %s/%s: %v",
+			ns, utils.PolarisSidecarRootCert, err)
+		return err
+	}
+	log.InjectScope().Infof("Created root certificate Secret %s/%s", ns, utils.PolarisSidecarRootCert)
 	return err
 }
 

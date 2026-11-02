@@ -108,18 +108,34 @@ func (p *PolarisController) syncServiceOnNamespaceUpdate(oldNs, curNs *v1.Namesp
 		if util.IgnoreService(service) {
 			continue
 		}
-		// service 确定有 sync=true 标签的，不需要在这里投入队列。由后续 service 事件流程处理，减少一些冗余。
-		// namespace 当前有 sync ，且 service sync 为 false 的场景，namespace 流程不处理， service 流程来处理。
-		// 如果由 namespace 流程处理，则每次 resync ，多需要处理一次
-		if p.IsPolarisService(service) || (operation == OperationAdd && !p.IsPolarisService(service)) {
-			continue
-		}
-
 		task := &Task{
 			Namespace:  service.GetNamespace(),
 			Name:       service.GetName(),
 			ObjectType: KubernetesService,
 			Operation:  operation,
+		}
+		if sync, ok := service.Annotations[util.PolarisSync]; ok {
+			// 对象注解优先；关闭 Namespace 同步不能删除显式开启同步的 Service，
+			// 显式关闭或非法值也不应被 Namespace 继承流程处理。
+			if operation == OperationDelete {
+				if sync == util.IsEnableSync {
+					p.resyncServiceCache.Store(task.Key(), service)
+				}
+				continue
+			}
+			if sync != util.IsEnableSync {
+				continue
+			}
+		}
+		if operation == OperationDelete &&
+			service.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
+			p.resyncServiceCache.Store(task.Key(), service)
+			continue
+		}
+		if operation == OperationAdd {
+			p.resyncServiceCache.Store(task.Key(), service)
+		} else {
+			p.resyncServiceCache.Delete(task.Key())
 		}
 		p.insertTask(task)
 	}
@@ -141,9 +157,11 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 		if util.IgnoreObject(configMap) {
 			continue
 		}
-		// ConfigMap 确定有 sync=true 标签的，不需要在这里投入队列。由后续 ConfigMap 事件流程处理。
-		// namespace 当前有 sync ，且 ConfigMap sync 为 false 的场景，namespace 流程不处理， ConfigMap 流程来处理。
-		if p.IsPolarisConfigMap(configMap) || (operation == OperationAdd && !p.IsPolarisConfigMap(configMap)) {
+		if configMap.Annotations[util.InternalConfigFileSyncSourceKey] == util.SourceFromPolaris {
+			continue
+		}
+		if sync, ok := configMap.Annotations[util.PolarisSync]; ok &&
+			(operation == OperationDelete || sync != util.IsEnableSync) {
 			continue
 		}
 
@@ -153,10 +171,15 @@ func (p *PolarisController) syncConfigMapOnNamespaceUpdate(oldNs, curNs *v1.Name
 			ObjectType: KubernetesConfigMap,
 			Operation:  operation,
 		}
+		if operation == OperationAdd {
+			p.resyncConfigFileCache.Store(task.Key(), configMap)
+		} else {
+			p.resyncConfigFileCache.Delete(task.Key())
+		}
 		p.insertTask(task)
 	}
 }
 
 func (p *PolarisController) enqueueNamespace(key *Task, namespace *v1.Namespace) {
-	p.queue.Add(key)
+	p.insertTask(key)
 }

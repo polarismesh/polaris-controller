@@ -81,6 +81,17 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 		enc = zapcore.NewConsoleEncoder(encCfg)
 	}
 
+	rotateOutputPaths := make([]string, 0, 2)
+	if len(options.RotateOutputPath) > 0 {
+		rotateOutputPaths = append(rotateOutputPaths, options.RotateOutputPath)
+	}
+	if len(options.ErrorRotateOutputPath) > 0 {
+		rotateOutputPaths = append(rotateOutputPaths, options.ErrorRotateOutputPath)
+	}
+	if err := createPathIfNotExist(rotateOutputPaths...); err != nil {
+		return nil, nil, nil, err
+	}
+
 	var rotateSink zapcore.WriteSyncer
 	if len(options.RotateOutputPath) > 0 {
 		rotateSink = zapcore.AddSync(&lumberjack.Logger{
@@ -154,7 +165,11 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 	if errCore != nil {
 		cores = append(cores, errCore)
 	}
-	return cores, zapcore.NewCore(enc, sink, enabler), errSink, nil
+	captureCore := zapcore.NewCore(enc, sink, enabler)
+	if errCore != nil {
+		captureCore = zapcore.NewTee(captureCore, errCore)
+	}
+	return cores, captureCore, errSink, nil
 }
 
 func formatDate(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
@@ -324,7 +339,17 @@ func setDefaultOption(options *Options) {
 // Sync flushes any buffered log entries.
 // Processes should normally take care to call Sync before exiting.
 func Sync() error {
-	return defaultScope.getPathTable().sync()
+	var errs error
+	for _, scope := range Scopes() {
+		pt := scope.getPathTable()
+		if pt == nil || pt.sync == nil {
+			continue
+		}
+		if err := pt.sync(); err != nil {
+			errs = multierror.Append(errs, err)
+		}
+	}
+	return errs
 }
 
 // createPathIfNotExist 如果判断为本地文件，检查目录是否存在，不存在创建父级目录

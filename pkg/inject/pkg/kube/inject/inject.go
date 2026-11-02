@@ -210,7 +210,7 @@ func checkSelectors(pod *corev1.Pod, selectors []metav1.LabelSelector, selectorT
 	for _, selector := range selectors {
 		ls, err := metav1.LabelSelectorAsSelector(&selector)
 		if err != nil {
-			log.InjectScope().Warnf("Invalid %s: %v (%v)", selectorType, selector, err)
+			log.InjectScope().Errorf("Invalid %s: %v (%v)", selectorType, selector, err)
 			continue // Continue checking other selectors
 		}
 

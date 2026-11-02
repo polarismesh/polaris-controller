@@ -86,7 +86,7 @@ func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
 	if err := yaml.Unmarshal(bbuf.Bytes(), &injectData); err != nil {
 		// This usually means an invalid injector template; we can't check
 		// the template itself because it is merely a string.
-		log.InjectScope().Warnf("Failed to unmarshal template %v \n%s", err, bbuf.String())
+		log.InjectScope().Errorf("Failed to unmarshal rendered inject template: %v", err)
 		return nil, multierror.Prefix(err, "failed parsing injected YAML (check sidecar injector configuration):")
 	}
 

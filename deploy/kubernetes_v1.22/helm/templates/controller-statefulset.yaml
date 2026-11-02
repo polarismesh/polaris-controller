@@ -40,7 +40,7 @@ spec:
               cpu: {{ .Values.controller.limit.cpu }}
               memory: {{ .Values.controller.limit.memory }}
           volumeMounts:
-            - mountPath: /polaris-controller/log
+            - mountPath: /polaris-controller/logs
               name: logs
             - name: certs
               mountPath: /etc/polaris-inject/certs

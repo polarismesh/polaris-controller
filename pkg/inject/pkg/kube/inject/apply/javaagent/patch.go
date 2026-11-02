@@ -99,8 +99,8 @@ func (pb *PodPatchBuilder) handleJavaAgentInit(req *inject.OperateContainerReque
 	pod := req.Option.Pod
 	opt := req.Option
 	annonations := pod.Annotations
-	log.InjectScope().Infof("handle polaris-javaagent-init inject for pod=[%s, %s] annonations: %#v image: %s",
-		pod.Namespace, pod.Name, pod.Annotations, add.Image)
+	log.InjectScope().Infof("inject polaris-javaagent-init pod=%s/%s annotations=%d image=%s",
+		pod.Namespace, pod.Name, len(pod.Annotations), add.Image)
 	// 判断用户是否自定义了 javaagent 的版本
 	oldImageInfo := strings.Split(add.Image, ":")
 	if len(oldImageInfo) > 1 {

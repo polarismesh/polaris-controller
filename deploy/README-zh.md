@@ -43,10 +43,21 @@ helm upgrade -i polaris-controller .
 ```
 
 ### 卸载
-使用`helm uninstall `${release_name}``命令更新，将 `${release_name}` 替换为您需要的 release 名。示例如下
+使用 `uninstall_helm.sh` 卸载，将 `${release_name}` 替换为您需要的 release 名。
+脚本在删除 helm release 的同时，会清理 controller 在 `polaris-system` 中创建的 sync-state ConfigMap，
+以及异常中断卸载后残留且已核对 release 名称、命名空间与 controller 归属的 ClusterRole/ClusterRoleBinding。
+运行前需安装 Helm、kubectl 和 `jq`。无法确认 release 或 Helm 卸载失败时，脚本直接退出，不执行额外清理。
 ```shell
-$ helm uninstall polaris-controller
+cd deploy
+$ ./uninstall_helm.sh polaris-controller
 ```
+
+脚本默认在当前 kubeconfig 上下文中查找 release；如果安装时使用了 `--namespace`，把该命名空间作为第二个参数传入：
+```shell
+$ ./uninstall_helm.sh polaris-controller ${release_namespace}
+```
+
+controller 所在命名空间默认为 `polaris-system`，可通过 `CONTROLLER_NAMESPACE` 环境变量覆盖。
 
 ## 配置
 支持的配置可查看helm项目的`values.yaml`文件

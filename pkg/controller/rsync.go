@@ -16,23 +16,27 @@
 package controller
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
-	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // resyncWorker 定时对账
 func (p *PolarisController) resyncWorker() {
 	log.Info("start do Resync job")
 	if !p.isPolarisServerHealthy.Load() {
-		log.Info("Resync: Polaris server failed, not sync")
+		log.Error("Resync skipped: Polaris server is unavailable")
 		return
+	}
+	if err := p.recoverSyncStates(context.Background()); err != nil {
+		log.SyncNamingScope().Errorf("recover persisted sync states failed: %v", err)
 	}
 
 	p.resyncServiceCache.Range(func(key string, value *v1.Service) bool {
-		v, ok := p.serviceCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+		v, ok := p.appliedServiceCache.Load(key)
 		if !ok {
 			task := &Task{
 				Namespace:  value.GetNamespace(),
@@ -52,12 +56,12 @@ func (p *PolarisController) resyncWorker() {
 	// 只有开启了 SyncConfigMap 才会触发相关任务
 	if p.AllowSyncFromConfigMap() {
 		p.resyncConfigFileCache.Range(func(key string, value *v1.ConfigMap) bool {
-			v, ok := p.configFileCache.Load(util.GetOriginKeyWithResyncQueueKey(key))
+			v, ok := p.configFileCache.Load(key)
 			if !ok {
 				task := &Task{
 					Namespace:  value.GetNamespace(),
 					Name:       value.GetName(),
-					ObjectType: KubernetesService,
+					ObjectType: KubernetesConfigMap,
 					Rsync:      true,
 				}
 				p.enqueueConfigMap(task, value, "Add")
@@ -73,12 +77,13 @@ func (p *PolarisController) resyncWorker() {
 
 // checkHealth 健康检查
 func (p *PolarisController) checkHealth() {
-	if polarisapi.CheckHealth() {
-		// failed -> healthy, clear service cache and start full resync
+	healthErr := polarisapi.CheckHealth()
+	if healthErr == nil {
+		// Keep the last-applied Labels while forcing Namespace/Service checks.
 		if !p.isPolarisServerHealthy.Load() {
+			p.serviceRecoveryGeneration.Inc()
 			p.isPolarisServerHealthy.Store(true)
-			p.serviceCache.Clear()
-			log.Info("Polaris server health check: clear local cache and resync")
+			log.Info("Polaris server health check recovered; full resync requested with applied Labels preserved")
 		}
 
 		// 清除网络波动导致的健康检测失败记录
@@ -92,6 +97,8 @@ func (p *PolarisController) checkHealth() {
 		if p.polarisServerFailedTimes >= 3 {
 			p.isPolarisServerHealthy.Store(false)
 			p.polarisServerFailedTimes = 0
+			log.Errorf("Polaris server health check failed three consecutive times; sync is paused: %v",
+				healthErr)
 		}
 	}
 }

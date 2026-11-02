@@ -101,7 +101,7 @@ func parseTemplate(tmplStr string, funcMap map[string]interface{}, data SidecarT
 func toYaml(value interface{}) string {
 	y, err := yaml.Marshal(value)
 	if err != nil {
-		log.InjectScope().Warnf("Unable to marshal %v", value)
+		log.InjectScope().Errorf("Unable to marshal value to YAML: %v", err)
 		return ""
 	}
 
@@ -153,7 +153,7 @@ func structToJSON(v interface{}) string {
 
 	ba, err := json.Marshal(v)
 	if err != nil {
-		log.InjectScope().Warnf("Unable to marshal %v", v)
+		log.InjectScope().Errorf("Unable to marshal value to JSON: %v", err)
 		return "{}"
 	}
 
@@ -168,7 +168,7 @@ func protoToJSON(v proto.Message) string {
 	m := jsonpb.Marshaler{}
 	ba, err := m.MarshalToString(v)
 	if err != nil {
-		log.InjectScope().Warnf("Unable to marshal %v: %v", v, err)
+		log.InjectScope().Errorf("Unable to marshal protobuf value to JSON: %v", err)
 		return "{}"
 	}
 
@@ -182,7 +182,7 @@ func toJSON(m map[string]string) string {
 
 	ba, err := json.Marshal(m)
 	if err != nil {
-		log.InjectScope().Warnf("Unable to marshal %v", m)
+		log.InjectScope().Errorf("Unable to marshal map to JSON: %v", err)
 		return "{}"
 	}
 
@@ -193,11 +193,11 @@ func fromJSON(j string) interface{} {
 	var m interface{}
 	err := json.Unmarshal([]byte(j), &m)
 	if err != nil {
-		log.InjectScope().Warnf("Unable to unmarshal %s", j)
+		log.InjectScope().Errorf("Unable to unmarshal JSON: %v", err)
 		return "{}"
 	}
 
-	log.InjectScope().Warnf("%v", m)
+	log.InjectScope().Debugf("Parsed JSON template value: %v", m)
 	return m
 }
 

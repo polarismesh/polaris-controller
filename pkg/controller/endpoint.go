@@ -16,11 +16,14 @@
 package controller
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/polarismesh/polaris-controller/common/log"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
@@ -77,13 +80,23 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 	if ok1 && ok2 && !reflect.DeepEqual(oldEndpoints.Subsets, curEndpoints.Subsets) {
 		metrics.SyncTimes.WithLabelValues("Update", "Endpoint").Inc()
 		log.SyncNamingScope().Infof("Endpoints %s is updating, in queue", task.Key())
-		p.queue.Add(task)
+		p.insertTask(task)
 	}
 }
 
 func (p *PolarisController) onEndpointDelete(obj interface{}) {
 	// 监听到创建service，处理是通常endpoint还没有创建，导致这时候读取endpoint 为not found。
-	endpoints := obj.(*v1.Endpoints)
+	endpoints, ok := obj.(*v1.Endpoints)
+	if !ok {
+		tombstone, isTombstone := obj.(cache.DeletedFinalStateUnknown)
+		if !isTombstone {
+			return
+		}
+		endpoints, ok = tombstone.Obj.(*v1.Endpoints)
+		if !ok {
+			return
+		}
+	}
 	if util.IgnoreObject(endpoints) {
 		return
 	}
@@ -100,6 +113,36 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 	}
 
 	p.enqueueEndpoint(task, endpoints, "Delete")
+}
+
+func endpointAddressKeys(endpoint *v1.Endpoints) map[string]struct{} {
+	keys := make(map[string]struct{})
+	if endpoint == nil {
+		return keys
+	}
+	for _, subset := range endpoint.Subsets {
+		addresses := append(append([]v1.EndpointAddress{}, subset.Addresses...), subset.NotReadyAddresses...)
+		for _, endpointAddress := range addresses {
+			for _, port := range subset.Ports {
+				keys[fmt.Sprintf("%s-%d", endpointAddress.IP, port.Port)] = struct{}{}
+			}
+		}
+	}
+	return keys
+}
+
+func (p *PolarisController) deleteStaleInstances(
+	service *v1.Service, endpoint *v1.Endpoints, currentController address.InstanceSet,
+) error {
+	keys := endpointAddressKeys(endpoint)
+	addresses := make([]address.Address, 0)
+	for key, instance := range currentController {
+		if _, exists := keys[key]; exists {
+			continue
+		}
+		addresses = append(addresses, *instance)
+	}
+	return p.deleteInstances(service, addresses)
 }
 
 // isPolarisEndpoints endpoints 的 service 和 namespace 是否带有 sync 注解。
@@ -130,7 +173,8 @@ func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, *
 		return false, nil, nil
 	}
 
-	if util.EnableSync(service) {
+	if util.EnableSync(service) ||
+		service.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
 		return true, &Task{
 			Namespace:  service.GetNamespace(),
 			Name:       service.GetName(),
@@ -158,7 +202,7 @@ func (p *PolarisController) isPolarisEndpoints(endpoints *v1.Endpoints) (bool, *
 
 func (p *PolarisController) enqueueEndpoint(task *Task, endpoint *v1.Endpoints, eventType string) {
 	metrics.SyncTimes.WithLabelValues(eventType, "Endpoint").Inc()
-	p.queue.Add(task)
+	p.insertTask(task)
 }
 
 // processSyncInstance 同步实例, 获取Endpoint和北极星数据做同步
@@ -173,7 +217,7 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 	}
 
 	// 1. 先获取当前service Endpoint中的IP信息，IP:Port:Weight
-	// 2. 获取北极星中注册的Service，经过过滤，获取对应的 IP:Port:Weight
+	// 2. 获取北极星全量实例，并区分本集群 controller 托管的实例
 	// 3. 对比，获取三个数组： 增加，更新，删除
 	// 4. 发起增加，更新，删除操作。
 	instances, err := p.getAllInstance(service)
@@ -181,37 +225,68 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		log.SyncNamingScope().Errorf("Get service instances from polaris of service %s error %v ", serviceMsg, err)
 		return err
 	}
-	ipPortMap := getCustomWeight(service, serviceMsg)
-	specIPs := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
-	currentIPs := address.GetAddressMapFromPolarisInstance(instances, p.config.PolarisController.ClusterName)
-	addIns, deleteIns, updateIns := p.CompareInstance(service, specIPs, currentIPs)
+	currentController, currentAll := address.GetAddressMapFromPolarisInstance(
+		instances, p.config.PolarisController.ClusterName)
 
-	msg := []string{
-		fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
-		fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
-		fmt.Sprintf("%s Current polaris instance is %v", serviceMsg, currentIPs),
-		fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+	var metadataErr error
+	if raw := service.Annotations[util.PolarisMetadata]; raw != "" {
+		var metadata map[string]string
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			metadataErr = fmt.Errorf("invalid %s on Service %s/%s: %w",
+				util.PolarisMetadata, service.Namespace, service.Name, err)
+		}
 	}
-	log.SyncNamingScope().Info(strings.Join(msg, "\n"))
+	healthCheck, healthErr := resolveHealthCheck(service)
+	protocolErr := address.ValidateCustomProtocols(service)
+	configErr := errors.Join(metadataErr, healthErr, protocolErr)
+	if configErr != nil {
+		log.SyncNamingScope().Errorf("Invalid desired instance config for Service %s/%s: %v",
+			service.Namespace, service.Name, configErr)
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Invalid desired instance config: %v", configErr)
+		// A removed endpoint can still be deleted safely using only host and port.
+		if deleteErr := p.deleteStaleInstances(service, endpoints, currentController); deleteErr != nil {
+			return errors.Join(configErr, deleteErr)
+		}
+		return configErr
+	}
+
+	ipPortMap := getCustomWeight(service, serviceMsg)
+	specIPs, err := address.GetAddressMapFromEndpoints(service, endpoints, p.podLister, ipPortMap)
+	if err != nil {
+		// Pod 数据未完整读取时停止新增和更新，不能将缺失标签或部分地址用于对账。
+		return fmt.Errorf("get endpoint addresses for Service %s/%s: %w",
+			service.Namespace, service.Name, err)
+	}
+
+	addIns, deleteIns, updateIns := p.CompareInstance(
+		service, healthCheck, specIPs, currentController, currentAll)
+
+	log.SyncNamingScope().Infof(
+		"Reconcile instances %s: current=%d desired=%d managed=%d add=%d update=%d delete=%d",
+		serviceMsg, len(instances), len(specIPs), len(currentController), len(addIns), len(updateIns), len(deleteIns))
+	if log.SyncNamingScope().DebugEnabled() {
+		msg := []string{
+			fmt.Sprintf("%s Current polaris instance from sdk is %v", serviceMsg, instances),
+			fmt.Sprintf("%s Spec endpoint instance is %v", serviceMsg, specIPs),
+			fmt.Sprintf("%s Current controller-owned polaris instance is %v", serviceMsg, currentController),
+			fmt.Sprintf("%s addIns %v deleteIns %v updateIns %v", serviceMsg, addIns, deleteIns, updateIns),
+		}
+		log.SyncNamingScope().Debug(strings.Join(msg, "\n"))
+	}
 
 	var addInsErr, deleteInsErr, updateInsErr error
 
-	enableRegister := service.GetAnnotations()[util.PolarisEnableRegister]
-	enableSync := service.GetAnnotations()[util.PolarisSync]
-	// 如果 enableRegister = true,那么自注册，平台不负责注册IP
-	if enableRegister != noAllow || enableSync != noAllow {
-		// 使用platform 接口
-		if addInsErr = p.addInstances(service, addIns); addInsErr != nil {
-			log.SyncNamingScope().Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
-			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-				"Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
-		}
+	if addInsErr = p.addInstances(service, healthCheck, addIns); addInsErr != nil {
+		log.SyncNamingScope().Errorf("Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Failed AddInstances %s, err %s", serviceMsg, addInsErr.Error())
+	}
 
-		if updateInsErr = p.updateInstances(service, updateIns); updateInsErr != nil {
-			log.SyncNamingScope().Errorf("Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
-			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
-				"Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
-		}
+	if updateInsErr = p.updateInstances(service, healthCheck, updateIns); updateInsErr != nil {
+		log.SyncNamingScope().Errorf("Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
+		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
+			"Failed UpdateInstances %s, err %s", serviceMsg, updateInsErr.Error())
 	}
 
 	if deleteInsErr = p.deleteInstances(service, deleteIns); deleteInsErr != nil {
@@ -219,5 +294,5 @@ func (p *PolarisController) processSyncInstance(service *v1.Service) (err error)
 		p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent,
 			"Failed DeleteInstances %s, err %s", serviceMsg, deleteInsErr.Error())
 	}
-	return nil
+	return errors.Join(addInsErr, updateInsErr, deleteInsErr)
 }
