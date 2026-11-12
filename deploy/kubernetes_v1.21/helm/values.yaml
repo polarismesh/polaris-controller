@@ -47,7 +47,7 @@ polaris:
     service:
       mode: all
     config:
-      enable: true
+      enable: false
       direction: both
       groupName: default
       allowDelete: false

@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "polaris-controller.controller.fullname" . }}-internal
+  namespace: polaris-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "polaris-controller.controller.fullname" . }}-internal
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "polaris-controller.controller.fullname" . }}
+    namespace: polaris-system

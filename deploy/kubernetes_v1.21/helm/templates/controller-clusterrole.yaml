@@ -6,9 +6,16 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - services
-  - namespaces
   - pods
+  - services
+  - endpoints
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
   verbs:
   - get
   - list
@@ -16,21 +23,26 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
   - configmaps
-  - endpoints
   verbs:
-  - create
-  - update
-  - get
   - list
   - watch
+{{- if and .Values.polaris.sync.config.enable (or (eq .Values.polaris.sync.config.direction "both") (eq .Values.polaris.sync.config.direction "polarisToKubernetes")) }}
 - apiGroups:
-  - "coordination.k8s.io"
+  - ""
   resources:
-  - leases
+  - configmaps
   verbs:
   - create
-  - get
-  - list
   - update
+{{- if .Values.polaris.sync.config.allowDelete }}
+  - delete
+{{- end }}
+{{- end }}
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch

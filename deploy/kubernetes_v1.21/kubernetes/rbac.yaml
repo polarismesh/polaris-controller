@@ -13,9 +13,16 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - services
-  - namespaces
   - pods
+  - services
+  - endpoints
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
   verbs:
   - get
   - list
@@ -23,25 +30,79 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
   - configmaps
-  - endpoints
-  - secrets
   verbs:
-  - create
-  - update
-  - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: polaris-controller-internal
+  namespace: polaris-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  resourceNames:
+  - polaris-client-config-tpl
+  - plugin-default.properties
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  resourceNames:
+  - polaris-controller
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - create
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  resourceNames:
+  - polaris-controller
+  verbs:
+  - get
+  - update
 - apiGroups:
   - "coordination.k8s.io"
   resources:
   - leases
   verbs:
   - create
-  - get
-  - list
-  - update
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: polaris-controller-internal
+  namespace: polaris-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: polaris-controller-internal
+subjects:
+  - kind: ServiceAccount
+    name: polaris-controller
+    namespace: polaris-system
 ---
 
 apiVersion: rbac.authorization.k8s.io/v1beta1
