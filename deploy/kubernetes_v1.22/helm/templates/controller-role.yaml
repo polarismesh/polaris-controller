@@ -1,0 +1,45 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "polaris-controller.controller.fullname" . }}-internal
+  namespace: polaris-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  resourceNames:
+  - polaris-client-config-tpl
+  - plugin-default.properties
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  resourceNames:
+  - polaris-controller
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - create
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  resourceNames:
+  - polaris-controller
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  verbs:
+  - create

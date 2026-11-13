@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "polaris-controller.controller.fullname" . }}-tpl
+  name: polaris-client-config-tpl
   namespace: polaris-system
 data:
   polaris.yaml: |-
