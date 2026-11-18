@@ -96,18 +96,6 @@ func CompareServiceAnnotationsChange(old, new map[string]string) ServiceChangeTy
 	return ""
 }
 
-// IfNeedCreateServiceAlias Determine whether to create a service alias
-func IfNeedCreateServiceAlias(old, new *v1.Service) bool {
-	if old.Annotations[PolarisAliasNamespace] != new.Annotations[PolarisAliasNamespace] ||
-		old.Annotations[PolarisAliasService] != new.Annotations[PolarisAliasService] {
-		if new.Annotations[PolarisAliasNamespace] == "" || new.Annotations[PolarisAliasService] == "" {
-			return false
-		}
-		return true
-	}
-	return false
-}
-
 // GetWeightFromService 从 k8s service 中获取 weight，如果 service 中没设置，则取默认值
 func GetWeightFromService(svc *v1.Service) int {
 	weight, ok := svc.GetAnnotations()[PolarisWeight]

@@ -78,8 +78,8 @@ func (p *podDataInfo) assignInjectTemplateAndVersion(wh *Webhook) {
 		// 向前兼容, 默认是mesh模式
 		p.injectTemplateConfig, p.injectTemplateVersion = wh.templateConfig.GetSidecarMeshTemplateAndVersion()
 	}
-	log.InjectScope().Infof("podName=%s, injectMode=%s, injectTemplateConfig=%v", p.podName,
-		utils.ParseSidecarModeName(p.injectMode), p.injectTemplateConfig)
+	log.InjectScope().Infof("pod=%s inject-mode=%s template-version=%s", p.podName,
+		utils.ParseSidecarModeName(p.injectMode), p.injectTemplateVersion)
 	p.valuesConfig = wh.templateConfig.GetValuesConfig()
 	return
 }

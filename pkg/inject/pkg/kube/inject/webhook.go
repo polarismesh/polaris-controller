@@ -279,10 +279,14 @@ func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 		return nil
 	}
 	if !errors.IsNotFound(err) {
+		log.InjectScope().Errorf("Failed to get root certificate Secret %s/%s: %v",
+			ns, utils.PolarisSidecarRootCert, err)
 		return err
 	}
 	secret, err := wh.k8sClient.CoreV1().Secrets(rootNamespace).Get(context.TODO(), utils.PolarisSidecarRootCert, metav1.GetOptions{})
 	if err != nil {
+		log.InjectScope().Errorf("Failed to get source root certificate Secret %s/%s: %v",
+			rootNamespace, utils.PolarisSidecarRootCert, err)
 		return err
 	}
 
@@ -293,8 +297,16 @@ func (wh *Webhook) ensureRootCertExist(pod *corev1.Pod) error {
 	s.Name = utils.PolarisSidecarRootCert
 	_, err = wh.k8sClient.CoreV1().Secrets(ns).Create(context.TODO(), s, metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) || errors.IsConflict(err) {
+		log.InjectScope().Infof("Root certificate Secret %s/%s already exists",
+			ns, utils.PolarisSidecarRootCert)
 		return nil
 	}
+	if err != nil {
+		log.InjectScope().Errorf("Failed to create root certificate Secret %s/%s: %v",
+			ns, utils.PolarisSidecarRootCert, err)
+		return err
+	}
+	log.InjectScope().Infof("Created root certificate Secret %s/%s", ns, utils.PolarisSidecarRootCert)
 	return err
 }
 
@@ -582,8 +594,6 @@ func toV1beta1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
 
 func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	req := ar.Request
-	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
-	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
 	// 解析原始对象
 	podInfo, err := assignPodDataInfo(req.Object.Raw, req.Namespace, wh)
 	if err != nil {
@@ -606,7 +616,8 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 			Allowed: true,
 		}
 	}
-	log.InjectScope().Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	log.InjectScope().Infof("AdmissionResponse: namespace=%s pod=%s patch-bytes=%d",
+		req.Namespace, podInfo.podName, len(patchBytes))
 	reviewResponse := v1beta1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
@@ -621,8 +632,6 @@ func (wh *Webhook) injectV1beta1(ar *v1beta1.AdmissionReview) *v1beta1.Admission
 // inject istio 核心准入注入逻辑
 func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 	req := ar.Request
-	log.InjectScope().Infof("Object: %v", string(req.Object.Raw))
-	log.InjectScope().Infof("OldObject: %v", string(req.OldObject.Raw))
 	// 解析原始对象
 	podInfo, err := assignPodDataInfo(req.Object.Raw, req.Namespace, wh)
 	if err != nil {
@@ -645,7 +654,8 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 			Allowed: true,
 		}
 	}
-	log.InjectScope().Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	log.InjectScope().Infof("AdmissionResponse: namespace=%s pod=%s patch-bytes=%d",
+		req.Namespace, podInfo.podName, len(patchBytes))
 	reviewResponse := v1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
@@ -659,12 +669,19 @@ func (wh *Webhook) injectV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
 
 func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	var body []byte
-	if r.Body != nil {
-		if data, err := io.ReadAll(r.Body); err == nil {
-			body = data
-		}
+	if r.Body == nil {
+		log.InjectScope().Error("[Webhook] request body is nil")
+		http.Error(w, "no body found", http.StatusBadRequest)
+		return
 	}
-	log.InjectScope().Infof("[Webhook] receive webhook request path %s, data %s", r.URL.RawPath, string(body))
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.InjectScope().Errorf("[Webhook] failed to read request body: %v", err)
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	body = data
+	log.InjectScope().Infof("[Webhook] received request path=%s bytes=%d", r.URL.Path, len(body))
 	if len(body) == 0 {
 		handleError("no body found")
 		http.Error(w, "no body found", http.StatusBadRequest)
@@ -693,7 +710,9 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1beta1.AdmissionReview)
 		if !ok {
-			log.InjectScope().Errorf("[Webhook] expected v1beta1.AdmissionReview but got: %T", obj)
+			msg := fmt.Sprintf("[Webhook] expected v1beta1.AdmissionReview but got: %T", obj)
+			log.InjectScope().Error(msg)
+			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
 		responseAdmissionReview := &v1beta1.AdmissionReview{}
@@ -704,7 +723,9 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestAdmissionReview, ok := obj.(*v1.AdmissionReview)
 		if !ok {
-			log.InjectScope().Errorf("[Webhook] expected v1.AdmissionReview but got: %T", obj)
+			msg := fmt.Sprintf("[Webhook] expected v1.AdmissionReview but got: %T", obj)
+			log.InjectScope().Error(msg)
+			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
 		responseAdmissionReview := &v1.AdmissionReview{}
@@ -716,16 +737,17 @@ func (wh *Webhook) serveInject(w http.ResponseWriter, r *http.Request) {
 		msg := fmt.Sprintf("[Webhook] unsupported group version kind: %v", gvk)
 		log.InjectScope().Error(msg)
 		http.Error(w, msg, http.StatusBadRequest)
+		return
 	}
 
 	resp, err := json.Marshal(responseObj)
 	if err != nil {
 		log.InjectScope().Errorf("Could not encode response: %v", err)
 		http.Error(w, fmt.Sprintf("could not encode response: %v", err), http.StatusInternalServerError)
+		return
 	}
 	if _, err := w.Write(resp); err != nil {
 		log.InjectScope().Errorf("Could not write response: %v", err)
-		http.Error(w, fmt.Sprintf("could not write response: %v", err), http.StatusInternalServerError)
 	}
 }
 

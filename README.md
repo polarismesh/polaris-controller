@@ -22,7 +22,7 @@ polaris-controller For the docking of Polaris and K8s ecology, providing two opt
 The operating mode of *sidecar* in the Polaris-Controller provides two optional functions:
 
 - LocalDNS (dns): Inject **polaris-sidecar**, realize service discovery and governance by intercepting DNS requests
-- ServiceMesh (mesh): Inject **polaris-sidecar** and **envoy**, realize service discovery and governance through hijacking traffic, and develop low invasion
+- ServiceMesh (mesh, Beta): Inject **polaris-sidecar** and **envoy**, realize service discovery and governance through hijacking traffic, and develop low invasion
 
 This document describes how to install and use polaris-controller in a K8s cluster.
 
@@ -130,7 +130,23 @@ metadata:
     polarismesh.cn/aliasService: aliasTest
 ```
 
+### Instance synchronization
+
+`polarismesh.cn/enableRegister: "true"` is retained as a legacy synchronization switch.
+When `polarismesh.cn/sync` is absent, `enableRegister=true` has the same service-enable effect as `sync=true`;
+the controller still registers, updates and removes instances.
+If `polarismesh.cn/sync` is present, it takes precedence: for example, `sync=false` disables the Service
+even when `enableRegister=true`.
+
+Instance metadata combines `polarismesh.cn/metadata` with Pod labels; Pod labels take precedence.
+`source` and `clusterName` are protected controller fields. Other business fields are managed as a complete set:
+removing a field from both sources removes it from the next instance update, including fields added directly in Polaris.
+Existing `version`, `protocol` and legacy `platform` metadata are preserved when absent from both sources.
+Pod label changes converge during periodic reconciliation (`--resync-duration`, default `30s`).
+
 ### Sidecar auto inject
+
+> Note: Mesh injection and config synchronization are currently in Beta. Do not use them in production environments.
 
 If polaris-sidecar needs to be used, it can be automatically injected in the application Pod, and the configuration is as follows：
 

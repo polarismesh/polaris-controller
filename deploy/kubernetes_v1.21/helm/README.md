@@ -127,15 +127,15 @@ metadata:
 If polaris-sidecar needs to be used, it can be automatically injected in the application Pod, and the configuration is as follows：
 
 ```shell
-kubectl label namespace default polaris-injection=enabled 
+kubectl label namespace default polarismesh.cn/inject=enabled
 ```
 
 Check whether K8s Namespace supports automatic injection of polaris-sidecar：
 
 ```shell
-kubectl get namespace -L polaris-injection
+kubectl get namespace -L polarismesh.cn/inject
 
-NAME             STATUS   AGE    POLARIS-INJECTION
+NAME             STATUS   AGE    POLARISMESH.CN/INJECT
 default          Active   3d2h   enabled
 ```
 

@@ -28,6 +28,28 @@ type Response struct {
 	Mtime     bool       `json:"mtime"`
 }
 
+type GetInstancesResponse struct {
+	Code      uint32          `json:"code"`
+	Info      string          `json:"info"`
+	Amount    *uint32         `json:"amount"`
+	Size      *uint32         `json:"size"`
+	Instances []InstanceQuery `json:"instances"`
+}
+
+// InstanceQuery is the read-only subset returned by the console instance query.
+// It intentionally excludes write-only fields such as healthCheck, whose protobuf
+// enum representation differs from the controller's instance write DTO.
+type InstanceQuery struct {
+	ID           string            `json:"id,omitempty"`
+	ServiceToken string            `json:"service_token,omitempty"`
+	Service      string            `json:"service,omitempty"`
+	Namespace    string            `json:"namespace,omitempty"`
+	VpcID        string            `json:"vpc_id,omitempty"`
+	Host         string            `json:"host,omitempty"`
+	Port         *int              `json:"port,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+}
+
 // Instance
 type Instance struct {
 	ID                string            `json:"id,omitempty"`
@@ -98,7 +120,7 @@ type Service struct {
 	Name       string            `json:"name"`
 	Token      string            `json:"token,omitempty"`
 	Namespace  string            `json:"namespace,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
+	Metadata   map[string]string `json:"metadata"`
 	Ports      string            `json:"ports,omitempty"`
 	Business   string            `json:"business,omitempty"`
 	Department string            `json:"department,omitempty"`
@@ -130,7 +152,8 @@ type CreateServicesResponse struct {
 	Code     uint32                  `json:"code"`
 	Info     string                  `json:"info"`
 	Size     uint32                  `json:"size"`
-	Response []CreateServiceResponse `json:"response"`
+	Response []CreateServiceResponse `json:"responses"`
+	Created  bool                    `json:"-"`
 }
 
 // PutServicesResponse
@@ -159,6 +182,8 @@ type CreateServiceAliasRequest struct {
 	Owners         string `json:"owners,omitempty"`
 	Alias          string `json:"alias"`
 	AliasNamespace string `json:"alias_namespace"`
+	ServiceToken   string `json:"service_token,omitempty"`
+	Comment        string `json:"comment,omitempty"`
 }
 
 // CreateServiceAliasResponse create service alias response
@@ -170,10 +195,23 @@ type CreateServiceAliasResponse struct {
 
 // Alias service alias
 type Alias struct {
-	Service        string `json:"service"`
-	Namespace      string `json:"namespace"`
-	Alias          string `json:"alias"`
-	AliasNamespace string `json:"alias_namespace"`
+	ID             string `json:"id,omitempty"`
+	Service        string `json:"service,omitempty"`
+	Namespace      string `json:"namespace,omitempty"`
+	Alias          string `json:"alias,omitempty"`
+	AliasNamespace string `json:"alias_namespace,omitempty"`
+	Owners         string `json:"owners,omitempty"`
+	Comment        string `json:"comment,omitempty"`
+	ServiceToken   string `json:"service_token,omitempty"`
+}
+
+// GetServiceAliasesResponse query service aliases response
+type GetServiceAliasesResponse struct {
+	Code    uint32  `json:"code"`
+	Info    string  `json:"info"`
+	Amount  uint32  `json:"amount"`
+	Size    uint32  `json:"size"`
+	Aliases []Alias `json:"aliases"`
 }
 
 // GetNamespacesResponse 获取命名空间的返回

@@ -132,7 +132,7 @@ func (w *worker) addDelay(delay time.Duration, f func(), isInterval bool) {
 		defer func() {
 			if err := recover(); err != nil {
 				// do nothing
-				log.Warnf("addDelay error:%+v", err)
+				log.Errorf("scheduled task panic: %+v", err)
 			}
 		}()
 		f()

@@ -58,7 +58,6 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 
 	namespaces := task.Namespace
 	name := task.Name
-	op := task.Operation
 
 	configMap, err := p.configMapLister.ConfigMaps(namespaces).Get(name)
 
@@ -74,27 +73,20 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 		// 查询原 ConfigMap 是啥，删除对应实例
 		processError := p.processDeleteConfigMap(cachedConfigMap)
 		if processError != nil {
-			// 如果处理有失败的，那就入队列重新处理
+			// 由 handleTask 统一退避重试。
 			p.eventRecorder.Eventf(cachedConfigMap, v1.EventTypeWarning, polarisEvent, "Delete polaris ConfigMap failed %v",
 				processError)
-			p.enqueueConfigMap(task, cachedConfigMap, string(op))
 			return processError
 		}
 		p.configFileCache.Delete(task.Key())
 	case err != nil:
 		log.SyncConfigScope().Errorf("Unable to retrieve ConfigMap %v from store: %v", task.Key(), err)
-		p.enqueueConfigMap(task, nil, string(op))
+		return err
 	default:
 		// 条件判断将会增加
 		// 1. 首次创建 ConfigMap
 		// 2. 更新 ConfigMap
-		operationConfigMap := configMap
-
-		// 如果是 namespace 流程传来的任务，且 op 为 add ，为 ConfigMap 打上 sync 标签
-		if op == OperationAdd && p.IsPolarisConfigMap(operationConfigMap) {
-			operationConfigMap = configMap.DeepCopy()
-			metav1.SetMetaDataAnnotation(&operationConfigMap.ObjectMeta, util.PolarisSync, util.IsEnableSync)
-		}
+		operationConfigMap := configMap.DeepCopy()
 		if _, ok := operationConfigMap.Annotations[util.PolarisConfigGroup]; !ok {
 			groupName := p.config.PolarisController.ClusterName
 			if p.config.PolarisController.ConfigSync.DefaultGroup != "" {
@@ -112,17 +104,18 @@ func (p *PolarisController) syncConfigMap(task *Task) error {
 			log.SyncConfigScope().Infof("ConfigMap %s not in cache, begin to add new polaris", task.Key())
 			// 同步 k8s 的 namespace 和 configmap 到 polaris，失败投入队列重试
 			if processError := p.processSyncNamespaceAndConfigMap(operationConfigMap); processError != nil {
-				log.SyncConfigScope().Errorf("ns/config %s sync failed", task.Key())
+				log.SyncConfigScope().Errorf("ns/config %s sync failed: %v", task.Key(), processError)
 				return processError
 			}
 		} else {
 			// 2. cached中如果有数据，则是更新操作，需要对比具体是更新了什么，以决定如何处理。
 			if processError := p.processUpdateConfigMap(cachedConfigMap, operationConfigMap); processError != nil {
-				log.SyncConfigScope().Errorf("ConfigMap %s update failed", task.Key())
+				log.SyncConfigScope().Errorf("ConfigMap %s update failed: %v", task.Key(), processError)
 				return processError
 			}
 		}
-		p.configFileCache.Store(task.Key(), configMap)
+		// 删除时仍需要创建/更新请求使用的默认 group，缓存处理后的独立副本。
+		p.configFileCache.Store(task.Key(), operationConfigMap)
 	}
 	return nil
 }
@@ -247,7 +240,6 @@ func (p *PolarisController) onConfigMapUpdate(old, cur interface{}) {
 		// 原来就是北极星类型的，增加cache
 		task.Operation = OperationUpdate
 		p.enqueueConfigMap(task, oldCm, "Update")
-		p.configFileCache.Store(task.Key(), oldCm)
 	} else if curIsPolaris {
 		task.Operation = OperationAdd
 		// 原来不是北极星的，新增是北极星的，入队列
@@ -288,11 +280,14 @@ func (p *PolarisController) watchPolarisConfig() error {
 	}
 	conn, err := grpc.Dial(polarisapi.PolarisConfigGrpc, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
+		log.SyncConfigScope().Errorf("Failed to connect Polaris config server %s: %v",
+			polarisapi.PolarisConfigGrpc, err)
 		return err
 	}
 
 	discoverClient, err := config_manage.NewPolarisConfigGRPCClient(conn).Discover(context.Background())
 	if err != nil {
+		log.SyncConfigScope().Errorf("Failed to create Polaris config discovery client: %v", err)
 		return err
 	}
 
@@ -357,6 +352,7 @@ func (p *PolarisConfigWatcher) Start(ctx context.Context) error {
 	p.executor = util.NewExecutor(runtime.GOMAXPROCS(0))
 	nsList, err := p.k8sClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
+		log.SyncConfigMapScope().Errorf("Failed to list Kubernetes Namespaces for config sync: %v", err)
 		return err
 	}
 	for i := range nsList.Items {
@@ -364,6 +360,7 @@ func (p *PolarisConfigWatcher) Start(ctx context.Context) error {
 	}
 	watcher, err := p.k8sClient.CoreV1().Namespaces().Watch(context.Background(), metav1.ListOptions{})
 	if err != nil {
+		log.SyncConfigMapScope().Errorf("Failed to watch Kubernetes Namespaces for config sync: %v", err)
 		return err
 	}
 	p.nsWatcher = watcher
@@ -378,7 +375,10 @@ func (p *PolarisConfigWatcher) Start(ctx context.Context) error {
 func (p *PolarisConfigWatcher) Destroy() error {
 	p.cancel()
 	p.nsWatcher.Stop()
-	_ = p.conn.Close()
+	if err := p.conn.Close(); err != nil {
+		log.SyncConfigMapScope().Errorf("Failed to close Polaris config gRPC connection: %v", err)
+		return err
+	}
 	return nil
 }
 
@@ -418,11 +418,21 @@ func (p *PolarisConfigWatcher) doRecv(ctx context.Context) {
 func (p *PolarisConfigWatcher) watchNamespaces(ctx context.Context) {
 	for {
 		select {
-		case e := <-p.nsWatcher.ResultChan():
+		case e, ok := <-p.nsWatcher.ResultChan():
+			if !ok {
+				log.SyncConfigMapScope().Error("Kubernetes Namespace watch channel closed for config sync")
+				return
+			}
 			if e.Object == nil {
+				log.SyncConfigMapScope().Error("Received empty Kubernetes Namespace watch object for config sync")
 				continue
 			}
-			event := e.Object.(*v1.Namespace)
+			event, ok := e.Object.(*v1.Namespace)
+			if !ok {
+				log.SyncConfigMapScope().Errorf("Unexpected Kubernetes Namespace watch object type %T for config sync",
+					e.Object)
+				continue
+			}
 			switch e.Type {
 			case watch.Added, watch.Modified:
 				p.namespaces.Add(event.Name)
@@ -565,10 +575,14 @@ func (p *PolarisConfigWatcher) receiveConfigFiles(resp *config_manage.ConfigDisc
 			delCnt.Add(1)
 			groupBucket.Delete(fileName)
 			if p.controller.allowDeleteConfig() {
+				configMapName := fmt.Sprintf("%s-%s", groupName, fileName)
 				err := p.k8sClient.CoreV1().ConfigMaps(nsName).Delete(context.Background(),
-					fmt.Sprintf("%s-%s", groupName, fileName), metav1.DeleteOptions{})
+					configMapName, metav1.DeleteOptions{})
 				if err != nil {
-					log.SyncConfigMapScope().Errorf("delete config map failed, %v", err)
+					log.SyncConfigMapScope().Errorf("Failed to delete synced ConfigMap %s/%s: %v",
+						nsName, configMapName, err)
+				} else {
+					log.SyncConfigMapScope().Infof("Deleted synced ConfigMap %s/%s", nsName, configMapName)
 				}
 			}
 		}
@@ -611,16 +625,22 @@ func (p *PolarisConfigWatcher) fetchConfigFile(req *config_manage.ClientConfigFi
 		},
 	}
 
+	operation := "create"
 	_, err = p.k8sClient.CoreV1().ConfigMaps(namespace).Create(context.Background(), cm, metav1.CreateOptions{})
 	if err == nil {
+		log.SyncConfigMapScope().Infof("Created synced ConfigMap %s/%s", namespace, cm.Name)
 		return
 	}
 	if errors.IsAlreadyExists(err) {
+		operation = "update"
 		_, err = p.k8sClient.CoreV1().ConfigMaps(namespace).Update(context.Background(), cm, metav1.UpdateOptions{})
 	}
 	if err != nil {
-		log.SyncConfigMapScope().Errorf("upsert config file to configmap failed, %v", err)
+		log.SyncConfigMapScope().Errorf("Failed to %s synced ConfigMap %s/%s: %v",
+			operation, namespace, cm.Name, err)
+		return
 	}
+	log.SyncConfigMapScope().Infof("Updated synced ConfigMap %s/%s", namespace, cm.Name)
 }
 
 const (

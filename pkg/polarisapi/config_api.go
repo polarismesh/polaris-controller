@@ -41,7 +41,11 @@ func CreateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
 
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, updateConfigFile)
-	req := parseConfigFileRequest(configMap)
+	req, err := parseConfigFileRequest(configMap)
+	if err != nil {
+		log.SyncConfigScope().Errorf("Failed to build create ConfigMap %s request: %v", serviceMsg, err)
+		return ConfigResponse{}, err
+	}
 	resp, err := polarisConfigRequest(req, serviceMsg, url, http.MethodPost)
 	if err != nil {
 		return ConfigResponse{}, err
@@ -57,7 +61,11 @@ func UpdateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 	serviceMsg := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
 
 	url := fmt.Sprintf("%s%s", PolarisHttpURL, updateConfigFile)
-	req := parseConfigFileRequest(configMap)
+	req, err := parseConfigFileRequest(configMap)
+	if err != nil {
+		log.SyncConfigScope().Errorf("Failed to build update ConfigMap %s request: %v", serviceMsg, err)
+		return ConfigResponse{}, err
+	}
 	resp, err := polarisConfigRequest(req, serviceMsg, url, http.MethodPut)
 	if err != nil {
 		return ConfigResponse{}, err
@@ -71,7 +79,11 @@ func UpdateConfigMap(configMap *v1.ConfigMap) (ConfigResponse, error) {
 // DeleteConfigMap 平台删除配置文件接口
 func DeleteConfigMap(configMap *v1.ConfigMap) error {
 	key := fmt.Sprintf("[%s/%s]", configMap.GetNamespace(), configMap.GetName())
-	req := parseConfigFileRequest(configMap)
+	req, err := parseConfigFileRequest(configMap)
+	if err != nil {
+		log.SyncConfigScope().Errorf("Failed to build delete ConfigMap %s request: %v", key, err)
+		return err
+	}
 	opdesc := "delete"
 	log.SyncConfigScope().Infof("Start to %s ConfigMap [%s][%s]", opdesc, req.Namespace, req.Name)
 	startTime := time.Now()
@@ -189,7 +201,7 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 	statusCode, body, _, err := polarisHttpRequest(requestID, method, url, requestByte)
 
 	if err != nil {
-		log.SyncConfigScope().Errorf("Failed to %s ConfigMap %s %v %q %v", opdesc, key, url, string(requestByte), err)
+		log.SyncConfigScope().Errorf("Failed to %s ConfigMap %s %v", opdesc, key, err)
 		return response, err
 	}
 
@@ -209,8 +221,11 @@ func polarisConfigRequest(req *ConfigFile, key, url, method string) (ConfigRespo
 	return response, nil
 }
 
-func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
-	content, _ := yaml.Marshal(configMap.Data)
+func parseConfigFileRequest(configMap *v1.ConfigMap) (*ConfigFile, error) {
+	content, err := yaml.Marshal(configMap.Data)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ConfigMap data: %w", err)
+	}
 	createRequest := ConfigFile{
 		Name:      configMap.Name,
 		Namespace: configMap.Namespace,
@@ -252,5 +267,5 @@ func parseConfigFileRequest(configMap *v1.ConfigMap) *ConfigFile {
 			Value: util.SourceFromKubernetes,
 		})
 	}
-	return &createRequest
+	return &createRequest, nil
 }

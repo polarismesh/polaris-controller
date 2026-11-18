@@ -8,7 +8,7 @@
 
 ## cluster name register in polaris server
 cluster:
-  name: default
+  name: #CLUSTER_NAME#
 
 ## sidecar config for controller injector
 sidecar:
@@ -40,16 +40,16 @@ sidecar:
 ## polaris server config
 polaris:
   server:
-    address: polaris.polaris-system
-    token: '' #POLARIS_TOKEN#
-    operator: '' #POLARIS_OPERATOR#
+    address: #POLARIS_HOST#
+    token: "#POLARIS_TOKEN#"
+    operator: "#POLARIS_OPERATOR#"
   sync:
     service:
-      mode: all
+      mode: #SYNC_MODE#
     config:
       enable: false
       direction: both
-      groupName: default
+      groupName: #CLUSTER_NAME#
       allowDelete: false
 
 

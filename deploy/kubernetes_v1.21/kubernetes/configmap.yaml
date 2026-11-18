@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: polaris-controller-config
+  name: injector-mesh
   namespace: polaris-system
 data:
   mesh: |-
