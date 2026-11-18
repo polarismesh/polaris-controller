@@ -209,15 +209,15 @@ Helm 卸载：
   --kubernetes-version v1.22
 ```
 
-默认顺序为：删除 webhook，删除 injector 和 controller，删除 Secret，等待 `k8s-app=polaris-controller` 的 controller Pod 全部消失（最多 120 秒），再清理 sync-state ConfigMap 和 RBAC。
+默认顺序为：删除 webhook，删除 injector 和 controller，删除 Secret，等待 `k8s-app=polaris-controller` 的 controller Pod 全部消失（最多 120 秒），再清理 sync-state ConfigMap 和 RBAC。Helm 的 residual 清理会检查 `polaris-system` 中是否仍有任意带 `app=sidecar-injector` 的 controller Pod；只要存在，就保留共享 sync-state 账本。
 
 如果 controller Pod 在 120 秒内仍未删除，脚本会输出警告，并执行：
 
 ```text
-kubectl delete pods --force=true --grace-period=0
+kubectl delete pods --force=true --grace-period=0 --wait=false --request-timeout=10s
 ```
 
-然后继续删除状态 ConfigMap。`polaris-system` Namespace 默认保留，因为其中可能同时部署 Polaris Server 或其他组件。
+强删请求在 10 秒内有界返回，即使失败也会继续删除状态 ConfigMap，避免被 Pod finalizer 无限阻塞。`polaris-system` Namespace 默认保留，因为其中可能同时部署 Polaris Server 或其他组件。
 
 只有确认 Namespace 专属于该 controller 时，才使用：
 
@@ -403,7 +403,7 @@ Helm:
   polaris-controller polaris-system
 ```
 
-The script verifies release ownership before calling `helm uninstall --wait`. It then removes controller sync-state ConfigMaps and only those residual ClusterRoles and ClusterRoleBindings with matching Helm release annotations and labels.
+The script verifies release ownership before calling `helm uninstall --wait`. Runtime state is deleted only when no controller Pods labelled `app=sidecar-injector` remain in `polaris-system`. It then removes controller sync-state ConfigMaps and only those residual ClusterRoles and ClusterRoleBindings with matching Helm release annotations and labels.
 
 Retry residual cleanup:
 
@@ -420,7 +420,7 @@ Raw manifests:
   --kubernetes-version v1.22
 ```
 
-The webhook configuration is removed first, followed by the injector and controller. The script then waits up to 120 seconds for controller Pods with `k8s-app=polaris-controller` to disappear before deleting sync-state ConfigMaps and RBAC. If the Pods are still present after the timeout, the script logs a warning and force-deletes them with `--force=true --grace-period=0`, then continues.
+The webhook configuration is removed first, followed by the injector and controller. The script then waits up to 120 seconds for controller Pods with `k8s-app=polaris-controller` to disappear before deleting sync-state ConfigMaps and RBAC. If the Pods are still present after the timeout, the script logs a warning and force-deletes them with a bounded request, then continues.
 
 The `polaris-system` Namespace is preserved by default because it may host Polaris Server or other resources.
 

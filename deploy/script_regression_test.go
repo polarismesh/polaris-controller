@@ -203,19 +203,26 @@ printf '%s\n' "$*" >> "$CALLS"
 if [[ " $* " == *" wait pods "* && "${WAIT_FAIL:-0}" == "1" ]]; then
   exit 1
 fi
+if [[ " $* " == *" delete pods "* && "${FORCE_DELETE_FAIL:-0}" == "1" ]]; then
+  exit 1
+fi
 `
 	if err := os.WriteFile(kubectl, []byte(mock), 0700); err != nil {
 		t.Fatal(err)
 	}
 
-	run := func(waitFail string) string {
+	run := func(extra map[string]string) string {
 		t.Helper()
+		env := map[string]string{"KUBECTL": kubectl, "CALLS": callsPath}
+		for key, value := range extra {
+			env[key] = value
+		}
 		if err := os.Remove(callsPath); err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
 		output, err := runDeploy(t, []string{
 			"uninstall", "manifests", "--kubernetes-version", "v1.22",
-		}, map[string]string{"KUBECTL": kubectl, "CALLS": callsPath, "WAIT_FAIL": waitFail})
+		}, env)
 		if err != nil {
 			t.Fatalf("uninstall failed: %v\n%s", err, output)
 		}
@@ -226,7 +233,7 @@ fi
 		return string(data)
 	}
 
-	regular := run("0")
+	regular := run(map[string]string{"WAIT_FAIL": "0"})
 	if !strings.Contains(regular, "wait pods --for=delete --selector k8s-app=polaris-controller --timeout=120s") {
 		t.Fatalf("uninstall did not wait for controller Pods: %s", regular)
 	}
@@ -239,7 +246,7 @@ fi
 		t.Fatalf("state cleanup did not follow Pod wait: %s", regular)
 	}
 
-	timeout := run("1")
+	timeout := run(map[string]string{"WAIT_FAIL": "1"})
 	if !strings.Contains(timeout, "wait pods") || !strings.Contains(timeout, "delete pods") {
 		t.Fatalf("timed out Pod wait did not force deletion: %s", timeout)
 	}
@@ -249,7 +256,16 @@ fi
 		t.Fatalf("state cleanup ran before forced Pod deletion: %s", timeout)
 	}
 	if !strings.Contains(timeout, "--force=true") ||
-		!strings.Contains(timeout, "--grace-period=0") {
+		!strings.Contains(timeout, "--grace-period=0") ||
+		!strings.Contains(timeout, "--wait=false") ||
+		!strings.Contains(timeout, "--request-timeout=10s") {
 		t.Fatalf("forced Pod deletion is missing force flags: %s", timeout)
+	}
+
+	forceFailed := run(map[string]string{
+		"WAIT_FAIL": "1", "FORCE_DELETE_FAIL": "1",
+	})
+	if !strings.Contains(forceFailed, "delete configmap") {
+		t.Fatalf("failed forced Pod deletion blocked state cleanup: %s", forceFailed)
 	}
 }

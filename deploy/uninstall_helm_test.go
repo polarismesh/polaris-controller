@@ -171,7 +171,7 @@ func TestUninstallPreservesRuntimeStateWhenNamespaceLookupFails(t *testing.T) {
 	}
 }
 
-func TestUninstallPreservesRuntimeStateWhenControllerPodRemains(t *testing.T) {
+func TestUninstallPreservesRuntimeStateWhenAnyControllerPodRemains(t *testing.T) {
 	calls, output, err := runUninstall(t, []string{"polaris-controller", "release-ns"}, map[string]string{
 		"RELEASE_JSON": validRelease, "RBAC_JSON": `{"items":[]}`, "WORKLOAD_PRESENT": "1",
 	})
@@ -179,11 +179,30 @@ func TestUninstallPreservesRuntimeStateWhenControllerPodRemains(t *testing.T) {
 		t.Fatalf("live controller Pod did not block runtime cleanup: calls=%s output=%s", calls, output)
 	}
 	if !strings.Contains(calls, "helm uninstall") ||
-		!strings.Contains(calls, "app.kubernetes.io/instance=polaris-controller,app=sidecar-injector") {
+		!strings.Contains(calls, "app=sidecar-injector") {
 		t.Fatalf("controller Pod ownership was not verified: calls=%s output=%s", calls, output)
 	}
 	if strings.Contains(calls, "delete configmap") || strings.Contains(calls, "kubectl get clusterrole,clusterrolebinding") {
 		t.Fatalf("live controller Pod still reached cleanup: calls=%s output=%s", calls, output)
+	}
+}
+
+func TestResidualCleanupPreservesRuntimeStateWhenAnyControllerPodRemains(t *testing.T) {
+	calls, output, err := runUninstall(t, []string{
+		"polaris-controller", "release-ns", "--cleanup-residual",
+	}, map[string]string{
+		"RELEASE_LIST_JSON": `[]`, "WORKLOAD_PRESENT": "1",
+	})
+	if err == nil {
+		t.Fatalf("live controller Pod did not block residual cleanup: calls=%s output=%s", calls, output)
+	}
+	if !strings.Contains(calls, "helm list --all --namespace release-ns --output json") ||
+		!strings.Contains(calls, "app=sidecar-injector") {
+		t.Fatalf("residual cleanup did not verify live controller Pods: calls=%s output=%s", calls, output)
+	}
+	if strings.Contains(calls, "delete configmap") ||
+		strings.Contains(calls, "kubectl get clusterrole,clusterrolebinding") {
+		t.Fatalf("live controller Pod still reached residual cleanup: calls=%s output=%s", calls, output)
 	}
 }
 

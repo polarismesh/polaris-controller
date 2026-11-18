@@ -309,13 +309,13 @@ cleanup_runtime_state() {
     return 0
   fi
   if ! workload_json="$("${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" get pods \
-    --selector "app.kubernetes.io/instance=${RELEASE_NAME},app=sidecar-injector" --output json)"; then
-    log_warn "cannot verify controller Pods for ${RELEASE_NAME}; runtime state was preserved"
+    --selector "app=sidecar-injector" --output json)"; then
+    log_warn "cannot verify controller Pods in ${CONTROLLER_NAMESPACE}; runtime state was preserved"
     return 1
   fi
   if ! printf '%s\n' "${workload_json}" | "${JQ_BIN}" -e \
     'type == "object" and (.items | type) == "array" and (.items | length) == 0' >/dev/null; then
-    log_warn "controller Pods for ${RELEASE_NAME} are still present; runtime state was preserved"
+    log_warn "controller Pods in ${CONTROLLER_NAMESPACE} are still present; runtime state was preserved"
     return 1
   fi
   "${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" delete configmap \
@@ -604,9 +604,12 @@ command_uninstall_manifests() {
       --for=delete --selector k8s-app=polaris-controller --timeout=120s)
     if ! "${KUBECTL_BIN}" "${pod_wait_args[@]}"; then
       log_warn "controller Pods were not deleted within 120s; forcing deletion"
-      "${KUBECTL_BIN}" -n polaris-system delete pods \
+      if ! "${KUBECTL_BIN}" -n polaris-system delete pods \
         --selector k8s-app=polaris-controller \
-        --ignore-not-found=true --force=true --grace-period=0 --wait=true
+        --ignore-not-found=true --force=true --grace-period=0 \
+        --wait=false --request-timeout=10s; then
+        log_warn "forced controller Pod deletion did not complete within 10s; continuing cleanup"
+      fi
     else
       log_info "controller Pods in polaris-system are gone"
     fi
