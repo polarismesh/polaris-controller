@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Tencent is pleased to support the open source community by making Polaris available.
+#
+# Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+#
+# Licensed under the BSD 3-Clause License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
 
 set -euo pipefail
 
@@ -169,14 +183,17 @@ wait_for "Pod label metadata convergence" "${RESYNC_TIMEOUT}" pod_metadata_conve
 
 log "CASE sync/namespace-disable-keeps-explicit-service"
 kube annotate namespace "${NS_SYNC}" polarismesh.cn/sync=false --overwrite
-wait_service_absent "${NS_SYNC}" namespace-only-demo
-wait_service "${NS_SYNC}" multiport-demo
+wait_instance_count "${NS_SYNC}" namespace-only-demo 0
+service_exists "${NS_SYNC}" namespace-only-demo || fail "Polaris Service namespace-only-demo was deleted"
+wait_instance_count "${NS_SYNC}" multiport-demo 2
+service_exists "${NS_SYNC}" multiport-demo || fail "Polaris Service multiport-demo was deleted"
 kube annotate namespace "${NS_SYNC}" polarismesh.cn/sync=true --overwrite
-wait_service "${NS_SYNC}" namespace-only-demo
+wait_instance_count "${NS_SYNC}" namespace-only-demo 1
 
-log "CASE sync/service-disable-cleans-polaris"
+log "CASE sync/service-disable-cleans-polaris-instances"
 kube annotate service metadata-demo -n "${NS_SYNC}" polarismesh.cn/sync=false --overwrite
-wait_service_absent "${NS_SYNC}" metadata-demo
+wait_instance_count "${NS_SYNC}" metadata-demo 0
+service_exists "${NS_SYNC}" metadata-demo || fail "Polaris Service metadata-demo was deleted"
 
 log "all service-sync assertions passed"
 log "alias shared-alias may remain in Polaris if the test namespace was reused; run cleanup in a disposable namespace or remove it manually"
