@@ -125,6 +125,9 @@ type SidecarTemplateData struct {
 // 是否需要注入, 规则参考istio官方定义
 // https://istio.io/latest/zh/docs/ops/common-problems/injection/
 func (wh *Webhook) requireInject(p *podDataInfo) bool {
+	if p.injectMode == utils.SidecarForUnknown || p.injectTemplateConfig == nil {
+		return false
+	}
 	pod := p.podObject
 	templateConfig := p.injectTemplateConfig
 

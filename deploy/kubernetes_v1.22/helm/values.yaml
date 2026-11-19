@@ -13,7 +13,8 @@ cluster:
 ## sidecar config for controller injector
 sidecar:
   port: 443
-  mode: mesh
+  # Empty or "none" disables default sidecar injection.
+  mode: ""
   image:
     repo: polarismesh/polaris-sidecar
     tag: #SIDECAR_VERSION#

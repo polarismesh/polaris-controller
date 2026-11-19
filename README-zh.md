@@ -42,7 +42,7 @@ polaris-controller 用于北极星和 K8s 生态的对接，提供两个可选�
 
 **修改配置文件**
 
-修改 `polaris-system` 下 controller ConfigMap 中的配置，至少设置北极星服务端地址、集群名和 K8s Service 同步模式；开启鉴权时还需设置 token 和 operator。若使用 Sidecar DNS 模式，将 `sidecarInject.mode` 设置为 `dns`。完整字段说明见 [用户指南](./docs/README.md)。
+修改 `polaris-system` 下 controller ConfigMap 中的配置，至少设置北极星服务端地址、集群名和 K8s Service 同步模式；开启鉴权时还需设置 token 和 operator。若使用 Sidecar DNS 模式，将 `sidecarInject.mode` 设置为 `dns`；空值或 `none` 表示默认不注入。完整字段说明见 [用户指南](./docs/README.md)。
 
 支持两种 K8s Service 同步模式：
 
@@ -203,6 +203,8 @@ Pod Label 或业务 metadata 中的 `protocol` 会被忽略，不写入实例 me
 
 如果需要使用 polaris-sidecar，可以在应用 Pod 中自动注入，配置方式如下：
 
+先通过 Namespace/Pod Label 让 Webhook 命中，再指定有效的 `polaris-sidecar-mode`。`sidecarInject.mode` 为空或 `none` 时，Webhook 会记录跳过日志，但不修改 Pod。
+
 ```shell
 kubectl label namespace default polaris-injection=enabled
 
@@ -228,7 +230,7 @@ NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
 default           Active   10d   dns
 ```
 
-在开启自动注入后，新建的 Pod 会自动注入，存量的 Pod 不会自动注入 polaris-sidecar。如果希望存量的 Pod 也能体验 polaris-sidecar， 则对于由 Deployment、DaemonSet 或 StatefulSet 控制器管理的 pod，可以运行以下命令
+在 Webhook 命中且指定有效注入模式后，新建的 Pod 会自动注入；只开启注入入口但没有指定模式时不会注入。存量的 Pod 不会被修改，如果希望存量的 Pod 也能体验 polaris-sidecar， 则对于由 Deployment、DaemonSet 或 StatefulSet 控制器管理的 pod，可以运行以下命令
 
 ```shell
 # Deployment

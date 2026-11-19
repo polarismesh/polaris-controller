@@ -19,7 +19,9 @@ import (
 	"encoding/base64"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
@@ -74,6 +76,34 @@ func TestRawWebhooksUseControllerCA(t *testing.T) {
 			}
 			if webhookCount != 3 {
 				t.Fatalf("got %d webhooks, want 3", webhookCount)
+			}
+		})
+	}
+}
+
+func TestHelmDefaultSidecarModeDisablesInjection(t *testing.T) {
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skip("helm is not available")
+	}
+
+	for _, version := range []string{"v1.21", "v1.22"} {
+		t.Run(version, func(t *testing.T) {
+			chart := filepath.Join("kubernetes_"+version, "helm")
+			args := []string{
+				"template", "test", chart,
+				"--namespace", "polaris-system",
+				"--set", "cluster.name=cluster-a",
+				"--set", "polaris.server.address=polaris.example",
+				"--set", "polaris.server.token=test-token",
+				"--set", "polaris.server.operator=test-operator",
+				"--set", "polaris.sync.service.mode=all",
+			}
+			output, err := exec.Command("helm", args...).Output()
+			if err != nil {
+				t.Fatalf("helm template: %v", err)
+			}
+			if !strings.Contains(string(output), "sidecarInject:\n      mode: \"\"") {
+				t.Fatalf("rendered Helm chart does not set sidecarInject.mode to empty")
 			}
 		})
 	}

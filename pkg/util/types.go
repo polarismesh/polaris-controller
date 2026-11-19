@@ -193,32 +193,38 @@ const (
 	SidecarMeshModeName      string = "mesh"
 	SidecarDnsModeName       string = "dns"
 	SidecarJavaAgentModeName string = "java-agent"
+	// SidecarNoneModeName explicitly disables sidecar injection.
+	SidecarNoneModeName    string = "none"
+	SidecarUnknownModeName string = "unknown"
 )
 
 func ParseSidecarMode(val string) SidecarMode {
-	if val == SidecarMeshModeName {
+	switch val {
+	case SidecarMeshModeName:
 		return SidecarForMesh
-	}
-	if val == SidecarDnsModeName {
+	case SidecarDnsModeName:
 		return SidecarForDns
-	}
-	if val == SidecarJavaAgentModeName {
+	case SidecarJavaAgentModeName:
 		return SidecarForJavaAgent
+	case SidecarNoneModeName:
+		// "none" is an explicit disabled value, represented as unknown internally.
+		return SidecarForUnknown
+	default:
+		return SidecarForUnknown
 	}
-	return SidecarForMesh
 }
 
 func ParseSidecarModeName(mode SidecarMode) string {
-	if mode == SidecarForMesh {
+	switch mode {
+	case SidecarForMesh:
 		return SidecarMeshModeName
-	}
-	if mode == SidecarForDns {
+	case SidecarForDns:
 		return SidecarDnsModeName
-	}
-	if mode == SidecarForJavaAgent {
+	case SidecarForJavaAgent:
 		return SidecarJavaAgentModeName
+	default:
+		return SidecarUnknownModeName
 	}
-	return SidecarMeshModeName
 }
 
 // IndexPortMap 对应{"index-port":weight}

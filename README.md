@@ -165,6 +165,8 @@ the top-level Protocol.
 
 If polaris-sidecar needs to be used, it can be automatically injected in the application Pod, and the configuration is as follows：
 
+First select the Pod with a Namespace/Pod Label so the webhook is called, then set a valid `polaris-sidecar-mode`. When `sidecarInject.mode` is empty or `none`, the webhook records a skip log and leaves the Pod unchanged.
+
 ```shell
 kubectl label namespace default polaris-injection=enabled 
 kubectl label namespace default polaris-sidecar-mode=dns
@@ -188,7 +190,7 @@ NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
 default           Active   10d   dns
 ```
 
-After automatic injection is enabled, newly created Pods will be automatically injected, and existing Pods will not be automatically injected into polaris-sidecar. If you want stock pods to experience polaris-sidecar as well, for pods managed by Deployment, DaemonSet or StatefulSet controllers, you can run the following command
+After the webhook is selected and a valid mode is set, newly created Pods are injected automatically. Selecting the webhook without a valid mode does not inject anything. Existing Pods are not modified. If you want stock pods to experience polaris-sidecar as well, for pods managed by Deployment, DaemonSet or StatefulSet controllers, you can run the following command
 
 ```shell
 # Deployment

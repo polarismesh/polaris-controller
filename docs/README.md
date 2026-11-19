@@ -862,6 +862,7 @@ Pod Annotation 的明确开关优先于 Label。
 ### 不注入的情况
 
 - `polarismesh.cn/inject` 明确设置为关闭值。
+- 没有解析到有效 sidecar mode，包括 `sidecarInject.mode` 为空或 `none`。
 - Pod 命中 `neverInjectSelector`。
 - Pod 位于 `kube-system` 或 `kube-public`。
 - Mesh/DNS 模式下 Pod 使用 `hostNetwork`。
@@ -878,6 +879,8 @@ Java Agent 模式不受 `hostNetwork` 这一限制。
 4. Namespace Label `polaris-sidecar-mode`。
 5. Webhook 配置的默认 sidecar mode。
 
+Pod/Namespace 的空值不参与模式选择；`sidecarInject.mode` 为空或 `none` 时表示默认不注入。
+
 可识别的模式：
 
 | 模式 | 注入内容 | 主要用途 |
@@ -885,6 +888,8 @@ Java Agent 模式不受 `hostNetwork` 这一限制。
 | `dns` | `polaris-sidecar` | 拦截和解析 Polaris DNS |
 | `mesh` | `polaris-sidecar` 和 Envoy | 流量拦截和 Mesh 访问，实验 Beta，请勿用于生产 |
 | `java-agent` | Java Agent init container，并修改业务容器启动参数 | Java 应用接入 |
+
+集群级 `sidecarInject.mode` 支持 `mesh`、`dns`、`java-agent`；空值或 `none` 表示默认不注入。
 
 ### Pod Annotation `polarismesh.cn/sidecar-mode`
 
@@ -896,7 +901,7 @@ dns
 java-agent
 ```
 
-匹配区分大小写。其他值会按 `mesh` 处理，因此不要把错误拼写留在配置中。
+匹配区分大小写。空值视为未设置；其他未知值不注入，controller 会记录包含原始值的日志。
 
 ```yaml
 metadata:
@@ -1469,7 +1474,7 @@ polarismesh.cn/proxyCPU: "100m"
 
 ### 把未知注入模式当成关闭开关
 
-`polarismesh.cn/sidecar-mode` 的值只能使用 `mesh`、`dns`、`java-agent`。其他值会按 `mesh` 处理。关闭注入应使用 `polarismesh.cn/inject: "false"`。
+`polarismesh.cn/sidecar-mode` 的值只能使用 `mesh`、`dns`、`java-agent`；其他值不注入并记录日志。关闭单个 Pod 的注入应使用 `polarismesh.cn/inject: "false"`；集群默认注入可通过 `sidecarInject.mode: ""` 或 `none` 关闭。
 
 ### 期望 ConfigMap 同步 Annotation 生效
 

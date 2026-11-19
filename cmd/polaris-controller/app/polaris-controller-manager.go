@@ -283,8 +283,15 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
 	}
+	rawSidecarMode := c.ComponentConfig.PolarisController.SidecarMode
+	sidecarMode := util.ParseSidecarMode(rawSidecarMode)
+	if sidecarMode == util.SidecarForUnknown {
+		log.InjectScope().Warnf(
+			"sidecar inject mode is disabled: raw=%q, expect mesh/dns/java-agent or none",
+			rawSidecarMode)
+	}
 	parameters := inject.WebhookParameters{
-		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+		DefaultSidecarMode:  sidecarMode,
 		TemplateFileConfig:  templateFilePath,
 		Port:                flags.injectPort,
 		HealthCheckInterval: 3 * time.Second,

@@ -32,7 +32,13 @@ func getInjectMode(wh *Webhook, p *podDataInfo) utils.SidecarMode {
 		setMeshEnvoyConfig(wh, pod.Annotations)
 		return utils.SidecarForMesh
 	case hasSidecarModeAnnotation(pod.Annotations):
-		return utils.ParseSidecarMode(pod.Annotations[utils.PolarisSidecarMode])
+		rawMode := pod.Annotations[utils.PolarisSidecarMode]
+		mode := utils.ParseSidecarMode(rawMode)
+		if mode == utils.SidecarForUnknown {
+			logUnknownSidecarMode("pod annotation", utils.PolarisSidecarMode, rawMode,
+				namespace, p.podName)
+		}
+		return mode
 	}
 
 	return getNamespaceInjectMode(wh, namespace)
@@ -52,8 +58,8 @@ func isMeshMode(annotations map[string]string) bool {
 
 // hasSidecarModeAnnotation checks if the pod has custom sidecar mode annotation
 func hasSidecarModeAnnotation(annotations map[string]string) bool {
-	_, ok := annotations[utils.PolarisSidecarMode]
-	return ok
+	val, ok := annotations[utils.PolarisSidecarMode]
+	return ok && val != ""
 }
 
 // setMeshEnvoyConfig sets the Mesh Envoy configuration metadata
@@ -70,10 +76,31 @@ func getNamespaceInjectMode(wh *Webhook, namespace string) utils.SidecarMode {
 		return wh.defaultSidecarMode
 	}
 
-	if val, ok := ns.Labels[utils.PolarisSidecarModeLabel]; ok {
-		return utils.ParseSidecarMode(val)
+	if val, ok := ns.Labels[utils.PolarisSidecarModeLabel]; ok && val != "" {
+		mode := utils.ParseSidecarMode(val)
+		if mode == utils.SidecarForUnknown {
+			logUnknownSidecarMode("namespace label", utils.PolarisSidecarModeLabel, val,
+				namespace, "")
+		}
+		return mode
 	}
 	return wh.defaultSidecarMode
+}
+
+func logUnknownSidecarMode(source, key, rawMode, namespace, podName string) {
+	target := namespace
+	if podName != "" {
+		target = namespace + "/" + podName
+	}
+	if rawMode == utils.SidecarNoneModeName {
+		log.InjectScope().Infof(
+			"skip inject for %s: %s %s=none disables injection",
+			target, source, key)
+		return
+	}
+	log.InjectScope().Warnf(
+		"skip inject for %s: invalid %s %s=%q, expect mesh/dns/java-agent",
+		target, source, key, rawMode)
 }
 
 const (

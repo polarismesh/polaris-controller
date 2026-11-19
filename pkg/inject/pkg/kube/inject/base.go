@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/polarismesh/polaris-controller/common/log"
+	utils "github.com/polarismesh/polaris-controller/pkg/util"
 )
 
 // getPodPatch 处理 admission webhook 请求
@@ -19,6 +20,12 @@ import (
 //	  - nil: 表示处理成功
 //	  - non-nil: 表示处理过程中出现错误，错误信息包含在 error 中
 func (wh *Webhook) getPodPatch(p *podDataInfo) ([]byte, error) {
+	if p.injectMode == utils.SidecarForUnknown {
+		log.InjectScope().Infof(
+			"[Webhook] skip inject for pod=%s/%s: no valid sidecar mode, sidecarInject.mode is empty/none/invalid",
+			p.podObject.Namespace, p.podName)
+		return nil, nil
+	}
 	// 检查Pod元数据是否合法
 	passed, err := p.checkPodData()
 	if err != nil || !passed {
