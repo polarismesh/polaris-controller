@@ -324,6 +324,50 @@ func TestHelmManifestsKeepWebhookAndLogCompatibility(t *testing.T) {
 	}
 }
 
+func TestControllerManifestsSupportSafeRollingUpdate(t *testing.T) {
+	required := []string{
+		"podManagementPolicy: OrderedReady",
+		"name: POD_NAME",
+		"startupProbe:",
+		"readinessProbe:",
+		"livenessProbe:",
+		"port: 9443",
+		"subPathExpr: $(POD_NAME)",
+		"podAntiAffinity:",
+	}
+	for _, version := range []string{"v1.21", "v1.22"} {
+		for _, part := range []struct {
+			name string
+			path string
+		}{
+			{name: "raw", path: filepath.Join("kubernetes_"+version, "kubernetes", "polaris-controller.yaml")},
+			{name: "helm", path: filepath.Join("kubernetes_"+version, "helm", "templates", "controller-statefulset.yaml")},
+		} {
+			t.Run(version+"/"+part.name, func(t *testing.T) {
+				body, err := os.ReadFile(part.path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range required {
+					if !strings.Contains(string(body), want) {
+						t.Errorf("%s is missing %q", part.path, want)
+					}
+				}
+			})
+		}
+	}
+
+	for _, version := range []string{"v1.21", "v1.22"} {
+		values, err := os.ReadFile(filepath.Join("kubernetes_"+version, "helm", "values.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(values), "replicas: 2") {
+			t.Errorf("%s Helm values do not default to two controller replicas", version)
+		}
+	}
+}
+
 func residualRBAC(kind, name, namespace string) map[string]interface{} {
 	return map[string]interface{}{
 		"kind": kind,

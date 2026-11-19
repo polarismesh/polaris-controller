@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -309,12 +310,21 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 // Run runs the KubeControllerManagerOptions.  This should never exit.
 func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	managerContext, cancelManager := context.WithCancel(context.Background())
+	workContext, cancelWork := context.WithCancel(context.Background())
 	defer cancelManager()
+	defer cancelWork()
+	var leading atomic.Bool
 	listenerDone := make(chan struct{})
 	go func() {
 		select {
 		case <-stopCh:
-			cancelManager()
+			if leading.Load() {
+				// Keep the leader lease until the guarded controller workers have
+				// finished, then let run() cancel managerContext and release it.
+				cancelWork()
+			} else {
+				cancelManager()
+			}
 		case <-managerContext.Done():
 		}
 		close(listenerDone)
@@ -369,7 +379,8 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	}
 
 	if !c.ComponentConfig.Generic.LeaderElection.LeaderElect {
-		run(managerContext)
+		leading.Store(true)
+		run(workContext)
 		return nil
 	}
 
@@ -397,24 +408,26 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	go func() {
 		defer close(leaderDone)
 		select {
-		case ctx := <-leaderContexts:
-			run(ctx)
+		case <-leaderContexts:
+			run(workContext)
 		case <-managerContext.Done():
 		}
 	}()
 	leaderelection.RunOrDie(managerContext, leaderelection.LeaderElectionConfig{
-		Lock:          rl,
-		LeaseDuration: c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline: c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:   c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
+		Lock:            rl,
+		LeaseDuration:   c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
+		RenewDeadline:   c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
+		RetryPeriod:     c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
+		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
+				leading.Store(true)
 				select {
 				case leaderContexts <- ctx:
 				case <-managerContext.Done():
 				}
 			},
-			OnStoppedLeading: func() { cancelManager(); StoppedLeading() },
+			OnStoppedLeading: func() { cancelWork(); StoppedLeading() },
 			OnNewLeader:      NewLeader,
 		},
 		WatchDog: electionChecker,

@@ -56,6 +56,7 @@ polaris:
 ## polaris controller config
 controller:
   name: polaris-controller
+  replicas: 2
   webhook:
     host: polaris.tencent.com
     service: polaris-sidecar-injector
