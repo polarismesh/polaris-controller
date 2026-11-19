@@ -144,7 +144,7 @@ func TestReconcileServiceAliasCreatesMissingAlias(t *testing.T) {
 
 	actual := state.aliases[aliasTestKey("Production", "order")]
 	if actual.Service != "order" || actual.Namespace != "ns" ||
-		actual.Owners != "pc,test,uid-order" ||
+		actual.Owners != "polaris-controller,test" ||
 		strings.Contains(actual.Owners, "/") {
 		t.Fatalf("unexpected alias: %+v", actual)
 	}
@@ -169,7 +169,7 @@ func TestAliasOwnerSegmentsAreShortAndPathFree(t *testing.T) {
 		t.Fatalf("owner contains '/': %q", owner)
 	}
 	segments := strings.Split(owner, ",")
-	if len(segments) < 3 || segments[0] != "pc" {
+	if len(segments) != 2 || segments[0] != "polaris-controller" {
 		t.Fatalf("unexpected owner segments: %q", owner)
 	}
 	for _, segment := range segments {
@@ -180,8 +180,8 @@ func TestAliasOwnerSegmentsAreShortAndPathFree(t *testing.T) {
 			t.Fatalf("owner segment %q contains a separator: %q", segment, owner)
 		}
 	}
-	if strings.Join(segments[2:], "") != "123e4567-e89b-12d3-a456-426614174000" {
-		t.Fatalf("owner does not preserve the full UID: %q", owner)
+	if strings.Contains(owner, "123e4567") {
+		t.Fatalf("owner should not contain the source UID: %q", owner)
 	}
 }
 
@@ -306,7 +306,7 @@ func TestReconcileServiceAliasUpdatesWrongSource(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-order",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -317,7 +317,7 @@ func TestReconcileServiceAliasUpdatesWrongSource(t *testing.T) {
 	}
 
 	actual := state.aliases[aliasTestKey("Production", "order")]
-	if actual.Service != "order-new" || actual.Owners != "pc,test,uid-order" {
+	if actual.Service != "order-new" || actual.Owners != "polaris-controller,test" {
 		t.Fatalf("alias was not retargeted or owner changed: %+v", actual)
 	}
 	if got := requestPaths(tr.requests); !equalStrings(got, []string{
@@ -338,7 +338,7 @@ func TestReconcileServiceAliasNoOpWhenBindingIsCorrect(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-order",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -361,7 +361,7 @@ func TestReconcileServiceAliasUsesEarliestClaim(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-old",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -395,7 +395,7 @@ func TestReconcileServiceAliasSerializesConcurrentClaims(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-old",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -438,7 +438,7 @@ func TestReconcileServiceAliasAllowsNextOwnerAfterWinnerStopsClaiming(t *testing
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-old",
+		Owners:         "polaris-controller,test",
 		Comment:        p.aliasComment(first),
 	}
 	tr.respond = state.responder
@@ -517,7 +517,7 @@ func TestReconcileServiceAliasDoesNotOverwriteOtherClusterOwner(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,other-cluster,uid-other",
+		Owners:         "polaris-controller,other-cluster",
 	}
 	tr.respond = state.responder
 
@@ -578,7 +578,7 @@ func TestReconcileServiceAliasIgnoresRemovedAnnotations(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-order",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -628,7 +628,7 @@ func TestReconcileServiceAliasKeepsOldAliasAfterRename(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order-old",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-order",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 
@@ -656,7 +656,7 @@ func TestReconcileServiceAliasKeepsAliasWhenServiceStopsSync(t *testing.T) {
 		Namespace:      "ns",
 		Alias:          "order",
 		AliasNamespace: "Production",
-		Owners:         "pc,test,uid-order",
+		Owners:         "polaris-controller,test",
 	}
 	tr.respond = state.responder
 

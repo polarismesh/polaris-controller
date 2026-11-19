@@ -137,27 +137,18 @@ func (p *PolarisController) reconcileServiceAlias(service *v1.Service) error {
 	return nil
 }
 
-// aliasOwnerSegmentMax caps every comma-separated owner segment. The Polaris
-// server splits owners on , ; and stores each segment in
-// owner_service_map.owner (varchar(32)); one long slash-joined segment such as
-// "polaris-controller/<cluster>/<uid>" overflows the column and create fails
-// with 400103 invalid parameter.
-const aliasOwnerSegmentMax = 16
+// aliasOwnerSegmentMax matches owner_service_map.owner, which the Polaris server
+// defines as varchar(32). The server splits Owners on , and ; before storing
+// each segment, so every generated segment must stay within this limit.
+const aliasOwnerSegmentMax = 32
 
-func (p *PolarisController) aliasOwner(service *v1.Service) string {
-	// Join short, path-free segments with the server's owner separator so the
-	// marker survives the server-side segment parsing: pc,<cluster>,<uid chunks>.
-	parts := []string{"pc", aliasOwnerSegment(p.config.PolarisController.ClusterName)}
-	uid := string(service.GetUID())
-	for len(uid) > 0 {
-		chunk := len(uid)
-		if chunk > aliasOwnerSegmentMax {
-			chunk = aliasOwnerSegmentMax
-		}
-		parts = append(parts, uid[:chunk])
-		uid = uid[chunk:]
-	}
-	return strings.Join(parts, ",")
+func (p *PolarisController) aliasOwner(_ *v1.Service) string {
+	// Keep the public owner cluster-scoped. The exact source Service remains in
+	// the provenance Comment; Owners may be replaced by server authentication.
+	return strings.Join([]string{
+		polarisapi.Source,
+		aliasOwnerSegment(p.config.PolarisController.ClusterName),
+	}, ",")
 }
 
 // aliasOwnerSegment keeps one owner segment short and free of separators that
