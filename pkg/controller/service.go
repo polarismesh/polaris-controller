@@ -33,6 +33,49 @@ import (
 	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
+const namespaceCacheRetryDelay = time.Second
+
+// serviceNeedsNamespace reports whether eligibility can only be resolved from
+// the Namespace informer. Explicit Service switches are safe during startup.
+func serviceNeedsNamespace(service *v1.Service) bool {
+	_, hasSync := service.Annotations[util.PolarisSync]
+	return !hasSync && service.Annotations[util.PolarisEnableRegister] != util.IsEnableSync
+}
+
+func (p *PolarisController) deferServiceUntilNamespaceSynced(service *v1.Service, eventType string) bool {
+	if p.namespaceCacheHasSynced() || !serviceNeedsNamespace(service) {
+		return false
+	}
+	task := &Task{
+		Namespace:  service.GetNamespace(),
+		Name:       service.GetName(),
+		ObjectType: KubernetesService,
+		Operation:  Operation(eventType),
+	}
+	log.SyncNamingScope().Infof(
+		"Namespace cache is not ready; retrying %s service %s/%s after %v",
+		eventType, service.GetNamespace(), service.GetName(), namespaceCacheRetryDelay)
+	p.queue.AddAfter(task.QueueKey(), namespaceCacheRetryDelay)
+	return true
+}
+
+func (p *PolarisController) deferEndpointUntilNamespaceSynced(endpoints *v1.Endpoints, eventType string) bool {
+	if p.namespaceCacheHasSynced() || p.SyncMode() == util.SyncModeAll {
+		return false
+	}
+	task := &Task{
+		Namespace:  endpoints.GetNamespace(),
+		Name:       endpoints.GetName(),
+		ObjectType: KubernetesService,
+		Operation:  Operation(eventType),
+	}
+	log.SyncNamingScope().Infof(
+		"Namespace cache is not ready; retrying %s endpoints %s/%s after %v",
+		eventType, endpoints.GetNamespace(), endpoints.GetName(), namespaceCacheRetryDelay)
+	p.queue.AddAfter(task.QueueKey(), namespaceCacheRetryDelay)
+	return true
+}
+
 // onServiceUpdate 比较是否有必要加入service队列
 func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 	oldService, ok1 := old.(*v1.Service)
@@ -40,6 +83,11 @@ func (p *PolarisController) onServiceUpdate(old, current interface{}) {
 
 	if !(ok1 && ok2) {
 		log.SyncNamingScope().Errorf("Error get update services old %v, new %v", old, current)
+		return
+	}
+
+	if p.deferServiceUntilNamespaceSynced(curService, "Update") ||
+		p.deferServiceUntilNamespaceSynced(oldService, "Update") {
 		return
 	}
 
@@ -98,6 +146,10 @@ func (p *PolarisController) onServiceAdd(obj interface{}) {
 		return
 	}
 
+	if p.deferServiceUntilNamespaceSynced(service, "Add") {
+		return
+	}
+
 	if !p.IsPolarisService(service) {
 		return
 	}
@@ -137,6 +189,10 @@ func (p *PolarisController) onServiceDelete(obj interface{}) {
 		if !ok {
 			return
 		}
+	}
+
+	if p.deferServiceUntilNamespaceSynced(service, "Delete") {
+		return
 	}
 
 	if !p.IsPolarisService(service) {

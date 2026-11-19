@@ -425,11 +425,24 @@ func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
 	}
 	ns, err := p.namespaceLister.Get(svc.Namespace)
 	if err != nil {
+		if !p.namespaceCacheHasSynced() {
+			log.SyncNamingScope().Debugf(
+				"Namespace cache is not ready for service %s/%s, %v",
+				svc.Namespace, svc.Name, err)
+			return false
+		}
 		log.SyncNamingScope().Errorf("get namespace for service %s/%s error, %v", svc.Namespace, svc.Name, err)
 		return false
 	}
 	// 如果服务没有注解，则在看下命名空间是否有开启相关 sync 注解
 	return p.IsNamespaceSyncEnable(ns)
+}
+
+func (p *PolarisController) namespaceCacheHasSynced() bool {
+	if p.namespaceSynced == nil {
+		return true
+	}
+	return p.namespaceSynced()
 }
 
 // CompareServiceChange 判断本次更新是什么类型的

@@ -39,6 +39,10 @@ func (p *PolarisController) onEndpointAdd(obj interface{}) {
 		return
 	}
 
+	if p.deferEndpointUntilNamespaceSynced(endpoints, "Add") {
+		return
+	}
+
 	sync, key, err := p.isPolarisEndpoints(endpoints)
 	if err != nil {
 		log.SyncNamingScope().Errorf("check if ep %s/%s svc/ns has sync error, %v",
@@ -59,6 +63,10 @@ func (p *PolarisController) onEndpointUpdate(old, cur interface{}) {
 
 	// 过滤非法的 endpoints
 	if util.IgnoreObject(curEndpoints) {
+		return
+	}
+
+	if p.deferEndpointUntilNamespaceSynced(curEndpoints, "Update") {
 		return
 	}
 
@@ -98,6 +106,10 @@ func (p *PolarisController) onEndpointDelete(obj interface{}) {
 		}
 	}
 	if util.IgnoreObject(endpoints) {
+		return
+	}
+
+	if p.deferEndpointUntilNamespaceSynced(endpoints, "Delete") {
 		return
 	}
 
