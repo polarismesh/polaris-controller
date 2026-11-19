@@ -140,13 +140,10 @@ var PolarisSystemMetaSet = map[string]struct{}{
 	K8sServiceUID: {},
 }
 
-// PolarisDefaultMetaSet 由 polaris controller 托管的 service ，注册的实例必定会带的 meta，
-// 用于判断用户的 custom meta 是否发生了更新
+// PolarisDefaultMetaSet 保存未声明的兼容 metadata，避免误删 controller 管理的字段。
 var PolarisDefaultMetaSet = map[string]struct{}{
 	PolarisClusterName: {},
 	PolarisSource:      {},
-	PolarisVersion:     {},
-	PolarisProtocol:    {},
 	K8sServiceUID:      {},
 }
 

@@ -148,8 +148,16 @@ even when `enableRegister=true`.
 Instance metadata combines `polarismesh.cn/metadata` with Pod labels; Pod labels take precedence.
 `source` and `clusterName` are protected controller fields. Other business fields are managed as a complete set:
 removing a field from both sources removes it from the next instance update, including fields added directly in Polaris.
-Existing `version`, `protocol` and legacy `platform` metadata are preserved when absent from both sources.
+Existing `protocol` and legacy `platform` metadata are preserved when absent from both sources.
 Pod label changes converge during periodic reconciliation (`--resync-duration`, default `30s`).
+
+The Pod labels `version`, `region`, `zone`, and `campus` are reserved instance fields.
+They participate in the Polaris Instance top-level Version/Location and are not written
+as business metadata. When these Pod labels are absent, the existing Version/Location
+is preserved. The `version` label still follows the `polarismesh.cn/customVersion` precedence.
+Protocol is controlled by the Service `polarismesh.cn/protocols` annotation and Kubernetes
+EndpointPort; a `protocol` Pod label or business metadata key is ignored and does not affect
+the top-level Protocol.
 
 ### Sidecar auto inject
 

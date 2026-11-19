@@ -188,8 +188,14 @@ controller 仍会正常新增、更新和删除实例。
 实例 metadata 由 `polarismesh.cn/metadata` 和 Pod labels 合并，同名字段以 Pod labels 为准。
 `source`、`clusterName` 为受保护字段。其余业务字段按完整集合管理：从两处声明中移除字段后，
 下一次更新会删除实例上的对应字段，包括直接在北极星添加的字段。
-兼容已有 `version`、`protocol` 和旧版 `platform` metadata：两处都未声明时保留现值。
+兼容已有 `protocol` 和旧版 `platform` metadata：两处都未声明时保留现值。
 Pod labels 的独立变更通过周期对账收敛，周期由 `--resync-duration` 指定，默认为 `30s`。
+
+Pod Label 中的 `version`、`region`、`zone`、`campus` 是实例保留字段，分别参与 Polaris
+Instance 的顶层 Version/Location，不会写入业务 metadata。未设置这些 Pod Label 时，
+controller 保留实例现有的 Version/Location；`version` 仍遵循 `polarismesh.cn/customVersion`
+的优先级。`protocol` 由 Service 的 `polarismesh.cn/protocols` 和 Kubernetes EndpointPort 决定；
+Pod Label 或业务 metadata 中的 `protocol` 会被忽略，不写入实例 metadata，也不影响顶层 Protocol。
 
 ### Sidecar 自动注入
 

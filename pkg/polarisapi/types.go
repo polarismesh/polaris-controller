@@ -47,6 +47,7 @@ type InstanceQuery struct {
 	VpcID        string            `json:"vpc_id,omitempty"`
 	Host         string            `json:"host,omitempty"`
 	Port         *int              `json:"port,omitempty"`
+	Location     *Location         `json:"location,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
@@ -69,6 +70,14 @@ type Instance struct {
 	Isolate           *bool             `json:"isolate,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Revision          string            `json:"revision,omitempty"`
+	Location          *Location         `json:"location,omitempty"`
+}
+
+// Location is the top-level topology of a Polaris instance.
+type Location struct {
+	Region string `json:"region,omitempty"`
+	Zone   string `json:"zone,omitempty"`
+	Campus string `json:"campus,omitempty"`
 }
 
 type SimpleInstance struct {

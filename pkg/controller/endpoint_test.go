@@ -328,7 +328,7 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 	current.metadata[util.PolarisProtocol] = "http"
 	consumer := p.consumer.(*testConsumer)
 	consumer.instances = []model.Instance{current}
-	for _, labels := range []map[string]string{{"app": "new", "region": "", "version": "v2"}, {"version": "v2"}} {
+	for _, labels := range []map[string]string{{"app": "new", "rack": "", "version": "v2"}, {"version": "v2"}} {
 		storeObject(t, stores.pods, &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod", Labels: labels}})
 		before := len(tr.requests)
 		p.resyncWorker()
@@ -353,8 +353,11 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 			if written.Protocol != "TCP" || written.Version != "v2" {
 				t.Fatalf("protocol/version not propagated: %+v", written)
 			}
-			if written.Metadata[util.PolarisOldSource] != Source || written.Metadata[util.PolarisProtocol] != "http" {
-				t.Fatal("legacy metadata lost")
+			if written.Metadata[util.PolarisOldSource] != Source {
+				t.Fatal("legacy platform metadata lost")
+			}
+			if _, exists := written.Metadata[util.PolarisProtocol]; exists {
+				t.Fatal("protocol must not be written as business metadata")
 			}
 			if _, exists := written.Metadata["app"]; exists != (labels["app"] != "") {
 				t.Fatalf("label removal not propagated: %v", written.Metadata)
@@ -374,6 +377,126 @@ func TestPodMetadataConvergesThroughResync(t *testing.T) {
 				t.Fatal("unchanged metadata triggered another instance update")
 			}
 		}
+	}
+}
+
+func TestReservedPodLabelsBecomeInstanceAttributes(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	storeObject(t, stores.pods, &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "ns", Name: "pod",
+		Labels: map[string]string{
+			"app":                      "sync-shared",
+			util.PolarisVersion:        "v2",
+			util.PolarisProtocol:       "grpc",
+			util.PolarisLocationRegion: "region-a",
+			util.PolarisLocationZone:   "zone-a",
+			util.PolarisLocationCampus: "campus-a",
+		},
+	}})
+	svc := testService()
+	svc.Spec.Ports[0].Name = "http"
+	svc.Annotations[util.PolarisProtocols] = `{"http":"http"}`
+	svc.Annotations[util.PolarisMetadata] = `{"tenant":"service-tenant","version":"business-version","protocol":"business-protocol","region":"business-region"}`
+
+	assertAttributes := func(t *testing.T, instance polarisapi.Instance) {
+		t.Helper()
+		if instance.Version != "v2" {
+			t.Fatalf("version not propagated: %q", instance.Version)
+		}
+		if instance.Protocol != "http" {
+			t.Fatalf("protocol not propagated: %q", instance.Protocol)
+		}
+		if instance.Location == nil || instance.Location.Region != "region-a" ||
+			instance.Location.Zone != "zone-a" || instance.Location.Campus != "campus-a" {
+			t.Fatalf("location not propagated: %+v", instance.Location)
+		}
+		for _, key := range []string{
+			util.PolarisVersion,
+			util.PolarisProtocol,
+			util.PolarisLocationRegion,
+			util.PolarisLocationZone,
+			util.PolarisLocationCampus,
+		} {
+			if _, exists := instance.Metadata[key]; exists {
+				t.Fatalf("reserved key %q leaked into metadata: %v", key, instance.Metadata)
+			}
+		}
+		if instance.Metadata["tenant"] != "service-tenant" || instance.Metadata["app"] != "sync-shared" {
+			t.Fatalf("business metadata lost: %v", instance.Metadata)
+		}
+	}
+
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	requests := tr.writes()
+	if len(requests) != 1 || requests[0].method != http.MethodPost ||
+		requests[0].path != "/naming/v1/instances" {
+		t.Fatalf("expected one instance add, got %+v", requests)
+	}
+	var added []polarisapi.Instance
+	if err := json.Unmarshal(requests[0].body, &added); err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 1 {
+		t.Fatalf("added instances=%d", len(added))
+	}
+	assertAttributes(t, added[0])
+
+	current := ownedInstance("10.0.0.1")
+	current.version = "v1"
+	current.protocol = "TCP"
+	current.region = "old-region"
+	current.metadata["tenant"] = "service-tenant"
+	current.metadata["app"] = "sync-shared"
+	current.metadata[util.PolarisVersion] = "v1"
+	current.metadata[util.PolarisLocationRegion] = "server-region"
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{current}
+	tr.requests = nil
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	requests = tr.writes()
+	if len(requests) != 1 || requests[0].method != http.MethodPut ||
+		requests[0].path != "/naming/v1/instances" {
+		t.Fatalf("expected one instance update, got %+v", requests)
+	}
+	var updated []polarisapi.Instance
+	if err := json.Unmarshal(requests[0].body, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 1 {
+		t.Fatalf("updated instances=%d", len(updated))
+	}
+	assertAttributes(t, updated[0])
+
+	current.version = "v2"
+	current.protocol = "http"
+	current.region = "region-a"
+	current.zone = "zone-a"
+	current.campus = "campus-a"
+	consumer.instances = []model.Instance{current}
+	tr.requests = nil
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if writes := tr.writes(); len(writes) != 0 {
+		t.Fatalf("converged location caused writes: %+v", writes)
+	}
+
+	current.protocol = "http"
+	storeObject(t, stores.pods, &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "ns", Name: "pod", Labels: map[string]string{"app": "sync-shared"},
+	}})
+	tr.requests = nil
+	if err := p.processSyncInstance(svc); err != nil {
+		t.Fatal(err)
+	}
+	if writes := tr.writes(); len(writes) != 0 {
+		t.Fatalf("removing location annotations caused writes: %+v", writes)
 	}
 }
 

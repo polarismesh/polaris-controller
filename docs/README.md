@@ -87,7 +87,9 @@ Kubernetes Service
 | Kubernetes Service `metadata.labels` | Polaris **Service metadata** | 创建 Polaris Service 时写入；更新时按 Kubernetes Label 声明收敛 |
 | Service Annotation `polarismesh.cn/metadata` | Polaris **Instance metadata** | 作为同一 Service 下所有实例的公共 metadata |
 | 实际 Pod `metadata.labels` | Polaris **Instance metadata** | 合并到每个 Endpoint 对应实例，同名 key 覆盖 Service Annotation |
-| Pod Label `version` | Polaris **Instance Version** | 未设置自定义版本时的默认值 |
+| Pod Label `version` | Polaris **Instance Version** | 保留字段，不写入业务 metadata；未设置自定义版本时作为默认值 |
+| Pod Label `protocol` | 忽略 | 不参与顶层 Protocol，不写入业务 metadata |
+| Pod Label `region` / `zone` / `campus` | Polaris **Instance Location** | 保留字段，写入实例顶层 Location，不写入业务 metadata |
 | 合并后 metadata 中的 `polarismesh.cn/customVersion` | Polaris **Instance Version** | 优先级高于 Pod Label `version` |
 | controller 自动写入的 `source`、`clusterName` | Polaris **Instance metadata** | 受保护字段，用户配置不能覆盖 |
 | controller 自动写入的 `k8sServiceUID` | Polaris **Instance metadata** | 标识同名 Kubernetes Service 的代次，受保护且不能覆盖 |
@@ -96,6 +98,8 @@ Kubernetes Service
 
 - **Service Label 不会直接写入 Instance metadata。**
 - **Pod Label 不会写入 Polaris Service metadata。**
+- **`version`、`region`、`zone`、`campus` 是 Pod Label 保留字段，不作为业务 metadata 写入。**
+- **`protocol` 只由 Service 注解和 EndpointPort 决定；Pod Label 或 metadata 中的 `protocol` 会被忽略。**
 - controller 读取的是实际 Pod Label。Deployment 模板 Label 只有实际复制到 Pod 后才会被读取。
 - Polaris Service metadata 和 Polaris Instance metadata 是两个不同层级的数据。
 - 实例归属由 `clusterName + source/platform` 判断，`k8sServiceUID` 不决定实例是否属于 controller。
@@ -416,7 +420,7 @@ annotations:
 - controller 按 Service Annotation 和 Pod Label 的完整声明集合管理业务 metadata。
 - 从两个来源同时移除一个业务字段后，后续实例更新会从 Polaris Instance metadata 删除该字段。
 - 直接在 Polaris 中添加、但两个来源都没有声明的业务字段，会在后续更新中被删除。
-- 兼容字段 `version`、`protocol` 和旧版 `platform` 在两个来源都未声明时保留 Polaris 现有值。
+- 兼容字段 `protocol` 和旧版 `platform` 在两个来源都未声明时保留 Polaris 现有值。
 
 Pod Label 示例：
 
@@ -433,6 +437,39 @@ metadata:
 对账周期可以通过 `--resync-duration` 或 YAML `server.resyncDuration` 调整。这里的周期是 controller 主动对 Polaris 数据执行完整对账的间隔，不是 Kubernetes Informer 的 `--min-resync-period`。
 
 `polarismesh.cn/metadata` 不是合法 JSON object 时，controller 会返回错误并重试，不会把非法配置当成空 metadata 删除已有字段。
+
+### 保留 Pod Label
+
+Pod Label 中的以下字段是实例保留字段，不会写入业务 Instance metadata：
+
+```yaml
+metadata:
+  labels:
+    version: v2
+    region: beijing
+    zone: zone-a
+    campus: campus-1
+```
+
+对应 Polaris Instance 顶层属性：
+
+```yaml
+version: v2
+location:
+  region: beijing
+  zone: zone-a
+  campus: campus-1
+```
+
+`version` 在未设置 `polarismesh.cn/customVersion` 时驱动顶层 Version；
+`region`、`zone`、`campus` 驱动顶层 Location。
+未设置 Location 的三个 Pod Label 时，controller 不修改实例现有 Location；
+设置任意一个非空值时，controller 按三个字段收敛，未设置的字段按空值处理。
+这些 key 即使出现在 `polarismesh.cn/metadata` 中，也不会作为业务 metadata 写入。
+
+> 注意：`protocol` 不属于这里的 Pod Label 保留字段。Pod Label `protocol` 或
+> `polarismesh.cn/metadata` 中的 `protocol` 都会被忽略并从业务 metadata 剔除，
+> 不会写入顶层 Protocol，也不会作为业务 metadata 返回。
 
 ### `polarismesh.cn/protocols`
 
@@ -479,6 +516,18 @@ spec:
 | `grpc` | `TCP` | `grpc` |
 | `admin` | `UDP` | `UDP` |
 
+`protocol` 的来源边界如下：
+
+| 来源 | 是否影响顶层 Protocol | 是否写入业务 metadata |
+| --- | --- | --- |
+| Service Annotation `polarismesh.cn/protocols` | 端口有映射时使用 | 否 |
+| Kubernetes EndpointPort `protocol` | 端口没有映射时使用 | 否 |
+| Pod Label `protocol` | **忽略** | 否，主动剔除 |
+| `polarismesh.cn/metadata` 中的 `protocol` | **忽略** | 否，主动剔除 |
+
+因此，即使 Pod Label 或 `polarismesh.cn/metadata` 中设置了 `protocol: grpc`，
+实例顶层 Protocol 仍按 Service 注解和 EndpointPort 计算；该值也不会作为业务 metadata 下发。
+
 校验规则：
 
 - 注解必须是合法 JSON object，且 key/value 都是字符串。
@@ -486,7 +535,8 @@ spec:
 - value 必须非空，不能包含首尾空白，长度不能超过 32 字符。
 - 非法配置会导致本次同步失败并重试，不会静默回落到 Kubernetes Protocol。
 
-该注解只控制 Polaris Instance 顶层 `protocol` 字段，不会写入或修改 Instance metadata 中的 `protocol`。如需自定义 Instance metadata，使用 `polarismesh.cn/metadata` 或 Pod Label。
+该注解只控制 Polaris Instance 顶层 `protocol` 字段，不会写入或修改业务 Instance metadata 中的
+`protocol`。Pod Label 或业务 metadata 中的 `protocol` 会被忽略，不会影响顶层 Protocol。
 
 删除或移除某个端口的映射后，下一次对账会回退到对应 Kubernetes EndpointPort 的 `protocol`。
 
@@ -520,9 +570,9 @@ Version 生命周期：
 - 删除 Endpoint、Service 或关闭同步时，实例仍按 Service、host、port 删除，Version 不参与实例
   身份和删除判断。
 
-如果需要让 Service Annotation 中的 `version` 只作为 Instance metadata，而不影响顶层 Version，
-可以继续使用 `polarismesh.cn/metadata`；它不会驱动顶层 Version。Pod Label `version` 则会同时
-写入 Instance metadata 和顶层 Version。
+Pod Label `version` 驱动 Polaris Instance 顶层 Version。Polaris HTTP 控制台实例查询不会在
+`metadata` 中返回 `version`、`protocol`、`region`、`zone`、`campus`；这些字段属于内部发现数据，
+不要通过 HTTP 查询的 `metadata.version` 等 key 读取或校验。
 
 ### Polaris Service metadata 和 Service Label
 
@@ -709,7 +759,8 @@ spec:
 结果：
 
 - Polaris Service metadata 包含 `owner=payment`。
-- Polaris Instance metadata 包含 `app=demo`、`tenant=t1`、`version=v2`、`source=polaris-controller` 和 `clusterName`。
+- Polaris Instance 顶层 Version 为 `v2`；HTTP 查询返回的 Instance metadata 包含 `app=demo`、`tenant=t1`、
+  `source=polaris-controller` 和 `clusterName`，不包含 `version`/`protocol`/Location 内部字段。
 - `tenant` 如果在 Service Annotation 和 Pod Label 中都存在，以 Pod Label 为准。
 
 ### 兼容历史 `enableRegister=true`

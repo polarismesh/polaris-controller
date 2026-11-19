@@ -76,14 +76,14 @@ func TestCompareInstanceMetadata(t *testing.T) {
 		want             bool
 	}{
 		{name: "unchanged empty labels", current: map[string]string{}, want: false},
-		{name: "unchanged many labels", pod: map[string]string{"app": "a", "region": "", "tenant": "t"},
-			current: map[string]string{"app": "a", "region": "", "tenant": "t"}},
+		{name: "unchanged many labels", pod: map[string]string{"app": "a", "rack": "", "tenant": "t"},
+			current: map[string]string{"app": "a", "rack": "", "tenant": "t"}},
 		{name: "changed Pod label", pod: map[string]string{"app": "new"}, current: map[string]string{"app": "old"}, want: true},
 		{name: "matching Service metadata does not hide Pod change", annotation: `{"tenant":"t"}`,
 			pod: map[string]string{"app": "new"}, current: map[string]string{"tenant": "t", "app": "old"}, want: true},
 		{name: "removed Pod label", current: map[string]string{"app": "old"}, want: true},
-		{name: "added empty label", pod: map[string]string{"region": ""}, current: map[string]string{}, want: true},
-		{name: "removed empty label", current: map[string]string{"region": ""}, want: true},
+		{name: "added empty label", pod: map[string]string{"rack": ""}, current: map[string]string{}, want: true},
+		{name: "removed empty label", current: map[string]string{"rack": ""}, want: true},
 		{name: "removed Service metadata key", annotation: `{"tenant":"t"}`,
 			current: map[string]string{"tenant": "t", "obsolete": "value"}, want: true},
 		{name: "removed Service annotation", current: map[string]string{"tenant": "t"}, want: true},
@@ -93,7 +93,8 @@ func TestCompareInstanceMetadata(t *testing.T) {
 		}, want: true},
 		{name: "Pod takes precedence", annotation: `{"app":"service"}`, pod: map[string]string{"app": "pod"},
 			current: map[string]string{"app": "pod"}},
-		{name: "preserve legacy defaults", current: map[string]string{"version": "v1", "protocol": "http", "platform": Source}},
+		{name: "legacy version and protocol are not business metadata",
+			current: map[string]string{"version": "v1", "protocol": "http", "platform": Source}},
 		{name: "nil metadata", want: true},
 	}
 	for _, tt := range tests {
@@ -130,14 +131,21 @@ func TestCompareInstanceMetadata(t *testing.T) {
 	}
 }
 
-func TestServerLocationMetadataDoesNotCauseUpdateLoop(t *testing.T) {
+func TestReservedInstanceAttributesAreNotBusinessMetadata(t *testing.T) {
 	p, _ := newTestController(t)
 	service := testService()
 	spec := &address.Address{IP: "10.0.0.1", Port: 80, Healthy: true, Weight: 100, Protocol: "TCP"}
 	instance := ownedInstance("10.0.0.1")
-	instance.metadata[util.PolarisLocationRegion] = ""
-	instance.metadata[util.PolarisLocationZone] = ""
-	instance.metadata[util.PolarisLocationCampus] = ""
+	instance.version = "v2"
+	instance.protocol = "TCP"
+	instance.region = "server-region"
+	instance.zone = "server-zone"
+	instance.campus = "server-campus"
+	instance.metadata[util.PolarisVersion] = instance.version
+	instance.metadata[util.PolarisProtocol] = "http"
+	instance.metadata[util.PolarisLocationRegion] = instance.region
+	instance.metadata[util.PolarisLocationZone] = instance.zone
+	instance.metadata[util.PolarisLocationCampus] = instance.campus
 	current := &address.Address{
 		IP: spec.IP, Port: spec.Port, Weight: spec.Weight, Protocol: spec.Protocol, PolarisInstance: instance,
 	}
@@ -146,9 +154,15 @@ func TestServerLocationMetadataDoesNotCauseUpdateLoop(t *testing.T) {
 		t.Fatal("server location metadata caused an update")
 	}
 	merged := mergeMetadataWithService(service, *current, "test")
-	for _, key := range []string{util.PolarisLocationRegion, util.PolarisLocationZone, util.PolarisLocationCampus} {
-		if _, exists := merged[key]; !exists {
-			t.Fatalf("server metadata key %q was not preserved: %+v", key, merged)
+	for _, key := range []string{
+		util.PolarisVersion,
+		util.PolarisProtocol,
+		util.PolarisLocationRegion,
+		util.PolarisLocationZone,
+		util.PolarisLocationCampus,
+	} {
+		if _, exists := merged[key]; exists {
+			t.Fatalf("server metadata key %q leaked into business metadata: %+v", key, merged)
 		}
 	}
 }

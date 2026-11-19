@@ -1,0 +1,218 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-inject-default
+  labels:
+    polarismesh.cn/inject: enabled
+    polaris-sidecar-mode: dns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-inject-podlabel
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-inject-java
+  labels:
+    polarismesh.cn/inject: enabled
+    polaris-sidecar-mode: dns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-inject-legacy
+  labels:
+    polaris-injection: enabled
+    polaris-sidecar-mode: dns
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-ok
+  namespace: it-pc-inject-default
+  labels:
+    app: dns-ok
+  annotations:
+    polarismesh.cn/inject: "true"
+    sidecar.polarismesh.cn/serviceName: dns-ok-service
+    polarismesh.cn/sidecarConfig: |
+      {
+        "recurse": {"enabled": false, "timeout": 500},
+        "dns": {"suffix": "cluster.local", "ttl": 30},
+        "location": {
+          "region": "beijing",
+          "zone": "zone-a",
+          "campus": "campus-1",
+          "match_level": "zone"
+        },
+        "log": {
+          "output_level": "debug",
+          "rotation_max_size": 100,
+          "rotation_max_age": 7,
+          "rotation_max_backups": 10
+        }
+      }
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+      ports:
+        - name: http
+          containerPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-disabled-annotation
+  namespace: it-pc-inject-default
+  labels:
+    app: dns-disabled-annotation
+  annotations:
+    polarismesh.cn/inject: "false"
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-disabled-label
+  namespace: it-pc-inject-default
+  labels:
+    app: dns-disabled-label
+    polarismesh.cn/inject: disabled
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-hostnetwork
+  namespace: it-pc-inject-default
+  labels:
+    app: dns-hostnetwork
+  annotations:
+    polarismesh.cn/inject: "true"
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inject-only-service
+  namespace: it-pc-inject-default
+  annotations:
+    polarismesh.cn/sync: "false"
+spec:
+  selector:
+    app: dns-ok
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-label-injected
+  namespace: it-pc-inject-podlabel
+  labels:
+    app: pod-label-injected
+    polarismesh.cn/inject: enabled
+  annotations:
+    polarismesh.cn/inject: "true"
+    polarismesh.cn/sidecar-mode: dns
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: java-config
+  namespace: it-pc-inject-java
+  labels:
+    app: java-config
+  annotations:
+    polarismesh.cn/javaagent: "true"
+    polarismesh.cn/javaagentVersion: "2.1.2.0"
+    polarismesh.cn/javaagentConfig: |
+      {
+        "spring.application.name": "java-config-service",
+        "spring.cloud.polaris.discovery.namespace": "it-pc-inject-java"
+      }
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/tsf_100011913960/evelyn_public:polaris-javaagent-demo-sc-quickstart-2023-provider
+      imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-workload
+  namespace: it-pc-inject-java
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-workload
+  template:
+    metadata:
+      labels:
+        app: java-workload
+      annotations:
+        polarismesh.cn/javaagent: "true"
+        polarismesh.cn/workloadNameAsServiceName: "true"
+        polarismesh.cn/workloadNamespaceAsServiceNamespace: "true"
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/tsf_100011913960/evelyn_public:polaris-javaagent-demo-sc-quickstart-2023-provider
+          imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: java-hostnetwork
+  namespace: it-pc-inject-java
+  labels:
+    app: java-hostnetwork
+  annotations:
+    polarismesh.cn/javaagent: "true"
+    polarismesh.cn/javaagentFrameworkName: spring-cloud
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/tsf_100011913960/evelyn_public:polaris-javaagent-demo-sc-quickstart-2023-provider
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: legacy-label-injected
+  namespace: it-pc-inject-legacy
+  labels:
+    app: legacy-label-injected
+  annotations:
+    polarismesh.cn/inject: "true"
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always

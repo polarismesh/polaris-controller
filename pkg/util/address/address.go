@@ -78,7 +78,6 @@ func buildAddresses(endpoint *v1.EndpointAddress, subset *v1.EndpointSubset, has
 		return nil, fmt.Errorf("get Pod %s/%s for endpoint %s: %w",
 			endpoint.TargetRef.Namespace, endpoint.TargetRef.Name, endpoint.IP, err)
 	}
-
 	tmpReadyIndex := ""
 	if hasIndex {
 		tmpIndexArray := strings.Split(endpoint.TargetRef.Name, "-")

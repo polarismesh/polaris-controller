@@ -117,6 +117,44 @@ func resolveInstanceVersion(metadata map[string]string, podVersion string) (stri
 	return "", false
 }
 
+func resolveInstanceLocation(labels map[string]string) *polarisapi.Location {
+	region := labels[util.PolarisLocationRegion]
+	zone := labels[util.PolarisLocationZone]
+	campus := labels[util.PolarisLocationCampus]
+	if region == "" && zone == "" && campus == "" {
+		return nil
+	}
+	return &polarisapi.Location{
+		Region: region,
+		Zone:   zone,
+		Campus: campus,
+	}
+}
+
+func instanceLocationMatches(location *polarisapi.Location, instance model.Instance) bool {
+	if location == nil || instance == nil {
+		return true
+	}
+	return location.Region == instance.GetRegion() &&
+		location.Zone == instance.GetZone() &&
+		location.Campus == instance.GetCampus()
+}
+
+// metadataWithoutInstanceAttributes removes reserved Pod labels that are
+// promoted to top-level instance Version/Protocol/Location instead of metadata.
+func metadataWithoutInstanceAttributes(metadata map[string]string) map[string]string {
+	if metadata == nil {
+		return nil
+	}
+	out := maps.Clone(metadata)
+	delete(out, util.PolarisVersion)
+	delete(out, util.PolarisProtocol)
+	delete(out, util.PolarisLocationRegion)
+	delete(out, util.PolarisLocationZone)
+	delete(out, util.PolarisLocationCampus)
+	return out
+}
+
 // updateService 按 Kubernetes Service Label 的声明范围收敛 Polaris Service metadata。
 func (p *PolarisController) updateService(old, cur *v1.Service) error {
 	resp, err := polarisapi.GetServiceWithContext(p.requestContext(), cur)
@@ -203,6 +241,7 @@ func (p *PolarisController) addInstances(service *v1.Service, healthCheck desire
 			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
+			Location:          resolveInstanceLocation(addr.Metadata),
 		}
 		instances = append(instances, tmpInstance)
 	}
@@ -294,6 +333,7 @@ func (p *PolarisController) updateInstances(service *v1.Service, healthCheck des
 			Isolate:           &addr.Isolate,
 			EnableHealthCheck: enableHealthCheck,
 			Metadata:          metadata,
+			Location:          resolveInstanceLocation(addr.Metadata),
 		}
 		instances = append(instances, tmpInstance)
 	}
@@ -388,7 +428,11 @@ func (p *PolarisController) compareInstanceUpdate(service *v1.Service, healthChe
 	desired := *spec
 	desired.PolarisInstance = cur.PolarisInstance
 	metadata := mergeMetadataWithService(service, desired, p.config.PolarisController.ClusterName)
-	if !maps.Equal(metadata, cur.PolarisInstance.GetMetadata()) {
+	if !maps.Equal(metadataWithoutInstanceAttributes(metadata),
+		metadataWithoutInstanceAttributes(cur.PolarisInstance.GetMetadata())) {
+		return true
+	}
+	if location := resolveInstanceLocation(spec.Metadata); !instanceLocationMatches(location, cur.PolarisInstance) {
 		return true
 	}
 
@@ -479,7 +523,7 @@ func mergeMetadataWithService(service *v1.Service, addr address.Address, cluster
 	metadata[util.PolarisClusterName] = clusterName
 	metadata[util.K8sServiceUID] = string(service.GetUID())
 
-	return metadata
+	return metadataWithoutInstanceAttributes(metadata)
 }
 
 func isServerOwnedMetadata(instance model.Instance, key, value string) bool {

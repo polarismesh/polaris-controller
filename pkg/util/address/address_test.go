@@ -166,6 +166,46 @@ func TestEndpointAddressesApplyCustomProtocols(t *testing.T) {
 	}
 }
 
+func TestPodProtocolLabelIsIgnored(t *testing.T) {
+	pods := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	if err := pods.Add(&v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Namespace: "ns", Name: "pod",
+		Labels: map[string]string{util.PolarisProtocol: "grpc"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := &v1.EndpointAddress{IP: "10.0.0.1",
+		TargetRef: &v1.ObjectReference{Namespace: "ns", Name: "pod"}}
+	subset := &v1.EndpointSubset{Ports: []v1.EndpointPort{
+		{Name: "http", Port: 80, Protocol: v1.ProtocolTCP},
+		{Port: 81, Protocol: v1.ProtocolUDP},
+	}}
+
+	addresses, err := buildAddresses(endpoint, subset, false, corelisters.NewPodLister(pods),
+		100, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := addresses["10.0.0.1-80"].Protocol; got != "TCP" {
+		t.Fatalf("named port protocol=%q, want TCP", got)
+	}
+	if got := addresses["10.0.0.1-81"].Protocol; got != "UDP" {
+		t.Fatalf("unnamed port protocol=%q, want UDP", got)
+	}
+
+	addresses, err = buildAddresses(endpoint, subset, false, corelisters.NewPodLister(pods),
+		100, nil, map[string]string{"http": "http"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := addresses["10.0.0.1-80"].Protocol; got != "http" {
+		t.Fatalf("custom port protocol=%q, want http", got)
+	}
+	if got := addresses["10.0.0.1-81"].Protocol; got != "UDP" {
+		t.Fatalf("unnamed port protocol=%q, want UDP", got)
+	}
+}
+
 type failingPodLister struct {
 	corelisters.PodLister
 	err error

@@ -190,6 +190,9 @@ func mockPolarisInstances(tr *testTransport, consumer *testConsumer) {
 				instances = append(instances, polarisapi.Instance{
 					Namespace: request.URL.Query().Get("namespace"), Service: request.URL.Query().Get("service"),
 					Host: instance.GetHost(), Port: util.IntPtr(int(instance.GetPort())), Metadata: instance.GetMetadata(),
+					Location: &polarisapi.Location{
+						Region: instance.GetRegion(), Zone: instance.GetZone(), Campus: instance.GetCampus(),
+					},
 				})
 			}
 			return instanceQueryResponse(instances), nil
@@ -234,6 +237,7 @@ func instanceQueryResponse(instances []polarisapi.Instance) *http.Response {
 			VpcID:        instance.VpcID,
 			Host:         instance.Host,
 			Port:         instance.Port,
+			Location:     instance.Location,
 			Metadata:     instance.Metadata,
 		})
 	}

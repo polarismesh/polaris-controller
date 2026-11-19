@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-combo
+  labels:
+    polarismesh.cn/inject: enabled
+    polaris-sidecar-mode: dns
+  annotations:
+    polarismesh.cn/sync: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: combo-demo
+  namespace: it-pc-combo
+  labels:
+    owner: combo-team
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/metadata: '{"tenant":"combo-service-tenant","env":"combo"}'
+spec:
+  selector:
+    app: combo-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: combo-demo
+  namespace: it-pc-combo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: combo-demo
+  template:
+    metadata:
+      labels:
+        app: combo-demo
+        tenant: combo-pod-tenant
+        version: v1
+      annotations:
+        polarismesh.cn/inject: "true"
+        sidecar.polarismesh.cn/serviceName: combo-demo
+        polarismesh.cn/sidecarConfig: |
+          {
+            "dns": {"suffix": "cluster.local", "ttl": 15}
+          }
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
