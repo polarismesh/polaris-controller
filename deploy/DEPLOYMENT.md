@@ -30,7 +30,7 @@ scripts remain available as compatibility entry points.
 - 已准备可用的 Kubernetes 集群和 kubeconfig。
 - 已部署 Polaris Server。
 - 默认 controller Namespace 为 `polaris-system`。当前 Chart 和原生清单均以该 Namespace 为部署目标。
-- 当前提供 `v1.21` 和 `v1.22` 两套清单，分别适配对应 Kubernetes API 版本。
+- 当前提供 `v1.21` 和 `v1.22` 两套清单。Kubernetes `v1.21` 使用 `v1.21` 清单；`v1.22` 及以上版本统一复用 `v1.22` 清单，补丁版本和厂商后缀会自动归一化。
 
 方式要求：
 
@@ -281,7 +281,7 @@ General requirements:
 - A working Kubernetes cluster and kubeconfig.
 - A reachable Polaris Server.
 - The default controller namespace is `polaris-system`. The current Helm charts and raw manifests target that namespace.
-- `v1.21` and `v1.22` manifests are provided for their corresponding Kubernetes API versions.
+- Two manifest families are available. Kubernetes `v1.21` uses the `v1.21` manifests; Kubernetes `v1.22` and later reuse the `v1.22` manifests. Patch versions and vendor suffixes are normalized automatically.
 
 Tool requirements:
 

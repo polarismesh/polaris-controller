@@ -104,24 +104,24 @@ make_temp_dir() {
 usage() {
   cat <<'EOF'
 Usage:
-  deploy/deploy.sh render helm [--kubernetes-version v1.21|v1.22|all]
+  deploy/deploy.sh render helm [--kubernetes-version v1.21|v1.22+|all]
       [--variables-file FILE] [--output-dir DIR] [--set KEY=VALUE]...
 
-  deploy/deploy.sh install helm [--kubernetes-version v1.21|v1.22]
+  deploy/deploy.sh install helm [--kubernetes-version v1.21|v1.22+]
       [--release NAME] [--namespace polaris-system] [--variables-file FILE]
       [--set KEY=VALUE]... [--dry-run] [--no-wait] [--timeout DURATION]
 
   deploy/deploy.sh uninstall helm [RELEASE] [RELEASE_NAMESPACE]
       [--cleanup-residual]
 
-  deploy/deploy.sh render manifests [--kubernetes-version v1.21|v1.22]
+  deploy/deploy.sh render manifests [--kubernetes-version v1.21|v1.22+]
       [--variables-file FILE] [--output-dir DIR] [--set KEY=VALUE]...
 
-  deploy/deploy.sh install manifests [--kubernetes-version v1.21|v1.22]
+  deploy/deploy.sh install manifests [--kubernetes-version v1.21|v1.22+]
       [--variables-file FILE] [--set KEY=VALUE]... [--dry-run]
       [--no-wait] [--render-only DIR]
 
-  deploy/deploy.sh uninstall manifests [--kubernetes-version v1.21|v1.22]
+  deploy/deploy.sh uninstall manifests [--kubernetes-version v1.21|v1.22+]
       [--variables-file FILE] [--set KEY=VALUE]... [--dry-run] [--no-wait]
       [--delete-namespace]
 
@@ -143,11 +143,19 @@ EOF
 }
 
 normalize_version() {
-  case "$1" in
-    v1.21|1.21) printf '%s\n' "v1.21" ;;
-    v1.22|1.22) printf '%s\n' "v1.22" ;;
-    *) die "unsupported Kubernetes manifest version '$1'; use v1.21 or v1.22" ;;
-  esac
+  local candidate="${1#v}" minor
+  if [[ "${candidate}" =~ ^1\.([0-9]+)(\.[0-9]+)?([-+][A-Za-z0-9.+-]+)?$ ]]; then
+    minor=$((10#${BASH_REMATCH[1]}))
+    if (( minor == 21 )); then
+      printf '%s\n' "v1.21"
+      return 0
+    fi
+    if (( minor >= 22 )); then
+      printf '%s\n' "v1.22"
+      return 0
+    fi
+  fi
+  die "unsupported Kubernetes manifest version '$1'; use v1.21, or v1.22 and later (which reuse the v1.22 manifests)"
 }
 
 normalize_render_version() {

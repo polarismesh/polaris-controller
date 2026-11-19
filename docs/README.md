@@ -13,6 +13,14 @@
 - ConfigMap/配置同步当前处于 Beta 调试阶段，功能尚不完善，请勿在生产环境启用。
 - Beta 阶段的行为、默认值、资源格式和兼容性可能变化，升级前必须重新验证。
 
+## 部署与使用限制
+
+- **controller 只能部署在 `polaris-system` Namespace。** Service 同步账本固定使用该 Namespace 下的 16 个 `polaris-controller-sync-state-*` ConfigMap，标准 Helm 和原生 manifest 也按此 Namespace 配置。自定义 controller Namespace 不受支持，否则账本、RBAC、leader election、`POD_NAMESPACE` 和卸载脚本可能无法对齐。
+- 上述限制只针对 controller 自身的部署 Namespace。需要同步的业务 Kubernetes Service 仍可位于其他业务 Namespace，是否同步由 Service 和 Namespace Annotation 决定。
+- ConfigMap/配置同步属于实验功能，当前未开放生产。不要在生产环境启用，也不要依赖其 Annotation、资源格式或故障恢复行为。
+- 通过 Kubernetes Service 同步到 Polaris 的 Service 和实例由 Kubernetes 声明管理，不支持在 Polaris 控制台编辑或修改。控制台只作为查看入口；需要变更时应修改 Service、Endpoints、Pod Label 或 Annotation。
+- 兼容性只以 `main` 分支的既有行为为准。开发分支自身的中间实现不作为兼容基线；当前分支中识别出的开发期行为可以直接纠正，不需要保留兼容代码。
+
 ## 选择使用模式
 
 | 模式 | 主要作用 | 用户配置入口 | 是否注册实例 |
@@ -93,7 +101,7 @@ Kubernetes Service
 - 实例归属由 `clusterName + source/platform` 判断，`k8sServiceUID` 不决定实例是否属于 controller。
 - `k8sServiceUID` 只用于区分同名 Service 的代次，防止旧代次清理任务误删新代次实例；历史实例缺少该字段时按 legacy 实例兼容。
 
-controller 会在自身 Namespace 创建内部 ConfigMap：
+controller 只支持部署在 `polaris-system` Namespace，并在该 Namespace 创建内部 ConfigMap：
 
 ```text
 polaris-controller-sync-state-00
@@ -101,7 +109,7 @@ polaris-controller-sync-state-00
 polaris-controller-sync-state-0f
 ```
 
-这些 ConfigMap 保存 Service 同步归属和待删除状态，用于 controller 重启或 leader 切换后的恢复。不要手工修改或删除。
+这些 ConfigMap 保存 Service 同步归属和待删除状态，用于 controller 重启或 leader 切换后的恢复。账本位置是 `polaris-system` 的部署约束来源；不要将 controller 部署到其他 Namespace，也不要手工修改或删除这些 ConfigMap。
 
 ### 合并示例
 
@@ -743,6 +751,8 @@ spec:
 
 # 第二部分：Sidecar 注入
 
+> **实验 Beta 警告：** Mesh 模式依赖 Envoy、流量劫持和 mTLS 等实验能力，当前仅用于测试和验证，请勿用于生产环境。生产环境的 Sidecar 接入应等待 Mesh 功能正式发布并完成目标集群验收。
+
 ## 八、Admission 命中规则
 
 Pod 进入 Webhook 和 Webhook 最终决定是否注入是两个步骤。
@@ -822,7 +832,7 @@ Java Agent 模式不受 `hostNetwork` 这一限制。
 | 模式 | 注入内容 | 主要用途 |
 | --- | --- | --- |
 | `dns` | `polaris-sidecar` | 拦截和解析 Polaris DNS |
-| `mesh` | `polaris-sidecar` 和 Envoy | 流量拦截和 Mesh 访问，当前为 Beta |
+| `mesh` | `polaris-sidecar` 和 Envoy | 流量拦截和 Mesh 访问，实验 Beta，请勿用于生产 |
 | `java-agent` | Java Agent init container，并修改业务容器启动参数 | Java 应用接入 |
 
 ### Pod Annotation `polarismesh.cn/sidecar-mode`
@@ -933,7 +943,7 @@ Java Agent 场景优先使用：
 
 ## 十一、DNS 和 Mesh 参数
 
-> Mesh 相关能力当前为 Beta，仅用于测试和验证，不要用于生产环境。
+> Mesh 相关能力当前为实验 Beta，仅用于测试和验证，不要用于生产环境。
 
 ### `polarismesh.cn/tls-mode`
 
@@ -1214,7 +1224,7 @@ spec:
 
 ### Mesh 模式
 
-> 该示例仅用于 Beta 验证环境，请勿在生产环境执行。
+> 该示例仅用于实验 Beta 验证环境，请勿在生产环境执行。
 
 ```sh
 kubectl label namespace demo polarismesh.cn/inject=enabled
@@ -1422,6 +1432,7 @@ ConfigMap 同步当前没有对外暴露。不要把 `polarismesh.cn/configGroup
 kubectl get service demo -o yaml
 kubectl get namespace demo -o yaml
 kubectl get endpoints demo -o yaml
+kubectl get configmap -n polaris-system -l polarismesh.cn/sync-state=true
 ```
 
 确认：

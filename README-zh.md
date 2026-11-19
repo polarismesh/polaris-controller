@@ -5,6 +5,7 @@
   - [介绍](#介绍)
   - [与Kubernetes的版本支持](#与kubernetes的版本支持)
   - [安装说明](#安装说明)
+  - [部署与使用限制](#部署与使用限制)
   - [注解](#注解)
   - [使用指南](#使用指南)
     - [全量同步服务](#全量同步服务)
@@ -19,16 +20,15 @@ polaris-controller 用于北极星和 K8s 生态的对接，提供两个可选�
 - K8s Service 同步到北极星：将 K8s Service 同步到北极星，使用北极星进行服务发现和治理
 - polaris-sidecar 自动注入：在应用 Pod 中注入 polaris-sidecar
 
-polaris-controller 注入的*sidecar*的运行模式提供两个可选功能：
+根目录文档只介绍本地 DNS 模式的 Sidecar 注入：
 
-- 本地DNS（dns）：注入 **polaris-sidecar**，通过拦截DNS请求的方式实现服务发现和治理
-- 服务网格（mesh，Beta）：注入 **polaris-sidecar** 以及 **envoy** ，通过劫持流量的方式实现服务发现和治理，开发侵入性低
+- 本地 DNS（dns）：注入 **polaris-sidecar**，通过拦截 DNS 请求的方式实现服务发现和治理
 
 本文档介绍如何在 K8s 集群中安装和使用 polaris-controller。
 
 ## 与Kubernetes的版本支持
 
-- 当前仅支持 **kubernetes** 的版本为 (, 1.21]
+- Kubernetes `v1.21` 使用 `v1.21` 清单；`v1.22` 及以上版本统一复用 `v1.22` 清单。补丁版本和厂商版本后缀（例如 `v1.28.5+k3s1`）会归一化到 `v1.22` 清单。
 
 ## 安装说明
 
@@ -42,33 +42,7 @@ polaris-controller 注入的*sidecar*的运行模式提供两个可选功能：
 
 **修改配置文件**
 
-修改配置文件 configmap.yaml，配置 K8s Service 同步模式和北极星服务端地址，配置示例如下：
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: injector-mesh
-  namespace: polaris-system
-data:
-  mesh: |-
-    # k8s cluster name
-    clusterName: "default"
-    # polaris-sidecar inject run mode
-    sidecarInject:
-      mode: "mesh"
-    # service sync
-    serviceSync:
-      mode: "all"
-      # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
-      serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
-      # 当北极星开启了服务鉴权之后，这里需要配置对应用户/用户组的token
-      accessToken: ""
-    defaultConfig:
-      proxyMetadata:
-        # 请确保北极星 server 监听的 http 端口为8090以及用于服务注册&治理的grpc端口为8091
-        serverAddress: "{{ 北极星 Server 的 IP 或者域名 }}"
-```
+修改 `polaris-system` 下 controller ConfigMap 中的配置，至少设置北极星服务端地址、集群名和 K8s Service 同步模式；开启鉴权时还需设置 token 和 operator。若使用 Sidecar DNS 模式，将 `sidecarInject.mode` 设置为 `dns`。完整字段说明见 [用户指南](./docs/README.md)。
 
 支持两种 K8s Service 同步模式：
 
@@ -90,6 +64,8 @@ data:
 bash ./install.sh 
 ```
 
+controller 只能部署在 `polaris-system` Namespace，标准 Helm Chart 和原生 manifest 已按此 Namespace 配置。不要通过自定义 Namespace 安装 controller。
+
 查看 polaris-controller 是否正常运行：
 
 ```shell
@@ -98,6 +74,15 @@ kubectl get pod -n polaris-system
 NAME                                  READY   STATUS    RESTARTS   AGE
 polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 ```
+
+## 部署与使用限制
+
+- **controller 只能部署在 `polaris-system` Namespace。** Service 同步账本固定使用该 Namespace 下的 16 个 `polaris-controller-sync-state-*` ConfigMap；账本、RBAC、leader election、`POD_NAMESPACE` 和卸载脚本必须使用同一个 Namespace，因此不支持自定义 controller Namespace。
+- 该限制只针对 controller 自身。需要同步的业务 Kubernetes Service 仍可位于其他业务 Namespace。
+- 不要手工修改或删除 sync-state ConfigMap。这些 ConfigMap 保存 Service 同步归属、已应用 Label 和待删除恢复状态，用于 controller 重启及 leader 切换后的恢复。
+- ConfigMap/配置同步属于实验功能，当前未开放生产。不要在生产环境启用，也不要依赖其 Annotation、资源格式或故障恢复行为。
+- 通过 Kubernetes Service 同步到 Polaris 的 Service 和实例由 Kubernetes 声明管理，不支持在 Polaris 控制台编辑或修改。需要变更时应修改 Kubernetes Service、Endpoints、Pod Label 或 Annotation。
+- 兼容性只以 `main` 分支的既有行为为准。开发分支自身的中间实现不作为兼容契约，可以直接纠正。
 
 ## 注解
 
@@ -114,12 +99,8 @@ polaris-controller-545df9775c-48cqt   1/1     Running   0          2d9h
 以全量同步服务的模式启动 polaris-controller，将 K8s Service 全部同步到北极星，启动配置如下：
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-data:
-  mesh: |-
-    serviceSync
-      mode: "all"
+serviceSync:
+  mode: "all"
 ```
 
 ### 按需同步服务
@@ -127,12 +108,8 @@ data:
 以按需同步服务的模式启动 polaris-controller，默认不会将 K8s Service 同步到北极星，启动配置如下：
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-data:
-  mesh: |-
-    serviceSync
-      mode: "demand"
+serviceSync:
+  mode: "demand"
 ```
 
 如果需要将某个 Namespace 中的全部 Service 同步到北极星，请在 Namespace 上添加北极星的 annotation，配置方式如下： 
@@ -216,15 +193,15 @@ Pod labels 的独立变更通过周期对账收敛，周期由 `--resync-duratio
 
 ### Sidecar 自动注入
 
-> 注意：Mesh 注入和配置同步功能当前处于 Beta 阶段，请勿在生产环境使用。
+> 注意：ConfigMap/配置同步功能当前处于 Beta 阶段，请勿在生产环境使用。
 
 如果需要使用 polaris-sidecar，可以在应用 Pod 中自动注入，配置方式如下：
 
 ```shell
 kubectl label namespace default polaris-injection=enabled
 
-#  polaris-sidecar-mode 的取值为 mesh or dns
-kubectl label namespace default polaris-sidecar-mode=mesh 
+# 根目录文档只介绍 DNS 模式
+kubectl label namespace default polaris-sidecar-mode=dns
 ```
 
 查看 K8s Namespace 是否支持 polaris-sidecar 自动注入：
@@ -242,7 +219,7 @@ default          Active   3d2h   enabled
 kubectl get namespace -L polaris-sidecar-mode
 
 NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
-default           Active   10d   mesh
+default           Active   10d   dns
 ```
 
 在开启自动注入后，新建的 Pod 会自动注入，存量的 Pod 不会自动注入 polaris-sidecar。如果希望存量的 Pod 也能体验 polaris-sidecar， 则对于由 Deployment、DaemonSet 或 StatefulSet 控制器管理的 pod，可以运行以下命令

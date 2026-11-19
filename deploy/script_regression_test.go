@@ -137,6 +137,50 @@ func TestDeployManifestRenderIsRepeatable(t *testing.T) {
 	}
 }
 
+func TestDeployNormalizesKubernetesVersions(t *testing.T) {
+	for _, test := range []struct {
+		version string
+		want    string
+	}{
+		{version: "v1.21.14", want: "v1.21"},
+		{version: "v1.22", want: "v1.22"},
+		{version: "1.23", want: "v1.22"},
+		{version: "v1.28.5+k3s1", want: "v1.22"},
+	} {
+		t.Run(test.version, func(t *testing.T) {
+			outputDir := t.TempDir()
+			output, err := runDeploy(t, []string{
+				"render", "manifests",
+				"--kubernetes-version", test.version,
+				"--output-dir", outputDir,
+				"--set", "POLARIS_HOST=polaris.example",
+				"--set", "CLUSTER_NAME=test-cluster",
+			}, nil)
+			if err != nil {
+				t.Fatalf("render failed: %v\n%s", err, output)
+			}
+			entries, err := os.ReadDir(outputDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != test.want {
+				t.Fatalf("manifest family=%v, want %s", entries, test.want)
+			}
+			if _, err := os.Stat(filepath.Join(outputDir, test.want, "configmap.yaml")); err != nil {
+				t.Fatalf("rendered manifest missing: %v", err)
+			}
+		})
+	}
+
+	output, err := runDeploy(t, []string{
+		"render", "manifests", "--kubernetes-version", "v1.20.15",
+		"--output-dir", t.TempDir(),
+	}, nil)
+	if err == nil || !strings.Contains(output, "unsupported Kubernetes manifest version") {
+		t.Fatalf("Kubernetes v1.20 was accepted: %v\n%s", err, output)
+	}
+}
+
 func TestManifestUninstallPreservesNamespaceByDefault(t *testing.T) {
 	dir := t.TempDir()
 	kubectl := filepath.Join(dir, "kubectl")

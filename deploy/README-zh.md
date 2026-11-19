@@ -4,6 +4,8 @@
 
 完整的中英文说明见 [DEPLOYMENT.md](./DEPLOYMENT.md)。
 
+Kubernetes `v1.21` 使用 v1.21 清单；`v1.22` 及以上版本统一复用 v1.22 清单。
+
 推荐的 Helm 快速检查：
 
 ```bash

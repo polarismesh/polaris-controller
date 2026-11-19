@@ -4,6 +4,8 @@ English | [简体中文](./README-zh.md) | [Bilingual deployment guide](./DEPLOY
 
 The complete bilingual guide is available in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
+Kubernetes `v1.21` uses the v1.21 manifests. Kubernetes `v1.22` and later reuse the v1.22 manifests.
+
 Recommended Helm quick start:
 
 ```bash
