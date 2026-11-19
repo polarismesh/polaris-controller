@@ -48,10 +48,10 @@ fi
 const mockKubectl = `#!/usr/bin/env bash
 set -euo pipefail
 printf 'kubectl %s\n' "$*" >> "$CALLS"
-if [[ "$1" == "get" && "$2" == "clusterrole,clusterrolebinding" ]]; then
+if [[ " $* " == *" get clusterrole,clusterrolebinding "* ]]; then
   printf '%s\n' "$RBAC_JSON"
 fi
-if [[ "$1" == "get" && "$2" == "namespace" ]]; then
+if [[ " $* " == *" get namespace "* ]]; then
   if [[ "${NAMESPACE_FAIL:-0}" == "1" ]]; then
     exit 1
   fi
@@ -371,9 +371,9 @@ func TestUninstallOnlyDeletesConfirmedReleaseResidualRBAC(t *testing.T) {
 				}
 				for _, expected := range []string{
 					"helm list --all --namespace release-ns --filter ^polaris-controller$ --output json",
-					"helm uninstall polaris-controller --namespace release-ns --wait",
-					"kubectl delete ClusterRole --ignore-not-found=true --wait=true -- owned-role",
-					"kubectl delete ClusterRoleBinding --ignore-not-found=true --wait=true -- owned-binding",
+					"helm uninstall polaris-controller --namespace release-ns --wait --timeout=120s",
+					"kubectl --request-timeout=10s delete ClusterRole --ignore-not-found=true --wait=false -- owned-role",
+					"kubectl --request-timeout=10s delete ClusterRoleBinding --ignore-not-found=true --wait=false -- owned-binding",
 					"--selector polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller",
 				} {
 					if !strings.Contains(calls, expected) {

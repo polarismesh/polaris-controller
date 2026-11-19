@@ -269,3 +269,150 @@ fi
 		t.Fatalf("failed forced Pod deletion blocked state cleanup: %s", forceFailed)
 	}
 }
+
+func TestManifestUninstallUsesBoundedApiRequestsBeforePodWait(t *testing.T) {
+	dir := t.TempDir()
+	kubectl := filepath.Join(dir, "kubectl")
+	callsPath := filepath.Join(dir, "calls")
+	mock := `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$CALLS"
+if [[ " $* " == *" delete "* && "${PRE_DELETE_FAIL:-0}" == "1" ]]; then
+  exit 1
+fi
+`
+	if err := os.WriteFile(kubectl, []byte(mock), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(preDeleteFail string) string {
+		t.Helper()
+		if err := os.Remove(callsPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		output, err := runDeploy(t, []string{
+			"uninstall", "manifests", "--kubernetes-version", "v1.22",
+		}, map[string]string{
+			"KUBECTL": kubectl, "CALLS": callsPath, "PRE_DELETE_FAIL": preDeleteFail,
+		})
+		if preDeleteFail == "1" {
+			if err == nil {
+				t.Fatalf("pre-delete API failure was ignored: %s", output)
+			}
+		} else if err != nil {
+			t.Fatalf("uninstall failed: %v\n%s", err, output)
+		}
+		data, err := os.ReadFile(callsPath)
+		if err != nil {
+			t.Fatalf("kubectl was not called: %v\n%s", err, output)
+		}
+		return string(data)
+	}
+
+	regular := run("0")
+	for _, line := range strings.Split(regular, "\n") {
+		if !strings.Contains(line, " delete ") {
+			continue
+		}
+		if !strings.Contains(line, "--request-timeout=10s") ||
+			!strings.Contains(line, "--wait=false") ||
+			strings.Contains(line, "--wait=true") {
+			t.Fatalf("unbounded resource delete: %s", line)
+		}
+	}
+	if !strings.Contains(regular, "wait pods --for=delete --selector k8s-app=polaris-controller --timeout=120s") {
+		t.Fatalf("uninstall did not keep the single 120s controller Pod wait: %s", regular)
+	}
+
+	failed := run("1")
+	if strings.Contains(failed, "delete configmap") {
+		t.Fatalf("pre-delete API failure still reached state cleanup: %s", failed)
+	}
+}
+
+func TestManifestUninstallPreDeleteCannotBlockOnFinalizer(t *testing.T) {
+	dir := t.TempDir()
+	kubectl := filepath.Join(dir, "kubectl")
+	callsPath := filepath.Join(dir, "calls")
+	mock := `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$CALLS"
+if [[ " $* " == *" delete "* && "$*" != *"--wait=false"* ]]; then
+  sleep 30
+fi
+`
+	if err := os.WriteFile(kubectl, []byte(mock), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "bash", "deploy.sh",
+		"uninstall", "manifests", "--kubernetes-version", "v1.22")
+	command.Env = append(os.Environ(),
+		"LOG_HOLD_SECONDS=0", "KUBECTL="+kubectl, "CALLS="+callsPath)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("pre-delete finalizer blocked uninstall: %v\n%s", err, output)
+	}
+	if _, readErr := os.ReadFile(callsPath); readErr != nil {
+		t.Fatalf("kubectl was not called: %v\n%s", readErr, output)
+	}
+}
+
+func TestManifestUninstallLogsDeleteSuccessAndTimeout(t *testing.T) {
+	dir := t.TempDir()
+	successKubectl := filepath.Join(dir, "kubectl-success")
+	if err := os.WriteFile(successKubectl, []byte("#!/usr/bin/env bash\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	successOutput, err := runDeploy(t, []string{
+		"uninstall", "manifests", "--kubernetes-version", "v1.22",
+	}, map[string]string{"KUBECTL": successKubectl})
+	if err != nil {
+		t.Fatalf("successful uninstall failed: %v\n%s", err, successOutput)
+	}
+	for _, want := range []string{
+		"[SUCCESS] mutatingwebhookconfiguration polaris-sidecar-injector: delete request accepted",
+		"[SUCCESS] controller Pods: deleted within 120s",
+		"[SUCCESS] sync-state ConfigMaps: delete request accepted",
+	} {
+		if !strings.Contains(successOutput, want) {
+			t.Fatalf("success log is missing %q:\n%s", want, successOutput)
+		}
+	}
+
+	timeoutKubectl := filepath.Join(dir, "kubectl-timeout")
+	timeoutMock := `#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" wait pods "* ]]; then
+  echo "error: timed out waiting for the condition" >&2
+  exit 1
+fi
+if [[ " $* " == *" delete pods "* ]]; then
+  echo "error: context deadline exceeded" >&2
+  exit 1
+fi
+exit 0
+`
+	if err := os.WriteFile(timeoutKubectl, []byte(timeoutMock), 0700); err != nil {
+		t.Fatal(err)
+	}
+	timeoutOutput, err := runDeploy(t, []string{
+		"uninstall", "manifests", "--kubernetes-version", "v1.22",
+	}, map[string]string{"KUBECTL": timeoutKubectl})
+	if err != nil {
+		t.Fatalf("timed-out controller Pods blocked cleanup: %v\n%s", err, timeoutOutput)
+	}
+	for _, want := range []string{
+		"[WARN] controller Pods: deletion wait timed out after 120s; forcing deletion",
+		"[WARN] controller Pods (force delete): delete request timed out",
+		"[WARN] controller Pods: continuing cleanup after force-delete request did not complete",
+		"[SUCCESS] sync-state ConfigMaps: delete request accepted",
+	} {
+		if !strings.Contains(timeoutOutput, want) {
+			t.Fatalf("timeout log is missing %q:\n%s", want, timeoutOutput)
+		}
+	}
+}

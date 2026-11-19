@@ -209,7 +209,7 @@ Helm 卸载：
   --kubernetes-version v1.22
 ```
 
-默认顺序为：删除 webhook，删除 injector 和 controller，删除 Secret，等待 `k8s-app=polaris-controller` 的 controller Pod 全部消失（最多 120 秒），再清理 sync-state ConfigMap 和 RBAC。Helm 的 residual 清理会检查 `polaris-system` 中是否仍有任意带 `app=sidecar-injector` 的 controller Pod；只要存在，就保留共享 sync-state 账本。
+默认顺序为：删除 webhook，删除 injector 和 controller，删除 Secret，等待 `k8s-app=polaris-controller` 的 controller Pod 全部消失（最多 120 秒），再清理 sync-state ConfigMap 和 RBAC。资源删除请求均使用 `--wait=false` 和 10 秒 API 超时，避免被 finalizer 无限阻塞；controller Pod 退出是唯一的对象级长等待。Helm 的 residual 清理会检查 `polaris-system` 中是否仍有任意带 `app=sidecar-injector` 的 controller Pod；只要存在，就保留共享 sync-state 账本。
 
 如果 controller Pod 在 120 秒内仍未删除，脚本会输出警告，并执行：
 
@@ -218,6 +218,8 @@ kubectl delete pods --force=true --grace-period=0 --wait=false --request-timeout
 ```
 
 强删请求在 10 秒内有界返回，即使失败也会继续删除状态 ConfigMap，避免被 Pod finalizer 无限阻塞。`polaris-system` Namespace 默认保留，因为其中可能同时部署 Polaris Server 或其他组件。
+
+卸载日志中，`SUCCESS ... delete request accepted` 表示资源删除请求已被 Kubernetes API 接受；只有 `SUCCESS controller Pods: deleted within 120s` 表示 controller Pod 已确认删除。`WARN ... timed out` 表示请求超时，`WARN ... failed` 表示其他删除错误。
 
 只有确认 Namespace 专属于该 controller 时，才使用：
 
@@ -420,7 +422,9 @@ Raw manifests:
   --kubernetes-version v1.22
 ```
 
-The webhook configuration is removed first, followed by the injector and controller. The script then waits up to 120 seconds for controller Pods with `k8s-app=polaris-controller` to disappear before deleting sync-state ConfigMaps and RBAC. If the Pods are still present after the timeout, the script logs a warning and force-deletes them with a bounded request, then continues.
+The webhook configuration is removed first, followed by the injector and controller. Resource deletion requests use `--wait=false` and a 10-second API timeout, so finalizers cannot block those commands indefinitely. The script then waits up to 120 seconds for controller Pods with `k8s-app=polaris-controller` to disappear before deleting sync-state ConfigMaps and RBAC. If the Pods are still present after the timeout, the script logs a warning and force-deletes them with a bounded request, then continues.
+
+`SUCCESS ... delete request accepted` means the Kubernetes API accepted the delete request. Only `SUCCESS controller Pods: deleted within 120s` confirms that the controller Pods are gone. `WARN ... timed out` and `WARN ... failed` distinguish request timeout from other deletion errors.
 
 The `polaris-system` Namespace is preserved by default because it may host Polaris Server or other resources.
 

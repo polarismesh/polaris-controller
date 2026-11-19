@@ -13,6 +13,10 @@ LOG_HOLD_SECONDS="${LOG_HOLD_SECONDS:-0}"
 HELM_BIN="${HELM:-helm}"
 KUBECTL_BIN="${KUBECTL:-kubectl}"
 JQ_BIN="${JQ:-jq}"
+KUBECTL_REQUEST_TIMEOUT="${KUBECTL_REQUEST_TIMEOUT:-10s}"
+CONTROLLER_POD_WAIT_TIMEOUT="${CONTROLLER_POD_WAIT_TIMEOUT:-120s}"
+CONTROLLER_POD_FORCE_TIMEOUT="${CONTROLLER_POD_FORCE_TIMEOUT:-10s}"
+HELM_UNINSTALL_TIMEOUT="${HELM_UNINSTALL_TIMEOUT:-120s}"
 
 KNOWN_VARIABLES=(
   POLARIS_HOST
@@ -48,6 +52,10 @@ log_info() {
   printf '[polaris-controller][INFO] %s\n' "$*"
 }
 
+log_success() {
+  printf '[polaris-controller][SUCCESS] %s\n' "$*"
+}
+
 log_warn() {
   printf '[polaris-controller][WARN] %s\n' "$*" >&2
 }
@@ -55,6 +63,32 @@ log_warn() {
 die() {
   printf '[polaris-controller][ERROR] %s\n' "$*" >&2
   exit 1
+}
+
+is_timeout_output() {
+  case "$1" in
+    *"timed out"*|*"timeout"*|*"Timeout"*|*"TIMEOUT"*|*"deadline exceeded"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+delete_resource() {
+  local description=$1
+  shift
+  local output status
+  output="$("${KUBECTL_BIN}" "$@" 2>&1)" && status=0 || status=$?
+  if [[ "${status}" -eq 0 ]]; then
+    log_success "${description}: delete request accepted"
+    return 0
+  fi
+  if is_timeout_output "${output}"; then
+    log_warn "${description}: delete request timed out"
+  else
+    log_warn "${description}: delete request failed: ${output}"
+  fi
+  return "${status}"
 }
 
 require_command() {
@@ -279,7 +313,8 @@ assert_installable_version() {
 
 cleanup_residual_rbac() {
   local rbac_json owned_rbac kind name
-  rbac_json="$("${KUBECTL_BIN}" get clusterrole,clusterrolebinding \
+  rbac_json="$("${KUBECTL_BIN}" --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    get clusterrole,clusterrolebinding \
     --selector "app.kubernetes.io/instance=${RELEASE_NAME},qcloud-app=polaris-controller,app.kubernetes.io/managed-by=Helm" \
     --output json)"
   owned_rbac="$(printf '%s\n' "${rbac_json}" | "${JQ_BIN}" -r \
@@ -293,23 +328,25 @@ cleanup_residual_rbac() {
       | [.kind, .metadata.name] | @tsv')"
   while IFS=$'\t' read -r kind name; do
     if [[ -n "${kind}" && -n "${name}" ]]; then
-      "${KUBECTL_BIN}" delete "${kind}" --ignore-not-found=true --wait=true -- "${name}"
+      delete_resource "${kind} ${name}" --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+        delete "${kind}" --ignore-not-found=true --wait=false -- "${name}"
     fi
   done <<< "${owned_rbac}"
 }
 
 cleanup_runtime_state() {
   local controller_namespace workload_json
-  if ! controller_namespace="$("${KUBECTL_BIN}" get namespace "${CONTROLLER_NAMESPACE}" \
-    --ignore-not-found -o name)"; then
+  if ! controller_namespace="$("${KUBECTL_BIN}" --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    get namespace "${CONTROLLER_NAMESPACE}" --ignore-not-found -o name)"; then
     log_warn "cannot verify controller namespace ${CONTROLLER_NAMESPACE}; runtime state was preserved"
     return 1
   fi
   if [[ -z "${controller_namespace}" ]]; then
     return 0
   fi
-  if ! workload_json="$("${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" get pods \
-    --selector "app=sidecar-injector" --output json)"; then
+  if ! workload_json="$("${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" \
+    --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    get pods --selector "app=sidecar-injector" --output json)"; then
     log_warn "cannot verify controller Pods in ${CONTROLLER_NAMESPACE}; runtime state was preserved"
     return 1
   fi
@@ -318,9 +355,9 @@ cleanup_runtime_state() {
     log_warn "controller Pods in ${CONTROLLER_NAMESPACE} are still present; runtime state was preserved"
     return 1
   fi
-  "${KUBECTL_BIN}" --namespace "${CONTROLLER_NAMESPACE}" delete configmap \
+  delete_resource "sync-state ConfigMaps" --namespace "${CONTROLLER_NAMESPACE}" delete configmap \
     --selector "polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller" \
-    --ignore-not-found=true --wait=true
+    --ignore-not-found=true --wait=false --request-timeout="${KUBECTL_REQUEST_TIMEOUT}"
 }
 
 command_render_helm() {
@@ -466,7 +503,8 @@ command_uninstall_helm() {
   fi
 
   HOLD_LOGS="true"
-  "${HELM_BIN}" uninstall "${RELEASE_NAME}" --namespace "${confirmed_namespace}" --wait
+  "${HELM_BIN}" uninstall "${RELEASE_NAME}" --namespace "${confirmed_namespace}" \
+    --wait --timeout="${HELM_UNINSTALL_TIMEOUT}"
   cleanup_runtime_state
   cleanup_residual_rbac
   log_info "polaris-controller release ${RELEASE_NAME} in ${confirmed_namespace} uninstalled"
@@ -547,12 +585,12 @@ command_install_manifests() {
 
 delete_manifest_file() {
   local rendered_dir=$1 manifest=$2
-  local -a args=(delete -f "${rendered_dir}/${manifest}" --ignore-not-found=true)
-  args+=(--wait="${wait}")
+  local -a args=(--request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    delete -f "${rendered_dir}/${manifest}" --ignore-not-found=true --wait=false)
   if [[ "${dry_run}" == "true" ]]; then
     args+=(--dry-run=client)
   fi
-  "${KUBECTL_BIN}" "${args[@]}"
+  delete_resource "${manifest}" "${args[@]}"
 }
 
 command_uninstall_manifests() {
@@ -579,48 +617,56 @@ command_uninstall_manifests() {
   if [[ "${dry_run}" != "true" ]]; then
     HOLD_LOGS="true"
   fi
-  local -a webhook_args=(delete mutatingwebhookconfiguration polaris-sidecar-injector
-    --ignore-not-found=true --wait="${wait}")
+  local -a webhook_args=(--request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    delete mutatingwebhookconfiguration polaris-sidecar-injector \
+    --ignore-not-found=true --wait=false)
   if [[ "${dry_run}" == "true" ]]; then
     webhook_args+=(--dry-run=client)
   fi
-  "${KUBECTL_BIN}" "${webhook_args[@]}"
+  delete_resource "mutatingwebhookconfiguration polaris-sidecar-injector" "${webhook_args[@]}"
   local manifest
   for manifest in \
     injector.yaml polaris-controller.yaml polaris-metrics-svc.yaml \
     javaagent-configmap.yaml configmap.yaml polaris-client-config-tpl.yaml; do
     delete_manifest_file "${rendered_dir}" "${manifest}"
   done
-  local -a secret_args=(-n polaris-system delete secret polaris-sidecar-injector
-    --ignore-not-found=true --wait="${wait}")
+  local -a secret_args=(-n polaris-system --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" \
+    delete secret polaris-sidecar-injector --ignore-not-found=true --wait=false)
   if [[ "${dry_run}" == "true" ]]; then
     secret_args+=(--dry-run=client)
   fi
-  "${KUBECTL_BIN}" "${secret_args[@]}"
+  delete_resource "secret polaris-sidecar-injector" "${secret_args[@]}"
   if [[ "${dry_run}" == "true" ]]; then
     log_info "controller Pod deletion wait would run for up to 120s before state cleanup"
   else
     local -a pod_wait_args=(-n polaris-system wait pods \
-      --for=delete --selector k8s-app=polaris-controller --timeout=120s)
-    if ! "${KUBECTL_BIN}" "${pod_wait_args[@]}"; then
-      log_warn "controller Pods were not deleted within 120s; forcing deletion"
-      if ! "${KUBECTL_BIN}" -n polaris-system delete pods \
+      --for=delete --selector k8s-app=polaris-controller \
+      --timeout="${CONTROLLER_POD_WAIT_TIMEOUT}")
+    local wait_output wait_status
+    wait_output="$("${KUBECTL_BIN}" "${pod_wait_args[@]}" 2>&1)" && wait_status=0 || wait_status=$?
+    if [[ "${wait_status}" -eq 0 ]]; then
+      log_success "controller Pods: deleted within 120s"
+    else
+      if is_timeout_output "${wait_output}"; then
+        log_warn "controller Pods: deletion wait timed out after 120s; forcing deletion"
+      else
+        log_warn "controller Pods: deletion wait failed: ${wait_output}; forcing deletion"
+      fi
+      if ! delete_resource "controller Pods (force delete)" -n polaris-system delete pods \
         --selector k8s-app=polaris-controller \
         --ignore-not-found=true --force=true --grace-period=0 \
-        --wait=false --request-timeout=10s; then
-        log_warn "forced controller Pod deletion did not complete within 10s; continuing cleanup"
+        --wait=false --request-timeout="${CONTROLLER_POD_FORCE_TIMEOUT}"; then
+        log_warn "controller Pods: continuing cleanup after force-delete request did not complete"
       fi
-    else
-      log_info "controller Pods in polaris-system are gone"
     fi
   fi
-  local -a state_args=(-n polaris-system delete configmap
+  local -a state_args=(-n polaris-system --request-timeout="${KUBECTL_REQUEST_TIMEOUT}" delete configmap
     --selector "polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller"
-    --ignore-not-found=true --wait="${wait}")
+    --ignore-not-found=true --wait=false)
   if [[ "${dry_run}" == "true" ]]; then
     state_args+=(--dry-run=client)
   fi
-  "${KUBECTL_BIN}" "${state_args[@]}"
+  delete_resource "sync-state ConfigMaps" "${state_args[@]}"
   delete_manifest_file "${rendered_dir}" rbac.yaml
   if [[ "${delete_namespace}" == "true" ]]; then
     delete_manifest_file "${rendered_dir}" namespace.yaml

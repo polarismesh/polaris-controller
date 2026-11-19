@@ -26,7 +26,8 @@ func TestResidualCleanupCanRetryAfterHelmReleaseDisappears(t *testing.T) {
 	calls, _, err := runUninstall(t, []string{"polaris-controller", "release-ns"}, map[string]string{
 		"RELEASE_JSON": validRelease, "RBAC_JSON": retryRBAC, "NAMESPACE_MISSING": "1", "CLEANUP_FAIL": "1",
 	})
-	if err == nil || !strings.Contains(calls, "helm uninstall") || !strings.Contains(calls, "kubectl delete ClusterRole") {
+	if err == nil || !strings.Contains(calls, "helm uninstall") ||
+		!strings.Contains(calls, "delete ClusterRole") {
 		t.Fatalf("fixture did not interrupt cleanup: %s %v", calls, err)
 	}
 	retry, output, err := runUninstall(t, []string{"polaris-controller", "release-ns", "--cleanup-residual"}, map[string]string{
@@ -34,7 +35,10 @@ func TestResidualCleanupCanRetryAfterHelmReleaseDisappears(t *testing.T) {
 	})
 	if err != nil ||
 		!strings.Contains(retry, "--selector polarismesh.cn/sync-state=true,app.kubernetes.io/managed-by=polaris-controller") ||
-		!strings.Contains(retry, "kubectl delete ClusterRole") ||
+		!strings.Contains(retry, "delete ClusterRole") ||
+		!strings.Contains(retry, "--request-timeout=10s get namespace") ||
+		!strings.Contains(retry, "--request-timeout=10s get pods") ||
+		!strings.Contains(retry, "--request-timeout=10s get clusterrole,clusterrolebinding") ||
 		strings.Contains(retry, "helm uninstall") {
 		t.Fatalf("residual retry failed: calls=%s output=%s error=%v", retry, output, err)
 	}
