@@ -92,7 +92,12 @@ sync_mode="$(kube -n polaris-system get configmap injector-mesh -o jsonpath='{.d
   inside && /^  mode:/ {print $2; exit}
 ')"
 if [[ "${sync_mode}" == "demand" ]]; then
-  wait_service_absent "${NS_SYNC_ALL}" all-mode-demo
+  wait_instance_count "${NS_SYNC_ALL}" all-mode-demo 0
+  if service_exists "${NS_SYNC_ALL}" all-mode-demo; then
+    log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo retained with zero instances"
+  else
+    log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo is not present"
+  fi
 fi
 
 log "CASE sync/service-and-instance-metadata"

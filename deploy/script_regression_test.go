@@ -59,8 +59,20 @@ func TestDeployRendersHelmValuesWithoutChangingTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render failed: %v\n%s", err, output)
 	}
-	if strings.Contains(output, "cli-token") {
-		t.Fatal("render output leaked POLARIS_TOKEN")
+	for _, secret := range []string{"cli-token", "env-token"} {
+		if strings.Contains(output, secret) {
+			t.Fatalf("render output leaked POLARIS_TOKEN value %q", secret)
+		}
+	}
+	for _, want := range []string{
+		"[polaris-controller][VARIABLE] POLARIS_HOST=polaris.polaris-system",
+		"[polaris-controller][VARIABLE] CONTROLLER_VERSION=cli-version",
+		"[polaris-controller][VARIABLE] CLUSTER_NAME=env-cluster",
+		"[polaris-controller][VARIABLE] POLARIS_TOKEN=********",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("render output is missing %q", want)
+		}
 	}
 	renderedPath := filepath.Join(outputDir, "v1.22", "values.yaml")
 	rendered, err := os.ReadFile(renderedPath)

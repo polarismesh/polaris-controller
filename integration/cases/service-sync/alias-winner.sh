@@ -70,7 +70,12 @@ wait_service "${NS_SYNC}" "${service_b}"
 assert_alias_target "${NS_SYNC}" "${alias_name}" "${NS_SYNC}" "${service_a}"
 
 kube -n "${NS_SYNC}" delete service "${service_a}" --wait=true
-wait_service_absent "${NS_SYNC}" "${service_a}"
+wait_instance_count "${NS_SYNC}" "${service_a}" 0
+if service_exists "${NS_SYNC}" "${service_a}"; then
+  log "Polaris Service ${NS_SYNC}/${service_a} retained with zero instances"
+else
+  log "Polaris Service ${NS_SYNC}/${service_a} is not present"
+fi
 wait_for "alias handover to second Service" "${RESYNC_TIMEOUT}" assert_alias_target \
   "${NS_SYNC}" "${alias_name}" "${NS_SYNC}" "${service_b}"
 

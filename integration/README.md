@@ -30,6 +30,16 @@ integration/
     │   ├── run.sh                 # Service sync cases
     │   ├── alias-winner.sh        # Alias winner and handover case
     │   └── switch-mode.sh         # serviceSync.mode verification
+    ├── lifecycle/
+    │   ├── namespace/
+    │   │   ├── manifests.yaml
+    │   │   └── run.sh             # Namespace lifecycle
+    │   ├── service/
+    │   │   ├── manifests.yaml
+    │   │   └── run.sh             # Service lifecycle
+    │   └── endpoints/
+    │       ├── manifests.yaml
+    │       └── run.sh             # Endpoints lifecycle
     ├── inject/
     │   ├── manifests.yaml
     │   └── run.sh                 # Sidecar and Java Agent injection cases
@@ -51,10 +61,13 @@ Before running the cases, verify all of the following:
    the `injector-mesh` ConfigMap, and restart the controller StatefulSet.
 4. The machine running the scripts can reach the Polaris HTTP API. By default,
    the URL is derived from `injector-mesh` as `http://<serverAddress>:8090`.
-5. The Polaris token has permission to query Services, instances, and aliases.
+5. The Polaris token can query Namespaces, Services, instances, and aliases, and
+   can register and delete test instances for the Service lifecycle case.
 6. `bash`, `kubectl`, `curl`, and `jq` are installed.
 7. The cluster can pull the test images from `ccr.ccs.tencentyun.com`. Some
    injection cases also use the Java Agent test image from the same registry.
+8. The cluster allows NodePort and LoadBalancer Services for the Service
+   lifecycle case.
 
 Confirm the context and required objects before a run:
 
@@ -84,9 +97,10 @@ The default run:
 - checks the controller rollout;
 - deletes the dedicated case Namespaces once;
 - runs Service sync cases;
+- runs Namespace, Service, and Endpoints lifecycle cases;
 - runs sidecar and Java Agent injection cases;
 - runs the combined Service sync and injection case;
-- leaves the case Namespaces and workloads in place for inspection.
+- leaves the remaining case Namespaces and workloads in place for inspection.
 
 Use the following command for the broadest local pass. It additionally runs
 the alias winner case and the all-mode check, then removes the case Namespaces
@@ -113,6 +127,7 @@ Common environment variables:
 | `JQ` | `jq` | Polaris assertions | jq executable name or path. |
 | `WAIT_TIMEOUT` | `120` | All cases | Timeout in seconds for rollout, Pod, and Namespace state waits. |
 | `RESYNC_TIMEOUT` | `180` | All cases | Timeout in seconds for controller reconciliation and Polaris assertions. |
+| `EXTERNAL_DELETE_TIMEOUT` | `30` | `lifecycle/service` | Timeout in seconds for removing manually registered external instances. |
 | `RESET_CASES` | `1` for `run-all.sh`; `0` for individual cases | All case runners | Delete the dedicated case Namespaces before applying manifests. |
 | `CLEANUP` | `0` | All case runners | Delete the dedicated case Namespaces on exit. |
 | `RUN_ALIAS_WINNER` | `0` | `run-all.sh` | Run `service-sync/alias-winner.sh` after the main Service sync cases. |
@@ -142,10 +157,13 @@ Main entry point. It checks prerequisites, applies the reset policy, and calls
 the individual case scripts in this order:
 
 1. `service-sync/run.sh`
-2. `service-sync/alias-winner.sh` when `RUN_ALIAS_WINNER=1`
-3. `inject/run.sh`
-4. `combined/run.sh`
-5. `service-sync/switch-mode.sh all` when `RUN_ALL_MODE=1`
+2. `lifecycle/namespace/run.sh`
+3. `lifecycle/service/run.sh`
+4. `lifecycle/endpoints/run.sh`
+5. `service-sync/alias-winner.sh` when `RUN_ALIAS_WINNER=1`
+6. `inject/run.sh`
+7. `combined/run.sh`
+8. `service-sync/switch-mode.sh all` when `RUN_ALL_MODE=1`
 
 It exports `RESET_CASES=0` after the initial reset so individual cases reuse the
 same cluster state instead of deleting each other's resources.
@@ -207,6 +225,54 @@ The `it-pc-sync-all` workload must already exist. Running
 `polaris-system/injector-mesh` and restarts
 `statefulset/polaris-controller`.
 
+### `lifecycle/namespace/run.sh`
+
+Verifies Namespace creation and deletion semantics:
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/namespace/run.sh
+```
+
+The case creates a synced Namespace and Service, waits for both Polaris
+objects, deletes the Kubernetes Namespace, and verifies that the Polaris
+Namespace and Service remain while the synced instance is removed. Polaris
+does not delete the Namespace in this test path, so the Polaris Namespace is
+intentionally retained between runs.
+
+### `lifecycle/service/run.sh`
+
+Verifies Service creation and deletion semantics, Service type coverage, and
+cross-Namespace aliases:
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/service/run.sh
+```
+
+The case covers ClusterIP, NodePort, and LoadBalancer Services, a
+cross-Namespace alias, and Service deletion. A manual SDK instance and a
+controller instance from another cluster are registered before deletion to
+prove that deletion removes only instances owned by this controller and
+cluster while retaining the Polaris Service.
+
+ExternalName Services are intentionally excluded because they have no selector
+or ports and are outside the controller sync path.
+
+### `lifecycle/endpoints/run.sh`
+
+Verifies Endpoints address convergence:
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/endpoints/run.sh
+```
+
+The case scales a Deployment from one to two replicas, back to one, then to
+zero. It compares the ready Endpoints IP:port set with the Polaris instance
+set, checks ready instances are healthy and not isolated, and verifies the
+Polaris Service remains after all addresses are removed.
+
 ### `inject/run.sh`
 
 Runs the sidecar and Java Agent injection cases:
@@ -243,10 +309,11 @@ cd integration/cases
 ```
 
 It deletes the same Namespace set used by `CLEANUP=1` and additionally waits
-for the Namespaces to disappear. It does not delete Polaris aliases. After the
-suite, check and remove aliases such as `shared-alias`, `metadata-demo-alias`,
-and generated `shared-alias-<timestamp>-<pid>` aliases manually if the Polaris
-environment must be clean.
+for the Namespaces to disappear. It does not delete Polaris aliases or Polaris
+Namespaces. After the suite, check and remove aliases such as `shared-alias`,
+`metadata-demo-alias`, generated `shared-alias-<timestamp>-<pid>` aliases, and
+the retained Polaris Namespace from the Namespace lifecycle case manually if
+the Polaris environment must be clean.
 
 ### `lib.sh`
 
@@ -285,8 +352,12 @@ The cases use these fixed Namespaces:
 | `it-pc-inject-java` | Java Agent injection |
 | `it-pc-inject-legacy` | Legacy Namespace label |
 | `it-pc-combo` | Combined sync and injection |
+| `it-pc-ns-lifecycle` | Namespace lifecycle |
+| `it-pc-svc-lifecycle` | Service lifecycle and alias source |
+| `it-pc-svc-alias` | Cross-Namespace alias target |
+| `it-pc-ep-lifecycle` | Endpoints lifecycle |
 
-`cleanup.sh` removes all eight Namespaces. A Namespace may remain visible as
+`cleanup.sh` removes all dedicated Namespaces. A Namespace may remain visible as
 `Terminating` while Kubernetes finalizes its resources; the script waits up to
 `WAIT_TIMEOUT` seconds.
 

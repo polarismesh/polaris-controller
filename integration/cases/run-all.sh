@@ -39,7 +39,9 @@ all_namespaces_absent() {
   all_ns_absent \
     "${NS_SYNC}" "${NS_SYNC_LEGACY}" "${NS_SYNC_ALL}" \
     "${NS_INJECT}" "${NS_INJECT_POD_LABEL}" "${NS_INJECT_JAVA}" "${NS_INJECT_LEGACY}" \
-    "${NS_COMBO}"
+    "${NS_INJECT_NO_MODE}" \
+    "${NS_COMBO}" \
+    "${NS_NS_LIFECYCLE}" "${NS_SVC_LIFECYCLE}" "${NS_SVC_ALIAS}" "${NS_EP_LIFECYCLE}"
 }
 
 for bin in "${KUBECTL}" "${CURL}" "${JQ}"; do
@@ -59,6 +61,15 @@ export RESET_CASES=0
 
 log "run Kubernetes Service sync cases"
 "${SCRIPT_DIR}/service-sync/run.sh"
+
+log "run Namespace lifecycle cases"
+"${SCRIPT_DIR}/lifecycle/namespace/run.sh"
+
+log "run Service lifecycle cases"
+"${SCRIPT_DIR}/lifecycle/service/run.sh"
+
+log "run Endpoints lifecycle cases"
+"${SCRIPT_DIR}/lifecycle/endpoints/run.sh"
 
 if [[ "${RUN_ALIAS_WINNER:-0}" == "1" ]]; then
   log "run alias winner and handover case"

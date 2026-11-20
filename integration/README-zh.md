@@ -29,6 +29,16 @@ integration/
     │   ├── run.sh                 # Kubernetes Service 同步用例
     │   ├── alias-winner.sh        # 别名稳定目标和切换用例
     │   └── switch-mode.sh         # serviceSync.mode 切换用例
+    ├── lifecycle/
+    │   ├── namespace/
+    │   │   ├── manifests.yaml
+    │   │   └── run.sh             # Namespace 生命周期
+    │   ├── service/
+    │   │   ├── manifests.yaml
+    │   │   └── run.sh             # Service 生命周期
+    │   └── endpoints/
+    │       ├── manifests.yaml
+    │       └── run.sh             # Endpoints 生命周期
     ├── inject/
     │   ├── manifests.yaml
     │   └── run.sh                 # Sidecar 和 Java Agent 注入用例
@@ -50,10 +60,13 @@ integration/
    controller StatefulSet。
 4. 执行脚本的机器可以直接访问 Polaris HTTP API。未指定时，脚本从
    `injector-mesh` 读取地址，并拼接为 `http://<serverAddress>:8090`。
-5. Polaris Token 有权限查询 Service、实例和别名。
+5. Polaris Token 有权限查询 Namespace、Service、实例和别名，并能在 Service
+   生命周期用例中注册和删除测试实例。
 6. 已安装 `bash`、`kubectl`、`curl` 和 `jq`。
 7. 集群可以从 `ccr.ccs.tencentyun.com` 拉取测试镜像。部分注入用例还需要
    拉取该仓库中的 Java Agent 测试镜像。
+8. 集群允许创建 NodePort 和 LoadBalancer Service，Service 生命周期用例会
+   覆盖这两种类型。
 
 运行前可以先检查集群和对象：
 
@@ -82,9 +95,10 @@ cd integration/cases
 - 检查 controller 是否完成 rollout；
 - 清理一次测试 Namespace；
 - 运行 Service 同步用例；
+- 运行 Namespace、Service 和 Endpoints 生命周期用例；
 - 运行 Sidecar 和 Java Agent 注入用例；
 - 运行 Service 同步与注入组合用例；
-- 保留测试 Namespace 和工作负载，便于排查。
+- 保留其余测试 Namespace 和工作负载，便于排查。
 
 下面的命令会额外运行别名稳定目标用例和全量模式用例，并在退出时清理测试
 Namespace：
@@ -109,6 +123,7 @@ CLEANUP=1 RUN_ALIAS_WINNER=1 RUN_ALL_MODE=1 ./run-all.sh
 | `JQ` | `jq` | Polaris 断言 | jq 可执行文件名或路径。 |
 | `WAIT_TIMEOUT` | `120` | 全部用例 | 等待 rollout、Pod 和 Namespace 状态的超时时间，单位秒。 |
 | `RESYNC_TIMEOUT` | `180` | 全部用例 | 等待 controller 对账和 Polaris 断言完成的超时时间，单位秒。 |
+| `EXTERNAL_DELETE_TIMEOUT` | `30` | `lifecycle/service` | 清理手工注册的外部实例的超时时间，单位秒。 |
 | `RESET_CASES` | `run-all.sh` 为 `1`；单用例为 `0` | 各测试入口 | 应用 manifest 前是否删除固定测试 Namespace。 |
 | `CLEANUP` | `0` | 各测试入口 | 进程退出时是否删除固定测试 Namespace。 |
 | `RUN_ALIAS_WINNER` | `0` | `run-all.sh` | 是否在 Service 同步用例之后运行 `alias-winner.sh`。 |
@@ -136,10 +151,13 @@ manifest，断言会查询与实际创建资源不同的 Namespace。
 完整测试入口。它会检查前置条件、执行初始清理，并按顺序调用：
 
 1. `service-sync/run.sh`
-2. `RUN_ALIAS_WINNER=1` 时调用 `service-sync/alias-winner.sh`
-3. `inject/run.sh`
-4. `combined/run.sh`
-5. `RUN_ALL_MODE=1` 时调用 `service-sync/switch-mode.sh all`
+2. `lifecycle/namespace/run.sh`
+3. `lifecycle/service/run.sh`
+4. `lifecycle/endpoints/run.sh`
+5. `RUN_ALIAS_WINNER=1` 时调用 `service-sync/alias-winner.sh`
+6. `inject/run.sh`
+7. `combined/run.sh`
+8. `RUN_ALL_MODE=1` 时调用 `service-sync/switch-mode.sh all`
 
 首次清理后脚本会导出 `RESET_CASES=0`，避免后续用例互相删除资源。
 
@@ -196,6 +214,50 @@ cd integration/cases
 `polaris-system/injector-mesh` 并重启
 `statefulset/polaris-controller`。
 
+### `lifecycle/namespace/run.sh`
+
+验证 Namespace 的创建和删除语义：
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/namespace/run.sh
+```
+
+用例创建开启同步的 Namespace 和 Service，等待 Polaris 中对应对象出现；
+删除 Kubernetes Namespace 后，断言 Polaris Namespace 和 Service 仍保留，
+而由 controller 同步的实例被移除。Polaris Namespace 在该测试路径中不会被
+删除，因此会在多次运行之间保留。
+
+### `lifecycle/service/run.sh`
+
+验证 Service 的创建、删除、类型覆盖和跨 Namespace 别名：
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/service/run.sh
+```
+
+用例覆盖 ClusterIP、NodePort 和 LoadBalancer 三种 Service，验证跨 Namespace
+别名；删除 Service 前会手工注册一个 SDK 实例和一个其他集群的 controller
+实例，用来证明删除只清理本集群 controller 管理的实例，同时保留 Polaris
+Service。
+
+ExternalName Service 没有 selector 和 ports，不在 controller 同步路径内，
+因此不作为正向同步用例。
+
+### `lifecycle/endpoints/run.sh`
+
+验证 Endpoints 地址变化后的收敛：
+
+```bash
+cd integration/cases
+RESET_CASES=1 ./lifecycle/endpoints/run.sh
+```
+
+用例将 Deployment 从 1 个副本扩到 2 个，再缩到 1 个和 0 个；逐步比较
+Ready Endpoints 的 IP:port 集合与 Polaris 实例集合，验证 Ready 实例为健康且
+未隔离，并确认地址全部移除后 Polaris Service 仍保留。
+
 ### `inject/run.sh`
 
 运行 Sidecar 和 Java Agent 注入用例：
@@ -231,9 +293,10 @@ cd integration/cases
 ```
 
 删除的 Namespace 集合与设置 `CLEANUP=1` 相同，并额外等待 Namespace 删除完成。
-该脚本不会删除 Polaris 别名。测试后如果要求 Polaris 环境干净，需要自行检查
-并删除 `shared-alias`、`metadata-demo-alias` 以及
-`shared-alias-<timestamp>-<pid>` 形式的生成别名。
+该脚本不会删除 Polaris 别名或 Polaris Namespace。测试后如果要求 Polaris
+环境干净，需要自行检查并删除 `shared-alias`、`metadata-demo-alias`、
+`shared-alias-<timestamp>-<pid>` 形式的生成别名，以及 Namespace 生命周期
+用例保留的 Polaris Namespace。
 
 ### `lib.sh`
 
@@ -267,6 +330,10 @@ HTTP 查询和断言函数。不要直接执行。
 | `it-pc-inject-java` | Java Agent 注入 |
 | `it-pc-inject-legacy` | 历史 Namespace Label |
 | `it-pc-combo` | 同步与注入组合 |
+| `it-pc-ns-lifecycle` | Namespace 生命周期 |
+| `it-pc-svc-lifecycle` | Service 生命周期和别名源 |
+| `it-pc-svc-alias` | 跨 Namespace 别名目标 |
+| `it-pc-ep-lifecycle` | Endpoints 生命周期 |
 
 `cleanup.sh` 会删除上述全部 Namespace。如果 Namespace 因 Kubernetes finalizer
 暂时显示为 `Terminating`，脚本最多等待 `WAIT_TIMEOUT` 秒。

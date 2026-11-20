@@ -43,6 +43,13 @@ metadata:
     polaris-sidecar-mode: dns
 ---
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-inject-no-mode
+  labels:
+    polarismesh.cn/inject: enabled
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: dns-ok
@@ -149,6 +156,19 @@ metadata:
   annotations:
     polarismesh.cn/inject: "true"
     polarismesh.cn/sidecar-mode: dns
+spec:
+  containers:
+    - name: app
+      image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+      imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-mode-not-injected
+  namespace: it-pc-inject-no-mode
+  labels:
+    app: no-mode-not-injected
 spec:
   containers:
     - name: app

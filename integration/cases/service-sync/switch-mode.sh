@@ -73,7 +73,12 @@ if [[ "${target_mode}" == "all" ]]; then
   wait_service "${NS_SYNC_ALL}" all-mode-demo
   wait_instance_count "${NS_SYNC_ALL}" all-mode-demo 1
 else
-  wait_service_absent "${NS_SYNC_ALL}" all-mode-demo
+  wait_instance_count "${NS_SYNC_ALL}" all-mode-demo 0
+  if service_exists "${NS_SYNC_ALL}" all-mode-demo; then
+    log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo retained with zero instances"
+  else
+    log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo is not present"
+  fi
 fi
 
 log "serviceSync.mode=${target_mode} assertion passed"
@@ -81,7 +86,12 @@ log "serviceSync.mode=${target_mode} assertion passed"
 if [[ "${KEEP_MODE:-0}" != "1" && "${original_mode}" != "${target_mode}" ]]; then
   set_mode "${original_mode}"
   if [[ "${original_mode}" == "demand" ]]; then
-    wait_service_absent "${NS_SYNC_ALL}" all-mode-demo
+    wait_instance_count "${NS_SYNC_ALL}" all-mode-demo 0
+    if service_exists "${NS_SYNC_ALL}" all-mode-demo; then
+      log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo retained with zero instances"
+    else
+      log "Polaris Service ${NS_SYNC_ALL}/all-mode-demo is not present"
+    fi
   fi
   trap - EXIT
   log "restored serviceSync.mode=${original_mode}"

@@ -23,7 +23,8 @@ polaris_init
 
 inject_namespaces_absent() {
   all_ns_absent \
-    "${NS_INJECT}" "${NS_INJECT_POD_LABEL}" "${NS_INJECT_JAVA}" "${NS_INJECT_LEGACY}"
+    "${NS_INJECT}" "${NS_INJECT_POD_LABEL}" "${NS_INJECT_JAVA}" "${NS_INJECT_LEGACY}" \
+    "${NS_INJECT_NO_MODE}"
 }
 
 if [[ "${RESET_CASES:-0}" == "1" ]]; then
@@ -59,7 +60,8 @@ for item in \
   "${NS_INJECT_POD_LABEL}/pod-label-injected" \
   "${NS_INJECT_JAVA}/java-config" \
   "${NS_INJECT_JAVA}/java-hostnetwork" \
-  "${NS_INJECT_LEGACY}/legacy-label-injected"; do
+  "${NS_INJECT_LEGACY}/legacy-label-injected" \
+  "${NS_INJECT_NO_MODE}/no-mode-not-injected"; do
   namespace="${item%%/*}"
   pod="${item#*/}"
   wait_for "pod ${item}" "${WAIT_TIMEOUT}" pod_exists "${namespace}" "${pod}"
@@ -135,6 +137,14 @@ pod_json "${NS_INJECT_JAVA}" java-hostnetwork | "${JQ}" -e '
 log "CASE inject/legacy-namespace-label"
 pod_json "${NS_INJECT_LEGACY}" legacy-label-injected | "${JQ}" -e '
   ([.spec.containers[] | select(.name == "polaris-sidecar")] | length) == 1
+' >/dev/null
+
+log "CASE inject/default-mode-not-injected"
+pod_json "${NS_INJECT_NO_MODE}" no-mode-not-injected | "${JQ}" -e '
+  ([.spec.containers[] | select(.name == "app")] | length) == 1 and
+  ([.spec.containers[] | select(.name == "polaris-sidecar" or .name == "envoy")] | length) == 0 and
+  ([.spec.initContainers[]? | select(.name | startswith("polaris-"))] | length) == 0 and
+  ((.metadata.annotations["sidecar.polarismesh.cn/status"] // "") == "")
 ' >/dev/null
 
 log "CASE modes-are-independent"

@@ -60,6 +60,21 @@ log_warn() {
   printf '[polaris-controller][WARN] %s\n' "$*" >&2
 }
 
+log_variable() {
+  local key=$1 value=$2 display_value=$2
+  if [[ "${key}" =~ [Tt][Oo][Kk][Ee][Nn] ]]; then
+    display_value="********"
+  fi
+  printf '[polaris-controller][VARIABLE] %s=%s\n' "${key}" "${display_value}"
+}
+
+log_variables() {
+  local key
+  for key in "${KNOWN_VARIABLES[@]}"; do
+    log_variable "${key}" "${!key}"
+  done
+}
+
 die() {
   printf '[polaris-controller][ERROR] %s\n' "$*" >&2
   exit 1
@@ -311,6 +326,7 @@ parse_common_variables() {
   apply_environment_overrides
   apply_set_overrides "$@"
   validate_variables
+  log_variables
 }
 
 assert_installable_version() {

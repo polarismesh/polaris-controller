@@ -26,10 +26,11 @@ case_namespaces_absent() {
   all_ns_absent \
     "${NS_SYNC}" "${NS_SYNC_LEGACY}" "${NS_SYNC_ALL}" \
     "${NS_INJECT}" "${NS_INJECT_POD_LABEL}" "${NS_INJECT_JAVA}" "${NS_INJECT_LEGACY}" \
-    "${NS_COMBO}"
+    "${NS_INJECT_NO_MODE}" "${NS_COMBO}" \
+    "${NS_NS_LIFECYCLE}" "${NS_SVC_LIFECYCLE}" "${NS_SVC_ALIAS}" "${NS_EP_LIFECYCLE}"
 }
 
 wait_for "case namespace cleanup" "${WAIT_TIMEOUT}" case_namespaces_absent
 
 log "case namespaces removed"
-log "Polaris aliases are intentionally not deleted automatically; verify/clean metadata-demo-alias and shared-alias manually if needed"
+log "Polaris aliases and Namespaces are intentionally not deleted automatically; verify/clean metadata-demo-alias, shared-alias, and it-pc-ns-lifecycle manually if needed"
