@@ -16,10 +16,12 @@
 
 # Usage:
 #   ./run-all.sh
-#   CLEANUP=1 RUN_ALIAS_WINNER=1 RUN_ALL_MODE=1 ./run-all.sh
+#   ./run-all.sh --keep
+#   ./run-all.sh --cleanup
 #
 # Environment:
 #   RESET_CASES=1       delete dedicated namespaces once before running (default)
+#   KEEP_RESOURCES=1    retain case resources after the run (default)
 #   CLEANUP=1           delete dedicated namespaces when the run exits
 #   RUN_ALIAS_WINNER=1  verify alias stable winner and handover
 #   RUN_ALL_MODE=1      switch controller to all mode, verify, then restore
@@ -30,6 +32,89 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
+
+KEEP_RESOURCES="${KEEP_RESOURCES:-}"
+CLEANUP="${CLEANUP:-0}"
+
+usage() {
+  cat <<'EOF'
+Usage: ./run-all.sh [options]
+
+Options:
+  --keep       Retain Kubernetes resources after the run (default)
+  --cleanup    Delete dedicated Kubernetes Namespaces when the run exits
+  -h, --help   Show this help
+
+The test suites always reset dedicated Namespaces before running unless
+RESET_CASES=0 is set. --keep controls cleanup after the run.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --keep)
+      KEEP_RESOURCES=1
+      CLEANUP=0
+      shift
+      ;;
+    --cleanup)
+      KEEP_RESOURCES=0
+      CLEANUP=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown option: $1"
+      ;;
+  esac
+done
+
+if [[ -z "${KEEP_RESOURCES}" ]]; then
+  if [[ "${CLEANUP}" == "1" ]]; then
+    KEEP_RESOURCES=0
+  else
+    KEEP_RESOURCES=1
+  fi
+fi
+[[ "${KEEP_RESOURCES}" == "0" || "${KEEP_RESOURCES}" == "1" ]] || \
+  fail "KEEP_RESOURCES must be 0 or 1"
+[[ "${CLEANUP}" == "0" || "${CLEANUP}" == "1" ]] || \
+  fail "CLEANUP must be 0 or 1"
+if [[ "${KEEP_RESOURCES}" == "1" && "${CLEANUP}" == "1" ]]; then
+  fail "KEEP_RESOURCES=1 conflicts with CLEANUP=1; use --keep or --cleanup"
+fi
+export KEEP_RESOURCES CLEANUP
+
+print_retained_resources() {
+  local retained
+  retained="$(existing_case_namespaces 2>/dev/null || true)"
+  if [[ -n "${retained}" ]]; then
+    log "resources retained for inspection:"
+    printf '%s\n' "${retained}" | sed 's/^/  /'
+  else
+    log "no retained integration Namespaces were found"
+  fi
+  log "inspect: ${SCRIPT_DIR}/inspect.sh"
+  log "cleanup: ${SCRIPT_DIR}/cleanup.sh"
+}
+
+on_exit() {
+  local rc=$?
+  trap - EXIT
+  if [[ "${CLEANUP}" == "1" ]]; then
+    log "cleanup enabled; deleting dedicated case Namespaces"
+    if ! "${SCRIPT_DIR}/cleanup.sh"; then
+      ((rc != 0)) || rc=1
+    fi
+  elif [[ "${KEEP_RESOURCES}" == "1" ]]; then
+    print_retained_resources || true
+  fi
+  exit "${rc}"
+}
+trap on_exit EXIT
 
 polaris_init
 
@@ -47,10 +132,6 @@ all_namespaces_absent() {
 for bin in "${KUBECTL}" "${CURL}" "${JQ}"; do
   require_bin "${bin}"
 done
-
-if [[ "${CLEANUP:-0}" == "1" ]]; then
-  trap "${SCRIPT_DIR}/cleanup.sh" EXIT
-fi
 
 if [[ "${RESET_CASES:-1}" == "1" ]]; then
   log "reset all dedicated case namespaces once"

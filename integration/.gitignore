@@ -1,0 +1,4 @@
+dist/
+.logs/
+polaris-controller-integration-logs-*.zip
+polaris-controller-integration-logs-*.tar.gz

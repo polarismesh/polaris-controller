@@ -1,45 +1,68 @@
-# Polaris Controller 集成测试用例说明
+# Polaris Controller Integration Test Cases
 
-**更新时间**：2026-11-19
+**Updated**: 2026-11-20
 
-**适用范围**：`integration/cases` 下的 Service 同步、Namespace/Service/Endpoints 生命周期、
-Sidecar 注入、组合场景、可选别名切换、全量模式切换和清理用例。
+**Scope**: Service synchronization, Namespace/Service/Endpoints lifecycle,
+Sidecar and Java Agent injection, combined scenarios, optional alias and mode
+changes, cleanup, and orchestration under `integration/cases`.
 
-> 本文说明每个用例的预期结果和验证方式。环境准备、变量说明和更简短的运行示例见同目录 `README.md` / `README-zh.md`。
-
----
-
-## 1. 测试目标
-
-验证以下行为：
-
-1. Kubernetes Namespace/Service/Endpoints 到 Polaris Service/Instance 的同步。
-2. Service Annotation、Pod Label、保留字段和受保护字段的优先级。
-3. `polarismesh.cn/sync`、`polarismesh.cn/enableRegister`、Namespace 注解和 `serviceSync.mode` 的组合语义。
-4. TTL、多端口协议、StatefulSet 自定义权重、NotReady 实例隔离和别名。
-5. DNS Sidecar、Java Agent 的注入选择、默认不注入、配置覆盖、hostNetwork 和旧版 Namespace Label 兼容。
-6. Service 同步与 Sidecar 注入同时启用时的组合行为。
-7. Namespace、Service、Endpoints 三条生命周期用例，包括删除保留语义和地址集合收敛。
+> This document describes each case, its expected result, and its verification
+> method. Environment setup, resource retention, cleanup, packaging, and manual
+> upload are documented in [README.md](../README.md). The Chinese case
+> reference is [test-zh.md](test-zh.md).
 
 ---
 
-## 2. 前置条件
+## 1. Test Objectives
 
-### 2.1 集群和工具
+The suite verifies:
 
-- 测试机可访问目标 Kubernetes 集群，具备创建/删除 Namespace、Deployment、StatefulSet、Service、Endpoints 和 Pod 的权限。
-- `kubectl`、`curl`、`jq` 可用，或通过 `KUBECTL`、`CURL`、`JQ` 覆盖。
-- controller 已部署在 `polaris-system`，StatefulSet 名为 `polaris-controller`。
-- 测试机能访问 Polaris HTTP API，默认从 `injector-mesh` ConfigMap 的 `serverAddress:8090` 推导。
-- Polaris Token 可以查询 Namespace/Service/Instance/Alias，并能在 Service 生命周期用例中注册和删除测试实例。
-- `injector-mesh` 的 `mesh` 中配置了非空 `clusterName`；Service 生命周期用例用它区分本集群和其他集群的 controller 实例。
-- 集群允许创建 NodePort 和 LoadBalancer Service；Service 生命周期用例会覆盖这两种类型。
-- 测试集群默认使用 `serviceSync.mode=demand`；`RUN_ALL_MODE=1` 会临时切换为 `all` 并恢复。
-- 默认不注入用例要求 controller 的 `sidecarInject.mode` 为 `""` 或 `none`；该用例验证默认安装行为，不适用于显式配置了 `mesh`、`dns` 或 `java-agent` 的集群。
+1. Synchronization from Kubernetes Namespace, Service, Endpoints, and Pods to
+   Polaris Services and instances.
+2. Precedence among Service annotations, Pod labels, reserved fields, and
+   protected fields.
+3. The combined semantics of `polarismesh.cn/sync`,
+   `polarismesh.cn/enableRegister`, Namespace annotations, and
+   `serviceSync.mode`.
+4. TTL, multi-port protocols, StatefulSet custom weights, NotReady instance
+   isolation, and aliases.
+5. DNS Sidecar and Java Agent selection, explicit disable paths, default
+   non-injection, configuration overrides, hostNetwork behavior, and legacy
+   Namespace labels.
+6. Service synchronization and Sidecar injection running together.
+7. Namespace, Service, and Endpoints lifecycle behavior, including retained
+   Polaris objects and address-set convergence.
 
-### 2.2 专用 Namespace
+---
 
-测试会创建并删除以下专用 Namespace：
+## 2. Prerequisites
+
+### 2.1 Cluster and Tools
+
+- The test machine can access the target Kubernetes cluster and create or
+  delete Namespaces, Deployments, StatefulSets, Services, Endpoints, and Pods.
+- `kubectl`, `curl`, and `jq` are available, or `KUBECTL`, `CURL`, and `JQ`
+  point to usable executables.
+- Polaris Controller is deployed in `polaris-system` as
+  `statefulset/polaris-controller`.
+- The test machine can reach the Polaris HTTP API. By default, the URL is
+  derived from the `injector-mesh` ConfigMap as
+  `http://<serverAddress>:8090`.
+- The Polaris token can query Namespace, Service, Instance, and Alias objects.
+  The Service lifecycle case also registers and deletes test instances.
+- `injector-mesh.mesh.clusterName` is non-empty. The Service lifecycle case
+  uses it to distinguish controller instances from the current cluster and
+  another cluster.
+- The cluster permits NodePort and LoadBalancer Services.
+- The cluster uses `serviceSync.mode=demand` by default. `RUN_ALL_MODE=1`
+  temporarily switches it to `all` and restores it.
+- INJ-10 requires the controller `sidecarInject.mode` to be empty or `none`.
+  A cluster explicitly configured with `mesh`, `dns`, or `java-agent` does not
+  satisfy this case.
+
+### 2.2 Dedicated Namespaces
+
+The tests create and delete these dedicated Namespaces:
 
 ```text
 it-pc-sync
@@ -57,38 +80,48 @@ it-pc-svc-alias
 it-pc-ep-lifecycle
 ```
 
-不要在这些 Namespace 中放置业务资源。`RESET_CASES=1` 会先删除它们。
+Do not place business resources in these Namespaces. `RESET_CASES=1` deletes
+them before applying test manifests.
 
-`it-pc-ns-lifecycle` 会由 Namespace 生命周期用例主动删除；但删除后 Polaris
-中的同名 Namespace 会保留，`cleanup.sh` 不会删除 Polaris Namespace。
+The Namespace lifecycle case deletes `it-pc-ns-lifecycle` itself. The matching
+Polaris Namespace is intentionally retained, and `cleanup.sh` does not delete
+Polaris Namespaces.
 
-### 2.3 数据映射规则
+### 2.3 Data Mapping Rules
 
-- Kubernetes Service `metadata.labels` 写入 Polaris Service metadata。
-- `polarismesh.cn/metadata` 和实际 Pod Labels 合并为 Polaris Instance metadata。
-- Pod Label 与 Service Annotation 同名时，Pod Label 优先。
-- `source`、`clusterName`、`k8sServiceUID` 由 controller 保护，不能被业务配置覆盖。
-- `version`、`protocol`、`region`、`zone`、`campus` 是实例保留字段，提升到实例顶层属性，不写入业务 metadata。
-- `polarismesh.cn/customVersion` 优先于 Pod Label `version` 决定顶层 Version。
-- EndpointPort 和 `polarismesh.cn/protocols` 决定顶层 Protocol；Pod Label `protocol` 和 metadata 中的 `protocol` 会被剔除。
-- HTTP `/naming/v1/instances` 不返回保留字段的 metadata 副本，测试应断言顶层 `version`、`protocol`、`location`。
+- Kubernetes Service `metadata.labels` become Polaris Service metadata.
+- Service `polarismesh.cn/metadata` and actual Pod labels are merged into
+  Polaris instance metadata.
+- A Pod label overrides a Service annotation with the same key.
+- `source`, `clusterName`, and `k8sServiceUID` are controller-protected fields.
+  User configuration cannot override them.
+- `version`, `protocol`, `region`, `zone`, and `campus` are reserved fields
+  promoted to instance top-level attributes. They are not copied into business
+  metadata.
+- `polarismesh.cn/customVersion` has higher priority than the Pod label
+  `version` when determining the instance top-level Version.
+- EndpointPort and `polarismesh.cn/protocols` determine the top-level Protocol.
+  A Pod label or metadata value named `protocol` is ignored.
+- The HTTP `/naming/v1/instances` response does not duplicate reserved fields
+  in metadata. Assertions use the top-level `version`, `protocol`, and
+  `location`.
 
 ---
 
-## 3. 执行方式
+## 3. Execution
 
-### 3.1 默认完整运行
+### 3.1 Default Full Run
 
 ```bash
 cd integration/cases
 ./run-all.sh
 ```
 
-默认执行顺序：
+Default order:
 
 ```text
-等待 controller rollout
-清理全部专用 Namespace
+wait for controller rollout
+RESET_CASES=1: delete dedicated Namespaces
 service-sync
 lifecycle/namespace
 lifecycle/service
@@ -97,17 +130,25 @@ inject
 combined
 ```
 
-### 3.2 可选用例
+The default policy retains resources after the run:
 
 ```bash
-RUN_ALIAS_WINNER=1 RUN_ALL_MODE=1 ./run-all.sh
+./run-all.sh --keep
 ```
 
-`RUN_ALIAS_WINNER=1` 追加别名稳定 winner 和 handover 用例。
+### 3.2 Optional Cases
 
-`RUN_ALL_MODE=1` 追加 `serviceSync.mode=all` 切换用例。该用例会修改 `polaris-system/injector-mesh` 并重启 controller，默认结束后恢复原模式。
+```bash
+RUN_ALIAS_WINNER=1 RUN_ALL_MODE=1 ./run-all.sh --keep
+```
 
-### 3.3 单独运行套件
+`RUN_ALIAS_WINNER=1` adds the alias winner and handover case.
+
+`RUN_ALL_MODE=1` adds the `serviceSync.mode=all` case. It changes the
+`polaris-system/injector-mesh` ConfigMap and restarts the controller. The
+original mode is restored by default.
+
+### 3.3 Individual Suites
 
 ```bash
 RESET_CASES=1 ./service-sync/run.sh
@@ -118,87 +159,91 @@ RESET_CASES=1 ./inject/run.sh
 RESET_CASES=1 ./combined/run.sh
 ./service-sync/alias-winner.sh
 ./service-sync/switch-mode.sh all
+./inspect.sh
 ./cleanup.sh
 ```
 
-`RESET_CASES=1` 会先删除所有专用 Namespace，避免旧资源污染断言。
+`RESET_CASES=1` first deletes every dedicated Namespace to avoid stale
+resources.
 
-### 3.4 常用环境变量
+### 3.4 Environment Variables
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 |---|---|---|
-| `RESET_CASES` | `run-all.sh` 中为 `1` | 运行前删除专用 Namespace |
-| `CLEANUP` | `0` | 退出时删除专用 Namespace |
-| `RUN_ALIAS_WINNER` | `0` | 运行可选别名 winner/handover 用例 |
-| `RUN_ALL_MODE` | `0` | 运行可选 `serviceSync.mode=all` 用例 |
-| `WAIT_TIMEOUT` | `120` | Pod、Namespace、rollout 等等待时间，单位秒 |
-| `RESYNC_TIMEOUT` | `180` | Polaris Service/Instance 收敛等待时间，单位秒 |
-| `EXTERNAL_DELETE_TIMEOUT` | `30` | Service 生命周期用例清理手工外部实例的等待时间，单位秒 |
-| `POLARIS_HTTP_URL` | 自动推导 | Polaris HTTP API 地址 |
-| `POLARIS_TOKEN` | 自动从 ConfigMap 读取 | Polaris API token |
-| `KUBECTL` / `CURL` / `JQ` | 命令名 | 覆盖工具路径 |
+| `RESET_CASES` | `1` in `run-all.sh` | Delete dedicated Namespaces before running |
+| `CLEANUP` | `0` | Delete dedicated Namespaces on exit |
+| `KEEP_RESOURCES` | `1` | Retain dedicated Namespaces and resources on exit; conflicts with `CLEANUP=1` |
+| `RUN_ALIAS_WINNER` | `0` | Run the optional alias winner/handover case |
+| `RUN_ALL_MODE` | `0` | Run the optional `serviceSync.mode=all` case |
+| `WAIT_TIMEOUT` | `120` | Pod, Namespace, and rollout wait timeout in seconds |
+| `RESYNC_TIMEOUT` | `180` | Polaris Service/Instance convergence timeout in seconds |
+| `EXTERNAL_DELETE_TIMEOUT` | `30` | Timeout for deleting manually registered external instances |
+| `POLARIS_HTTP_URL` | Auto-derived | Polaris HTTP API address |
+| `POLARIS_TOKEN` | Read from ConfigMap | Polaris API token |
+| `KUBECTL` / `CURL` / `JQ` | Command names | Override tool paths |
 
 ---
 
-## 4. 用例总览
+## 4. Case Index
 
-| ID | 用例 | 核心预期 | 类型 |
+| ID | Case | Expected Result | Type |
 |---|---|---|---|
-| SYNC-01 | modes-are-independent-service-only-has-no-sidecar | Service 同步不自动注入 sidecar | 默认 |
-| SYNC-02 | namespace-annotation-and-service-disable | Namespace 注解与 Service `sync=false` 优先级正确 | 默认 |
-| SYNC-03 | enableRegister | 旧版 `enableRegister=true` 可启用同步 | 默认 |
-| SYNC-04 | all-mode-service-is-not-synced-in-demand | demand 模式不自动同步普通 Namespace | 默认 |
-| SYNC-05 | service-and-instance-metadata | Service/Pod metadata 合并、保留字段、优先级正确 | 默认 |
-| SYNC-06 | ttl | TTL 和 TCP protocol 正确，Pod protocol Label 被忽略 | 默认 |
-| SYNC-07 | multi-port-protocol | 多端口生成多个实例并应用协议映射 | 默认 |
-| SYNC-08 | statefulset-custom-weight | StatefulSet 每个 Pod 使用自定义权重 | 默认 |
-| SYNC-09 | not-ready-endpoint-isolated | NotReady Endpoint 注册为隔离实例 | 默认 |
-| SYNC-10 | alias | Service 别名正确创建并指向源 Service | 默认 |
-| SYNC-11 | service-label-convergence | Service Label 的增删收敛到 Polaris Service metadata | 默认 |
-| SYNC-12 | pod-label-convergence | Pod Label 的 metadata/保留字段变更收敛 | 默认 |
-| SYNC-13 | namespace-disable-keeps-explicit-service | 关闭 Namespace 同步清理实例但保留 Service | 默认 |
-| SYNC-14 | service-disable-cleans-polaris-instances | 关闭单个 Service 同步清理实例但保留 Service | 默认 |
-| NS-LIFE-01 | namespace-create-sync-and-service | Namespace 创建后 Polaris Namespace/Service 出现 | 默认 |
-| NS-LIFE-02 | namespace-delete-retains-polaris-resources | 删除 K8s Namespace 后 Polaris Namespace/Service 保留、实例移除 | 默认 |
-| SVC-LIFE-01 | service-types-and-cross-namespace-alias | ClusterIP/NodePort/LoadBalancer 同步；跨 Namespace 别名正确 | 默认 |
-| SVC-LIFE-02 | service-delete-retains-service-removes-owned-instances | 删除 K8s Service 后 Polaris Service 保留，只删除本集群 controller 实例 | 默认 |
-| EP-LIFE-01 | endpoints-address-health-and-ip-port-mapping | Endpoints IP:port 与实例一致，Ready 实例健康 | 默认 |
-| EP-LIFE-02 | endpoints-scale-up | 地址增加后实例增加 | 默认 |
-| EP-LIFE-03 | endpoints-scale-down | 地址减少后实例减少 | 默认 |
-| EP-LIFE-04 | endpoints-remove-all-addresses | 地址全部移除后实例归零、Service 保留 | 默认 |
-| ALIAS-01 | alias-stable-winner-and-handover | 别名稳定 winner；源 Service 删除后 handover | 可选 |
-| MODE-01 | all-mode service sync | all 模式同步普通 Service；恢复 demand 后实例归零 | 可选 |
-| INJ-01 | dns-mode-and-sidecar-config | DNS sidecar/init/env 配置正确 | 默认 |
-| INJ-02 | namespace-and-pod-label-selection | Pod Label 可触发注入 | 默认 |
-| INJ-03 | explicit-disable-annotation | Pod 注解显式关闭注入 | 默认 |
-| INJ-04 | never-inject-label | `disabled` Label 禁止注入 | 默认 |
-| INJ-05 | dns-hostnetwork-disabled | DNS 模式 hostNetwork 不注入 | 默认 |
-| INJ-06 | javaagent-config-priority | Java Agent 配置优先于默认值 | 默认 |
-| INJ-07 | javaagent-workload-name-fallback | Deployment 自动推导应用名/Namespace | 默认 |
-| INJ-08 | javaagent-hostnetwork-allowed | hostNetwork 仍允许 Java Agent 注入 | 默认 |
-| INJ-09 | legacy-namespace-label | 旧版 `polaris-injection` Label 兼容 | 默认 |
-| INJ-10 | default-mode-not-injected | Webhook 命中但未配置 mode 时不注入 | 默认 |
-| INJ-11 | modes-are-independent | 注入模式不触发 Service 同步 | 默认 |
-| COMBO-01 | service-sync-and-dns-injection | 同一 Pod 同时完成 Service 同步和 DNS 注入 | 默认 |
-| CLEAN-01 | cleanup.sh | 删除全部专用 Namespace 并等待释放 | 清理工具 |
+| SYNC-01 | modes-are-independent-service-only-has-no-sidecar | Service sync does not inject sidecars | Default |
+| SYNC-02 | namespace-annotation-and-service-disable | Namespace annotation and Service `sync=false` precedence | Default |
+| SYNC-03 | enableRegister | Legacy `enableRegister=true` enables sync | Default |
+| SYNC-04 | all-mode-service-is-not-synced-in-demand | Demand mode does not sync an ordinary Namespace automatically | Default |
+| SYNC-05 | service-and-instance-metadata | Service/Pod metadata, reserved fields, and precedence | Default |
+| SYNC-06 | ttl | TTL and TCP protocol are correct; Pod protocol label is ignored | Default |
+| SYNC-07 | multi-port-protocol | Multiple ports create multiple instances with mapped protocols | Default |
+| SYNC-08 | statefulset-custom-weight | StatefulSet Pods use custom indexed weights | Default |
+| SYNC-09 | not-ready-endpoint-isolated | NotReady Endpoints become isolated instances | Default |
+| SYNC-10 | alias | Service aliases target the source Services | Default |
+| SYNC-11 | service-label-convergence | Service label additions and removals converge | Default |
+| SYNC-12 | pod-label-convergence | Pod label metadata and reserved fields converge | Default |
+| SYNC-13 | namespace-disable-keeps-explicit-service | Disabling a Namespace removes instances and keeps Services | Default |
+| SYNC-14 | service-disable-cleans-polaris-instances | Disabling one Service removes its instances and keeps its Service | Default |
+| ALIAS-01 | alias-stable-winner-and-handover | The alias winner is stable and hands over after deletion | Optional |
+| MODE-01 | all-mode-service-sync | `all` syncs the ordinary Service; restoring `demand` removes instances | Optional |
+| INJ-01 | dns-mode-and-sidecar-config | DNS sidecar/init containers and environment are correct | Default |
+| INJ-02 | namespace-and-pod-label-selection | Pod labels can trigger injection | Default |
+| INJ-03 | explicit-disable-annotation | A Pod annotation disables injection | Default |
+| INJ-04 | never-inject-label | `disabled` label prevents injection | Default |
+| INJ-05 | dns-hostnetwork-disabled | DNS mode does not inject on hostNetwork | Default |
+| INJ-06 | javaagent-config-priority | Java Agent configuration overrides defaults | Default |
+| INJ-07 | javaagent-workload-name-fallback | Deployment name and Namespace fallbacks work | Default |
+| INJ-08 | javaagent-hostnetwork-allowed | Java Agent injection remains allowed on hostNetwork | Default |
+| INJ-09 | legacy-namespace-label | Legacy `polaris-injection` label is supported | Default |
+| INJ-10 | default-mode-not-injected | Webhook match without a mode does not inject | Default |
+| INJ-11 | modes-are-independent | Injection does not trigger Service sync | Default |
+| COMBO-01 | service-sync-and-dns-injection | One Pod is synced and receives a DNS sidecar | Default |
+| NS-LIFE-01 | namespace-create-sync-and-service | Namespace and Service appear in Polaris | Default |
+| NS-LIFE-02 | namespace-delete-retains-polaris-resources | Kubernetes Namespace deletion retains Polaris Namespace/Service | Default |
+| SVC-LIFE-01 | service-types-and-cross-namespace-alias | ClusterIP/NodePort/LoadBalancer and cross-Namespace alias work | Default |
+| SVC-LIFE-02 | service-delete-retains-service-removes-owned-instances | Polaris Service remains; only current-cluster controller instances are removed | Default |
+| EP-LIFE-01 | endpoints-address-health-and-ip-port-mapping | Endpoints IP:port matches Polaris instances; Ready instances are healthy | Default |
+| EP-LIFE-02 | endpoints-scale-up | Scaling up increases endpoints and instances | Default |
+| EP-LIFE-03 | endpoints-scale-down | Scaling down decreases endpoints and instances | Default |
+| EP-LIFE-04 | endpoints-remove-all-addresses | Removing all addresses leaves zero instances and retains the Service | Default |
+| CLEAN-01 | cleanup.sh | Delete all dedicated Kubernetes Namespaces | Tool |
+| ORCH-01 | run-all.sh | Run suites in order and retain or clean resources | Tool |
 
 ---
 
-## 5. Service 同步用例
+## 5. Service Synchronization Cases
 
 ### SYNC-01 modes-are-independent-service-only-has-no-sidecar
 
-**目的**：确认 Service 同步模式不会自动注入 sidecar。
+**Purpose**: Verify that Service sync does not automatically inject a sidecar.
 
-**操作**：读取 `it-pc-sync/sync-shared` Pod 的容器列表。
+**Operation**: Inspect the containers in the `it-pc-sync/sync-shared` Pod.
 
-**预期结果**：
+**Expected**:
 
-- 存在业务容器 `app`。
-- 不存在 `polaris-sidecar` 容器。
-- 不存在以 `polaris-` 开头的 init container。
+- Business container `app` exists.
+- No `polaris-sidecar` container exists.
+- No init container whose name starts with `polaris-` exists.
 
-**验证方式**：
+**Verification**:
 
 ```bash
 kubectl -n it-pc-sync get pod -l app=sync-shared -o json | \
@@ -207,55 +252,69 @@ kubectl -n it-pc-sync get pod -l app=sync-shared -o json | \
 
 ### SYNC-02 namespace-annotation-and-service-disable
 
-**目的**：验证 Namespace 注解、Service `sync` 和旧版 `enableRegister` 的优先级。
+**Purpose**: Verify precedence among Namespace annotations, Service `sync`, and
+the legacy `enableRegister` annotation.
 
-**测试对象**：
+**Objects**:
 
-- `namespace-only-demo`：无 Service 注解，Namespace `it-pc-sync` 为 `sync=true`。
-- `disabled-demo`：Service `sync=false`。
-- `sync-false-overrides-enable-register`：Service `sync=false` 且 `enableRegister=true`。
-- `enable-register-false-demo`：Service `enableRegister=false`，无 `sync`，Namespace 为 `sync=true`。
+- `namespace-only-demo`: no Service annotation; Namespace `sync=true`.
+- `disabled-demo`: Service `sync=false`.
+- `sync-false-overrides-enable-register`: Service `sync=false` and
+  `enableRegister=true`.
+- `enable-register-false-demo`: Service `enableRegister=false`, no `sync`, and
+  Namespace `sync=true`.
 
-**预期结果**：
+**Expected**:
 
-- `namespace-only-demo` 同步到 Polaris。
-- `disabled-demo` 不同步。
-- `sync-false-overrides-enable-register` 不同步，`sync=false` 优先。
-- `enable-register-false-demo` 同步，因为 Namespace 的 `sync=true` 仍然生效，`enableRegister=false` 不是强制关闭。
+- `namespace-only-demo` is synchronized.
+- `disabled-demo` is not synchronized.
+- `sync-false-overrides-enable-register` is not synchronized because
+  `sync=false` has priority.
+- `enable-register-false-demo` is synchronized because Namespace
+  `sync=true` still enables it. `enableRegister=false` is not a hard disable.
 
-**验证方式**：`service-sync/run.sh` 中的 `wait_service` / `wait_service_absent` 断言。
+**Verification**: `wait_service` and `wait_service_absent` in
+`service-sync/run.sh`.
 
 ### SYNC-03 enableRegister
 
-**目的**：验证旧版 `polarismesh.cn/enableRegister=true` 的兼容行为。
+**Purpose**: Verify compatibility with
+`polarismesh.cn/enableRegister=true`.
 
-**测试对象**：`it-pc-sync-legacy/enable-register-demo`，Service 只设置 `enableRegister=true`，Namespace 没有 `sync` 注解。
+**Object**: `it-pc-sync-legacy/enable-register-demo`. The Service sets only
+`enableRegister=true`; the Namespace has no `sync` annotation.
 
-**预期结果**：Service 同步到 Polaris。
+**Expected**: The Service is synchronized to Polaris.
 
 ### SYNC-04 all-mode-service-is-not-synced-in-demand
 
-**目的**：验证 demand 模式下，普通 Namespace 中的未显式开启同步的 Service 不会同步。
+**Purpose**: Verify that demand mode does not automatically sync an ordinary
+Service in a Namespace without an explicit sync annotation.
 
-**测试对象**：`it-pc-sync-all/all-mode-demo`，Namespace 和 Service 都没有 `sync` 注解。
+**Object**: `it-pc-sync-all/all-mode-demo`. Neither the Namespace nor the
+Service has a `sync` annotation.
 
-**预期结果**：当前 `serviceSync.mode=demand` 时，`it-pc-sync-all/all-mode-demo` 的实例数为 0。如果之前的 all 模式用例留下 Polaris Service，该 Service 可以保留，但不能有 controller 注册的实例。
+**Expected**: When `serviceSync.mode=demand`, the controller instance count for
+`it-pc-sync-all/all-mode-demo` is zero. A Polaris Service retained from an
+earlier all-mode run may remain, but it must not contain a current controller
+instance.
 
 ### SYNC-05 service-and-instance-metadata
 
-**目的**：验证 Service Label、Service Annotation metadata、Pod Label、保留字段和受保护字段的最终结果。
+**Purpose**: Verify the final Service label, Service annotation metadata, Pod
+label, reserved-field, and protected-field results.
 
-**测试对象**：`it-pc-sync/metadata-demo` 和 `sync-shared` Pod。
+**Objects**: `it-pc-sync/metadata-demo` and the `sync-shared` Pod.
 
-**Polaris Service 预期**：
+**Expected Polaris Service**:
 
 ```text
 service.metadata.owner = payments
 service.metadata.tier = backend
-service.metadata 不包含 Pod-only label app
+service.metadata does not contain the Pod-only label app
 ```
 
-**Polaris Instance 预期**：
+**Expected Polaris instance**:
 
 ```text
 metadata.tenant = pod-tenant
@@ -264,8 +323,8 @@ metadata.env = service-env
 metadata.app = sync-shared
 metadata.polarismesh.cn/customVersion = v9
 metadata.source = polaris-controller
-metadata.clusterName 非空
-metadata 不包含 version/protocol/region/zone/campus
+metadata.clusterName is non-empty
+metadata does not contain version/protocol/region/zone/campus
 version = v9
 protocol = http
 weight = 70
@@ -274,92 +333,102 @@ location.zone = zone-a
 location.campus = campus-1
 ```
 
-**验证方式**：`service-sync/run.sh` 中的 `assert_service_metadata` 和 `instances_json` jq 断言。
+**Verification**: `assert_service_metadata` and the jq assertions in
+`service-sync/run.sh`.
 
 ### SYNC-06 ttl
 
-**目的**：验证 `polarismesh.cn/ttl` 和协议保留字段处理。
+**Purpose**: Verify `polarismesh.cn/ttl` and reserved protocol handling.
 
-**测试对象**：`it-pc-sync/ttl-demo`，Pod Label 带有 `protocol=grpc`。
+**Object**: `it-pc-sync/ttl-demo`. The Pod label contains `protocol=grpc`.
 
-**预期结果**：
+**Expected**:
 
-- 实例数 1。
-- `enableHealthCheck=true`。
-- `healthCheck.heartbeat.ttl=60`。
-- 顶层 `protocol=TCP`，因为没有配置 `polarismesh.cn/protocols`。
-- Pod Label `protocol=grpc` 被忽略，metadata 不包含 `protocol`。
+- Instance count is 1.
+- `enableHealthCheck=true`.
+- `healthCheck.heartbeat.ttl=60`.
+- Top-level `protocol=TCP` because no `polarismesh.cn/protocols` mapping is
+  configured.
+- The Pod `protocol=grpc` label is ignored and is absent from metadata.
 
 ### SYNC-07 multi-port-protocol
 
-**目的**：验证多端口 Service 生成多个实例，并应用命名端口协议映射。
+**Purpose**: Verify that a multi-port Service creates multiple instances and
+applies named-port protocol mappings.
 
-**测试对象**：`it-pc-sync/multiport-demo`，端口 `http:8083` 和 `grpc:9090`，协议映射为 `http/grpc`。
+**Object**: `it-pc-sync/multiport-demo` with `http:8083` and `grpc:9090`,
+mapped to `http` and `grpc`.
 
-**预期结果**：
+**Expected**:
 
-- 实例数 2。
-- 实例顶层 protocol 排序后为 `["grpc","http"]`。
+- Instance count is 2.
+- Sorted top-level protocols are `["grpc","http"]`.
 
 ### SYNC-08 statefulset-custom-weight
 
-**目的**：验证 StatefulSet 实例的索引权重映射。
+**Purpose**: Verify StatefulSet indexed custom weights.
 
-**测试对象**：`it-pc-sync/stateful-demo`，2 个副本，`customWeight` 为 `0-8080:80`、`1-8080:20`。
+**Object**: `it-pc-sync/stateful-demo` with two replicas and
+`customWeight={"0-8080":80,"1-8080":20}`.
 
-**预期结果**：
+**Expected**:
 
-- 实例数 2。
-- 权重排序为 `[20,80]`。
+- Instance count is 2.
+- Sorted weights are `[20,80]`.
 
 ### SYNC-09 not-ready-endpoint-isolated
 
-**目的**：验证 NotReady Endpoint 不会漏注册，而是生成隔离实例。
+**Purpose**: Verify that a NotReady Endpoint is registered as an isolated
+instance rather than omitted.
 
-**测试对象**：`it-pc-sync/notready-demo`，readinessProbe 指向未监听的 18080。
+**Object**: `it-pc-sync/notready-demo`. Its readiness probe targets unserved
+port 18080.
 
-**预期结果**：
+**Expected**:
 
-- Endpoints 中存在 `notReadyAddresses`。
-- Polaris 实例数 1。
-- 实例 `isolate=true`。
+- The Endpoints object contains `notReadyAddresses`.
+- Polaris instance count is 1.
+- The instance has `isolate=true`.
 
 ### SYNC-10 alias
 
-**目的**：验证 Service 别名创建和 metadata alias。
+**Purpose**: Verify Service alias creation and metadata-driven aliases.
 
-**测试对象**：
+**Objects**:
 
-- `alias-winner-a` → `shared-alias`
-- `metadata-demo` → `metadata-demo-alias`
+- `alias-winner-a` -> `shared-alias`
+- `metadata-demo` -> `metadata-demo-alias`
 
-**预期结果**：
+**Expected**:
 
-- `it-pc-sync/shared-alias` 指向 `it-pc-sync/alias-winner-a`。
-- `it-pc-sync/metadata-demo-alias` 指向 `it-pc-sync/metadata-demo`。
+- `it-pc-sync/shared-alias` targets `it-pc-sync/alias-winner-a`.
+- `it-pc-sync/metadata-demo-alias` targets
+  `it-pc-sync/metadata-demo`.
 
 ### SYNC-11 service-label-convergence
 
-**目的**：验证 Kubernetes Service Label 增删会收敛到 Polaris Service metadata。
+**Purpose**: Verify that Service label additions and removals converge into
+Polaris Service metadata.
 
-**操作**：
+**Operations**:
 
 ```text
-为 metadata-demo 增加 owner=payments-v2
-删除 metadata-demo 的 tier Label
+Add owner=payments-v2 to metadata-demo.
+Remove the tier label from metadata-demo.
 ```
 
-**预期结果**：
+**Expected**:
 
-- Polaris Service `owner` 变为 `payments-v2`。
-- Polaris Service `tier` 字段被删除。
-- Pod Label `app` 不会出现在 Service metadata 中。
+- Polaris Service `owner` becomes `payments-v2`.
+- Polaris Service `tier` is removed.
+- The Pod label `app` does not appear in Service metadata.
 
 ### SYNC-12 pod-label-convergence
 
-**目的**：验证 Pod Label 变更通过周期对账收敛，并验证保留字段优先级。
+**Purpose**: Verify periodic reconciliation of Pod label changes and reserved
+field precedence.
 
-**操作**：修改 Pod Label：
+**Operations**: Change the Pod labels:
 
 ```text
 tenant=pod-tenant-v2
@@ -370,114 +439,118 @@ zone=zone-b
 campus=campus-2
 ```
 
-**预期结果**：
+**Expected**:
 
-- metadata 中 tenant/team 更新。
-- 顶层 Version 仍为 `v9`，因为 `polarismesh.cn/customVersion=v9` 优先于 Pod Label `version=v3`。
-- 顶层 Location 更新为 `cn-south/zone-b/campus-2`。
-- metadata 不包含 `version/protocol/region/zone/campus`。
+- Metadata `tenant` and `team` are updated.
+- Top-level Version remains `v9` because
+  `polarismesh.cn/customVersion=v9` has priority over Pod `version=v3`.
+- Top-level Location becomes `cn-south/zone-b/campus-2`.
+- Metadata does not contain `version/protocol/region/zone/campus`.
 
 ### SYNC-13 namespace-disable-keeps-explicit-service
 
-**目的**：验证关闭 Namespace 同步时只清理 controller 管理的实例，不删除 Polaris Service，也不影响显式同步的 Service。
+**Purpose**: Verify that disabling Namespace sync removes only
+controller-managed instances. It must not delete Polaris Services or affect an
+explicitly synced Service.
 
-**操作**：
+**Operations**:
 
 ```text
-将 it-pc-sync Namespace 注解改为 sync=false
-等待收敛
-再改回 sync=true
+Set polarismesh.cn/sync=false on the it-pc-sync Namespace.
+Wait for convergence.
+Set it back to sync=true.
 ```
 
-**预期结果**：
+**Expected**:
 
-- `namespace-only-demo` 的实例数变为 0。
-- `namespace-only-demo` 的 Polaris Service 对象保留。
-- 显式 `sync=true` 的 `multiport-demo` 仍有 2 个实例，Service 保留。
-- 恢复 `sync=true` 后，`namespace-only-demo` 实例数恢复为 1。
+- `namespace-only-demo` instance count becomes 0.
+- The `namespace-only-demo` Polaris Service remains.
+- The explicit `multiport-demo` Service still has two instances and remains.
+- After restoring `sync=true`, `namespace-only-demo` returns to one instance.
 
-**说明**：`sync=false` 的语义是清理实例，不是删除 Polaris Service。验证时应等待实例数归零并确认 Service 保留，不要使用 `wait_service_absent` 判断 Service 对象消失。
+`sync=false` means remove instances, not delete the Polaris Service. Confirm the
+Service remains; do not use `wait_service_absent` for this assertion.
 
 ### SYNC-14 service-disable-cleans-polaris-instances
 
-**目的**：验证单个 Service 关闭同步时清理实例并保留 Polaris Service。
+**Purpose**: Verify that disabling one Service removes its instances and keeps
+its Polaris Service.
 
-**操作**：
+**Operation**: Set `polarismesh.cn/sync=false` on `metadata-demo`.
 
-```text
-设置 metadata-demo 的 polarismesh.cn/sync=false
-```
+**Expected**:
 
-**预期结果**：
-
-- `metadata-demo` 实例数变为 0。
-- `metadata-demo` Polaris Service 对象保留。
+- `metadata-demo` instance count becomes 0.
+- The `metadata-demo` Polaris Service remains.
 
 ---
 
-## 6. 可选 Service 同步用例
+## 6. Optional Service Synchronization Cases
 
 ### ALIAS-01 alias-stable-winner-and-handover
 
-**运行条件**：`RUN_ALIAS_WINNER=1`，或单独运行 `service-sync/alias-winner.sh`。
+**Run condition**: `RUN_ALIAS_WINNER=1` or run
+`service-sync/alias-winner.sh`.
 
-**目的**：验证多个 Service 竞争同一别名时 winner 稳定，源 Service 删除后发生 handover。
+**Purpose**: Verify a stable winner when multiple Services request the same
+alias, followed by handover after the winner is deleted.
 
-**操作**：
+**Operations**:
 
-1. 创建 `alias-a-<suffix>`，声明别名 `shared-alias-<suffix>`。
-2. 等待别名指向 A。
-3. 创建 `alias-b-<suffix>`，声明同一别名。
-4. 确认别名仍指向 A，不因后创建者改变。
-5. 删除 A。
-6. 等待别名 handover 到 B。
+1. Create `alias-a-<suffix>` with alias `shared-alias-<suffix>`.
+2. Wait until the alias targets A.
+3. Create `alias-b-<suffix>` with the same alias.
+4. Confirm that B does not steal the alias from A.
+5. Delete A.
+6. Wait for handover to B.
 
-**预期结果**：
+**Expected**:
 
-- A 是初始 winner。
-- B 创建后不会抢占 A。
-- A 删除后，别名指向 B。
-- 源 Service 删除后，脚本断言实例数为 0；Polaris Service 是否存在会记录
-  日志，不作为该脚本的失败条件。
-- 别名对象有意保留，不自动删除。
+- A is the initial winner.
+- B does not take over while A exists.
+- The alias targets B after A is deleted.
+- The generated alias remains in Polaris and is not deleted automatically.
 
-### MODE-01 all-mode service sync
+### MODE-01 all-mode-service-sync
 
-**运行条件**：`RUN_ALL_MODE=1`，或单独运行 `service-sync/switch-mode.sh all`。
+**Run condition**: `RUN_ALL_MODE=1` or run
+`service-sync/switch-mode.sh all`.
 
-**目的**：验证 `serviceSync.mode=all` 会同步普通 Namespace 中未显式设置 `sync` 的 Service。
+**Purpose**: Verify that `serviceSync.mode=all` synchronizes an ordinary
+Service without an explicit `sync` annotation.
 
-**操作**：
+**Operations**:
 
-1. 读取当前 `injector-mesh` 中的 `serviceSync.mode`。
-2. 切换为 `all` 并重启 controller。
-3. 等待 `it-pc-sync-all/all-mode-demo` 的 Service 和 1 个实例。
-4. 恢复原模式，默认为 `demand`。
+1. Read the current `injector-mesh` `serviceSync.mode`.
+2. Switch to `all` and restart the controller.
+3. Wait for `it-pc-sync-all/all-mode-demo` and one instance.
+4. Restore the original mode, normally `demand`.
 
-**预期结果**：
+**Expected**:
 
-- all 模式下 `all-mode-demo` 被同步，实例数 1。
-- 恢复 demand 后 `all-mode-demo` 的实例被清理。
-- 恢复 demand 后脚本断言实例数为 0；Polaris Service 是否存在会记录日志，
-  但不是该脚本的失败条件。
+- In all mode, `all-mode-demo` is synced with one instance.
+- After restoring demand, its controller instances are removed.
+- The script waits for instance count 0. Polaris Service retention is logged
+  but is not a failure condition for this script.
 
-> 该用例会重启 controller；在 EKlet 或镜像拉取较慢的环境，建议将 `WAIT_TIMEOUT` 调大（例如 300 秒以上）。
+This case restarts the controller. Use a larger `WAIT_TIMEOUT`, for example 300
+seconds, on EKlet or clusters with slow image pulls.
 
 ---
 
-## 7. Sidecar / Java Agent 注入用例
+## 7. Sidecar and Java Agent Injection Cases
 
 ### INJ-01 dns-mode-and-sidecar-config
 
-**对象**：`it-pc-inject-default/dns-ok`。
+**Object**: `it-pc-inject-default/dns-ok`.
 
-**预期结果**：
+**Expected**:
 
-- 存在 `polaris-sidecar` 容器。
-- 存在 `polaris-sidecar-init` init container。
-- Pod 注解 `sidecar.polarismesh.cn/status` 非空。
-- 不存在 `envoy` 容器（DNS 模式不注入 envoy）。
-- Sidecar env 包含：
+- A `polaris-sidecar` container exists.
+- A `polaris-sidecar-init` init container exists.
+- Annotation `sidecar.polarismesh.cn/status` is non-empty.
+- No `envoy` container exists in DNS mode.
+- Sidecar environment includes:
 
 ```text
 SIDECAR_DNS_SUFFIX=cluster.local
@@ -489,46 +562,49 @@ SIDECAR_LOG_LEVEL=debug
 
 ### INJ-02 namespace-and-pod-label-selection
 
-**对象**：`it-pc-inject-podlabel/pod-label-injected`。
+**Object**: `it-pc-inject-podlabel/pod-label-injected`.
 
-**条件**：Namespace 没有注入 Label；Pod 自身有 `polarismesh.cn/inject=enabled` 和注入注解。
+**Condition**: The Namespace has no injection label; the Pod has
+`polarismesh.cn/inject=enabled` and an injection annotation.
 
-**预期结果**：存在 `polaris-sidecar` 容器。
+**Expected**: A `polaris-sidecar` container exists.
 
 ### INJ-03 explicit-disable-annotation
 
-**对象**：`it-pc-inject-default/dns-disabled-annotation`。
+**Object**: `it-pc-inject-default/dns-disabled-annotation`.
 
-**条件**：Pod 注解 `polarismesh.cn/inject=false`。
+**Condition**: Pod annotation `polarismesh.cn/inject=false`.
 
-**预期结果**：不存在 `polaris-sidecar`，也不存在 `polaris-*` init container。
+**Expected**: No `polaris-sidecar` and no `polaris-*` init container exists.
 
 ### INJ-04 never-inject-label
 
-**对象**：`it-pc-inject-default/dns-disabled-label`。
+**Object**: `it-pc-inject-default/dns-disabled-label`.
 
-**条件**：Pod Label `polarismesh.cn/inject=disabled`。
+**Condition**: Pod label `polarismesh.cn/inject=disabled`.
 
-**预期结果**：不存在 sidecar 和 `polaris-*` init container。
+**Expected**: No sidecar and no `polaris-*` init container exists.
 
 ### INJ-05 dns-hostnetwork-disabled
 
-**对象**：`it-pc-inject-default/dns-hostnetwork`。
+**Object**: `it-pc-inject-default/dns-hostnetwork`.
 
-**条件**：`hostNetwork=true`，注解要求注入 DNS 模式。
+**Condition**: `hostNetwork=true` and an annotation requests DNS mode.
 
-**预期结果**：Pod 保持 `hostNetwork=true`，但不注入 `polaris-sidecar`。
+**Expected**: The Pod remains on the host network but receives no
+`polaris-sidecar`.
 
 ### INJ-06 javaagent-config-priority
 
-**对象**：`it-pc-inject-java/java-config`。
+**Object**: `it-pc-inject-java/java-config`.
 
-**条件**：Namespace 开启注入；Pod 配置 Java Agent 和 `javaagentConfig`。
+**Condition**: Namespace injection is enabled and the Pod configures a Java
+Agent with `javaagentConfig`.
 
-**预期结果**：
+**Expected**:
 
-- 存在 `polaris-javaagent-init` init container。
-- `JAVA_TOOL_OPTIONS` 包含：
+- A `polaris-javaagent-init` init container exists.
+- `JAVA_TOOL_OPTIONS` contains:
 
 ```text
 -Dspring.application.name=java-config-service
@@ -537,54 +613,57 @@ SIDECAR_LOG_LEVEL=debug
 
 ### INJ-07 javaagent-workload-name-fallback
 
-**对象**：`it-pc-inject-java/java-workload` Deployment。
+**Object**: Deployment `it-pc-inject-java/java-workload`.
 
-**条件**：配置 `workloadNameAsServiceName=true` 和 `workloadNamespaceAsServiceNamespace=true`。
+**Condition**: `workloadNameAsServiceName=true` and
+`workloadNamespaceAsServiceNamespace=true`.
 
-**预期结果**：
+**Expected**:
 
-- 存在 `polaris-javaagent-init`。
-- 应用名自动取 workload 名 `java-workload`。
-- Namespace 取 `it-pc-inject-java`。
+- A `polaris-javaagent-init` init container exists.
+- The application name defaults to `java-workload`.
+- The Namespace defaults to `it-pc-inject-java`.
 
 ### INJ-08 javaagent-hostnetwork-allowed
 
-**对象**：`it-pc-inject-java/java-hostnetwork`。
+**Object**: `it-pc-inject-java/java-hostnetwork`.
 
-**条件**：`hostNetwork=true`，开启 Java Agent。
+**Condition**: `hostNetwork=true` with Java Agent enabled.
 
-**预期结果**：保持 `hostNetwork=true`，并且仍存在 `polaris-javaagent-init`。
+**Expected**: The Pod stays on the host network and still receives a
+`polaris-javaagent-init` init container.
 
 ### INJ-09 legacy-namespace-label
 
-**对象**：`it-pc-inject-legacy/legacy-label-injected`。
+**Object**: `it-pc-inject-legacy/legacy-label-injected`.
 
-**条件**：Namespace 使用旧版 `polaris-injection=enabled`。
+**Condition**: The Namespace uses the legacy
+`polaris-injection=enabled` label.
 
-**预期结果**：存在 `polaris-sidecar`。
+**Expected**: A `polaris-sidecar` container exists.
 
 ### INJ-10 default-mode-not-injected
 
-**对象**：`it-pc-inject-no-mode/no-mode-not-injected`。
+**Object**: `it-pc-inject-no-mode/no-mode-not-injected`.
 
-**条件**：
+**Conditions**:
 
-- Namespace 设置 `polarismesh.cn/inject=enabled`，使 Pod 进入 Webhook。
-- Namespace 不设置 `polaris-sidecar-mode`。
-- Pod 不设置 `polarismesh.cn/sidecar-mode`，也不设置 `javaagent` 或
-  `sidecar.polarismesh.cn/openOnDemand`。
-- controller 的 `sidecarInject.mode` 为 `""` 或 `none`。
+- The Namespace has `polarismesh.cn/inject=enabled`, so the Pod enters the
+  webhook path.
+- The Namespace has no `polaris-sidecar-mode`.
+- The Pod has no `polarismesh.cn/sidecar-mode`, `javaagent`, or
+  `sidecar.polarismesh.cn/openOnDemand`.
+- Controller `sidecarInject.mode` is empty or `none`.
 
-**预期结果**：
+**Expected**:
 
-- 业务 Pod 创建成功，Webhook 不阻塞 Pod 创建。
-- 存在业务容器 `app`。
-- 不存在 `polaris-sidecar` 容器。
-- 不存在 `envoy` 容器。
-- 不存在以 `polaris-` 开头的 init container。
-- Pod 不包含 `sidecar.polarismesh.cn/status` 注入状态注解。
+- The business Pod is created successfully and the webhook does not block it.
+- Business container `app` exists.
+- No `polaris-sidecar` or `envoy` container exists.
+- No init container whose name starts with `polaris-` exists.
+- Annotation `sidecar.polarismesh.cn/status` is absent.
 
-**验证方式**：
+**Verification**:
 
 ```bash
 kubectl -n it-pc-inject-no-mode get pod no-mode-not-injected -o json | \
@@ -596,177 +675,96 @@ kubectl -n it-pc-inject-no-mode get pod no-mode-not-injected -o json | \
   '
 ```
 
-该用例覆盖“Webhook 已被 Namespace Label 命中，但没有任何有效 sidecar mode”
-的默认路径；它不同于 INJ-03/INJ-04 的显式关闭，也不同于 INJ-05 的 hostNetwork 限制。
+This covers a webhook match without a valid sidecar mode. It differs from the
+explicit disable cases INJ-03/INJ-04 and the hostNetwork restriction INJ-05.
 
 ### INJ-11 modes-are-independent
 
-**目的**：确认 Sidecar 注入和 Service 同步是独立模式。
+**Purpose**: Verify that Sidecar injection and Service synchronization are
+independent.
 
-**测试对象**：
+**Objects**:
 
-- `it-pc-inject-default/inject-only-service`：显式 `sync=false`。
-- `it-pc-inject-default/dns-ok`：只有 Pod 注入，不创建 Polaris Service。
+- `it-pc-inject-default/inject-only-service`: explicit `sync=false`.
+- `it-pc-inject-default/dns-ok`: injected Pod with no Service sync.
 
-**预期结果**：Polaris 中不存在 `inject-only-service` 和 `dns-ok`。
+**Expected**: Neither `inject-only-service` nor `dns-ok` exists in Polaris.
 
 ---
 
-## 8. 组合用例
+## 8. Combined Case
 
 ### COMBO-01 service-sync-and-dns-injection
 
-**对象**：`it-pc-combo/combo-demo`。
+**Object**: `it-pc-combo/combo-demo`.
 
-**条件**：Namespace 同时开启 Service 同步和 DNS 注入。
+**Condition**: The Namespace enables both Service sync and DNS injection.
 
-**预期结果**：
+**Expected**:
 
-- Pod 存在 `polaris-sidecar` 和 `polaris-sidecar-init`。
-- `SIDECAR_DNS_TTL=15`。
-- Polaris Service metadata：`owner=combo-team`。
-- Polaris 实例数 1。
-- 实例 metadata：`tenant=combo-pod-tenant`（Pod Label 覆盖 Service Annotation）、`env=combo`、`source=polaris-controller`。
-- 实例顶层 `version=v1`。
-- 保留字段不出现在业务 metadata 中。
-
----
-
-## 9. 清理和编排
-
-### CLEAN-01 cleanup.sh
-
-**目的**：删除全部专用 Namespace，并等待 Namespace 完全释放。
-
-**预期结果**：
-
-- 下列 Namespace 全部删除：
-
-```text
-it-pc-sync
-it-pc-sync-legacy
-it-pc-sync-all
-it-pc-inject-default
-it-pc-inject-podlabel
-it-pc-inject-java
-it-pc-inject-legacy
-it-pc-inject-no-mode
-it-pc-combo
-it-pc-ns-lifecycle
-it-pc-svc-lifecycle
-it-pc-svc-alias
-it-pc-ep-lifecycle
-```
-
-- `all_ns_absent` 逐一确认所有 Namespace 不存在，不会因为其中一个先不存在而提前通过。
-
-**注意**：
-
-- cleanup 不自动删除 Polaris 别名，例如 `metadata-demo-alias`、`shared-alias`。
-- cleanup 不删除 Polaris Namespace；Namespace 生命周期用例保留的
-  `it-pc-ns-lifecycle` 需要单独清理。
-- Polaris Service 对象在关闭同步/删除 Namespace 时可能保留；如果需要完全清理测试数据，应按测试 Namespace 手动清理。
-- EKlet 环境偶尔会延迟 Pod 删除；如果 Namespace 长时间 Terminating，可先 force delete 测试 Pod，再重新执行 cleanup。
-
-### ORCH-01 run-all.sh
-
-**目的**：统一编排默认套件和可选套件。
-
-**默认顺序**：
-
-```text
-wait_rollout polaris-system/polaris-controller
-RESET_CASES=1：清理全部专用 Namespace
-service-sync/run.sh
-lifecycle/namespace/run.sh
-lifecycle/service/run.sh
-lifecycle/endpoints/run.sh
-inject/run.sh
-combined/run.sh
-all cases completed
-```
-
-**可选顺序**：
-
-```text
-RUN_ALIAS_WINNER=1：service-sync/alias-winner.sh
-RUN_ALL_MODE=1：service-sync/switch-mode.sh all
-```
-
-**预期结果**：
-
-- 默认套件全部打印 `all ... assertions passed`。
-- 最后打印 `[case] all cases completed`。
-- `CLEANUP=1` 时退出阶段自动调用 cleanup。
+- The Pod has `polaris-sidecar` and `polaris-sidecar-init`.
+- `SIDECAR_DNS_TTL=15`.
+- Polaris Service metadata contains `owner=combo-team`.
+- Polaris instance count is 1.
+- Instance metadata contains `tenant=combo-pod-tenant` from the Pod label,
+  `env=combo`, and `source=polaris-controller`.
+- Instance top-level `version=v1`.
+- Reserved fields do not appear in business metadata.
 
 ---
 
-## 10. 注意事项
+## 9. Lifecycle Cases
 
-1. 不要通过 HTTP 查询的 `metadata.version`、`metadata.protocol`、`metadata.region`、`metadata.zone`、`metadata.campus` 判断同步结果；应断言顶层字段。
-2. `sync=false` 的预期是清理 controller 管理的实例，不是删除 Polaris Service。
-3. Pod Label `protocol` 和 `polarismesh.cn/metadata` 中的 `protocol` 不会影响顶层 Protocol；顶层 Protocol 由 EndpointPort 和 `polarismesh.cn/protocols` 决定。
-4. `customVersion` 优先于 Pod Label `version`。
-5. MODE-01 会重启 controller；在 EKlet 或镜像拉取较慢的环境建议增大 `WAIT_TIMEOUT`，避免只失败在滚动等待阶段。
-6. 测试 Namespace 必须是专用的；cleanup 会直接删除这些 Kubernetes Namespace，
-   不会删除 Polaris Namespace。
-7. Namespace 生命周期用例会验证删除 Kubernetes Namespace 后 Polaris Namespace 仍保留；
-   该 Polaris Namespace 不会由 cleanup 自动删除。
-8. INJ-10 的“默认不注入”只适用于 `sidecarInject.mode` 为空或 `none`；显式配置集群
-   mode 时，Pod 即使没有 Namespace/Pod mode 也会按集群配置注入。
-
----
-
-## 11. Namespace / Service / Endpoints 生命周期用例
-
-生命周期用例位于 `integration/cases/lifecycle`，默认由 `run-all.sh` 在
-`service-sync` 之后执行。
+Lifecycle cases live under `integration/cases/lifecycle` and run after
+`service-sync` in `run-all.sh`.
 
 ### NS-LIFE-01 namespace-create-sync-and-service
 
-**目的**：验证开启同步的 Namespace 会创建 Polaris Namespace，并同步其中的
-Service 和实例。
+**Purpose**: Verify that a synced Namespace creates a Polaris Namespace and
+synchronizes its Service and instance.
 
-**操作**：
+**Operations**:
 
 ```text
-创建 it-pc-ns-lifecycle，注解 polarismesh.cn/sync=true
-创建 ns-lifecycle-demo Deployment 和 Service
+Create it-pc-ns-lifecycle with polarismesh.cn/sync=true.
+Create the ns-lifecycle-demo Deployment and Service.
 ```
 
-**预期结果**：
+**Expected**:
 
-- Polaris 中存在 `it-pc-ns-lifecycle` Namespace。
-- Polaris 中存在 `it-pc-ns-lifecycle/ns-lifecycle-demo` Service。
-- Service 下有 1 个实例。
+- Polaris Namespace `it-pc-ns-lifecycle` exists.
+- Polaris Service `it-pc-ns-lifecycle/ns-lifecycle-demo` exists.
+- The Service has one instance.
 
-**说明**：如果 Polaris Namespace 在用例开始前已经存在，用例会跳过
-“从不存在到创建”的严格前置断言，但仍验证对象收敛。
+If the Polaris Namespace already exists before the case, the strict
+"created from absent" precondition is skipped, but convergence is still
+verified.
 
-**验证方式**：`lifecycle/namespace/run.sh` 使用 `wait_namespace`、
-`wait_service` 和 `wait_instance_count`。
+**Verification**: `wait_namespace`, `wait_service`, and
+`wait_instance_count` in `lifecycle/namespace/run.sh`.
 
 ### NS-LIFE-02 namespace-delete-retains-polaris-resources
 
-**目的**：验证删除 Kubernetes Namespace 不会删除 Polaris Namespace 和 Service，
-但会移除同步实例。
+**Purpose**: Verify that deleting the Kubernetes Namespace does not delete the
+Polaris Namespace or Service, while synced instances are removed.
 
-**操作**：删除 `it-pc-ns-lifecycle`，等待 Kubernetes Namespace 消失。
+**Operation**: Delete `it-pc-ns-lifecycle` and wait for the Kubernetes
+Namespace to disappear.
 
-**预期结果**：
+**Expected**:
 
-- Polaris Namespace `it-pc-ns-lifecycle` 仍存在。
-- Polaris Service `it-pc-ns-lifecycle/ns-lifecycle-demo` 仍存在。
-- 实例数收敛到 0。
+- Polaris Namespace `it-pc-ns-lifecycle` remains.
+- Polaris Service `it-pc-ns-lifecycle/ns-lifecycle-demo` remains.
+- Instance count converges to 0.
 
-**验证方式**：Kubernetes Namespace 消失后重新查询 Polaris Namespace 和
-Service，并等待该 Service 的实例数归零。
+**Verification**: Query Polaris after Kubernetes Namespace deletion and wait
+for the instance count to become 0.
 
 ### SVC-LIFE-01 service-types-and-cross-namespace-alias
 
-**目的**：验证不同 Service 类型和跨 Namespace 别名。
+**Purpose**: Verify multiple Service types and a cross-Namespace alias.
 
-**测试对象**：
+**Objects**:
 
 ```text
 it-pc-svc-lifecycle/svc-clusterip
@@ -777,84 +775,193 @@ it-pc-svc-lifecycle/svc-delete
 it-pc-svc-alias/cross-ns-alias
 ```
 
-**预期结果**：
+**Expected**:
 
-- ClusterIP、NodePort、LoadBalancer 三种 Service 均同步到 Polaris。
-- 上述 5 个源 Service 各有 1 个实例；`svc-delete` 随后用于 SVC-LIFE-02。
-- `it-pc-svc-alias/cross-ns-alias` 指向
-  `it-pc-svc-lifecycle/svc-cross-ns-alias`。
+- ClusterIP, NodePort, and LoadBalancer Services are synchronized.
+- Each of the five source Services has one instance; `svc-delete` is used by
+  SVC-LIFE-02.
+- `it-pc-svc-alias/cross-ns-alias` targets
+  `it-pc-svc-lifecycle/svc-cross-ns-alias`.
 
-**说明**：ExternalName 没有 selector 和 ports，不在 controller 同步路径内，
-因此不纳入正向断言。
+ExternalName is excluded because it has no selector or ports and is outside the
+controller sync path.
 
-**验证方式**：`wait_service`、`wait_instance_count` 和
-`assert_alias_target`。
+**Verification**: `wait_service`, `wait_instance_count`, and
+`assert_alias_target`.
 
 ### SVC-LIFE-02 service-delete-retains-service-removes-owned-instances
 
-**目的**：验证删除 Kubernetes Service 时保留 Polaris Service，只清理本集群
-controller 管理的实例。
+**Purpose**: Verify that deleting a Kubernetes Service retains the Polaris
+Service and removes only current-cluster controller instances.
 
-**操作**：
+**Operations**:
 
-1. 等待 `svc-delete` 同步完成并有 1 个 controller 实例。
-2. 向 Polaris 手工注册一个 `source=sdk`、`clusterName=integration-external` 的实例，
-   以及一个 `source=polaris-controller`、`clusterName=integration-other-cluster`、
-   带独立 `k8sServiceUID` 的实例。
-3. 删除 Kubernetes Service `svc-delete`。
+1. Wait for `svc-delete` to sync with one controller instance.
+2. Manually register an SDK instance with `source=sdk` and
+   `clusterName=integration-external`.
+3. Register another controller instance with
+   `clusterName=integration-other-cluster` and a distinct `k8sServiceUID`.
+4. Delete Kubernetes Service `svc-delete`.
 
-手工实例直接通过 Polaris HTTP API 注册，不经过 controller，因此可以显式
-指定 `source`、`clusterName` 和 `k8sServiceUID`，用于验证删除边界。
+The manual instances use the Polaris HTTP API directly, so the test can set
+`source`, `clusterName`, and `k8sServiceUID` explicitly.
 
-**预期结果**：
+**Expected**:
 
-- Polaris Service `it-pc-svc-lifecycle/svc-delete` 仍存在。
-- 当前集群 controller 管理的实例数变为 0。当前集群名从
-  `injector-mesh.mesh.clusterName` 读取。
-- 手工注册的 SDK 实例和其他集群 controller 实例仍存在，且
-  `source`/`clusterName` metadata 未被改写。
+- Polaris Service `it-pc-svc-lifecycle/svc-delete` remains.
+- Current-cluster controller instance count becomes 0. The cluster name comes
+  from `injector-mesh.mesh.clusterName`.
+- The SDK and other-cluster controller instances remain with unchanged
+  `source` and `clusterName` metadata.
 
-**归属规则**：controller 实例按 `source=polaris-controller` 和
-`clusterName=当前集群` 判断；`k8sServiceUID` 不决定实例归属，因此其他集群
-controller 实例即使带 `k8sServiceUID` 也不能被本集群删除。
+Controller instance ownership is determined by
+`source=polaris-controller` and `clusterName=<current cluster>`.
+`k8sServiceUID` does not determine ownership, so a foreign controller instance
+must not be deleted by this cluster.
 
-**验证方式**：`register_external_instance`、
-`wait_controller_instance_count`、`wait_instance_key` 和显式 jq metadata
-断言。外部实例清理等待由 `EXTERNAL_DELETE_TIMEOUT` 控制。
+**Verification**: `register_external_instance`,
+`wait_controller_instance_count`, `wait_instance_key`, and explicit jq
+metadata assertions. `EXTERNAL_DELETE_TIMEOUT` controls external-instance
+cleanup waits.
 
 ### EP-LIFE-01 endpoints-address-health-and-ip-port-mapping
 
-**目的**：验证 Endpoints 的 IP:port 组合与 Polaris 实例一致，Ready 实例为健康
-且未隔离。
+**Purpose**: Verify that Endpoints IP:port values match Polaris instances and
+that Ready instances are healthy and not isolated.
 
-**操作**：读取 `it-pc-ep-lifecycle/ep-demo` 的 Endpoints 和 Polaris 实例。
+**Operation**: Read `it-pc-ep-lifecycle/ep-demo` Endpoints and Polaris
+instances.
 
-**预期结果**：
+**Expected**:
 
-- Ready Endpoints 的 `IP:port` 集合与 Polaris 实例集合完全一致。
-- 所有实例 `healthy=true`、`isolate=false`。
+- The Ready Endpoints IP:port set exactly matches the Polaris instance set.
+- Every instance has `healthy=true` and `isolate=false`.
 
-**验证方式**：`endpoint_keys_match_instances` 和
-`ready_instances_healthy`。
+**Verification**: `endpoint_keys_match_instances` and
+`ready_instances_healthy`.
 
 ### EP-LIFE-02 endpoints-scale-up
 
-**操作**：Deployment 副本数从 1 扩到 2。
+**Operation**: Scale the Deployment from 1 to 2 replicas.
 
-**预期结果**：实例数变为 2，IP:port 映射和健康状态继续一致。
+**Expected**: Instance count becomes 2 and IP:port mapping and health remain
+consistent.
 
 ### EP-LIFE-03 endpoints-scale-down
 
-**操作**：Deployment 副本数从 2 缩到 1。
+**Operation**: Scale the Deployment from 2 to 1 replica.
 
-**预期结果**：实例数变为 1，被移除 Pod 的实例从 Polaris 删除。
+**Expected**: Instance count becomes 1 and the removed Pod's instance is
+deleted from Polaris.
 
 ### EP-LIFE-04 endpoints-remove-all-addresses
 
-**操作**：Deployment 副本数缩到 0。
+**Operation**: Scale the Deployment to 0 replicas.
 
-**预期结果**：
+**Expected**:
 
-- Endpoints 没有 Ready 地址；Endpoints 对象被删除时也视为没有 Ready 地址。
-- Polaris 实例数变为 0。
-- Polaris Service `it-pc-ep-lifecycle/ep-demo` 仍存在。
+- Endpoints has no Ready addresses. A deleted Endpoints object also counts as
+  no Ready addresses.
+- Polaris instance count becomes 0.
+- Polaris Service `it-pc-ep-lifecycle/ep-demo` remains.
+
+---
+
+## 10. Cleanup and Orchestration
+
+### CLEAN-01 cleanup.sh
+
+**Purpose**: Delete all dedicated Namespaces and wait for complete release.
+
+**Command**:
+
+```bash
+cd integration/cases
+./cleanup.sh
+```
+
+**Expected**:
+
+- All dedicated Namespaces are deleted.
+- Every Namespace is checked, so one disappearing early does not make the
+  wait pass prematurely.
+
+**Notes**:
+
+- Cleanup does not delete Polaris aliases such as `metadata-demo-alias` and
+  `shared-alias`.
+- Cleanup does not delete Polaris Namespaces. The
+  `it-pc-ns-lifecycle` Polaris Namespace must be removed separately.
+- Polaris Services may remain after sync is disabled or a Kubernetes Namespace
+  is deleted. Remove test data manually when a completely clean Polaris
+  environment is required.
+- On EKlet, Pod deletion can be delayed. If a Namespace remains Terminating,
+  force-delete test Pods and rerun cleanup.
+
+### ORCH-01 run-all.sh
+
+**Purpose**: Run the default and optional suites in a stable order.
+
+**Default policy**: Retain test Namespaces and any remaining Pods, workloads,
+Services, and Endpoints for inspection.
+
+**Default order**:
+
+```text
+wait_rollout polaris-system/polaris-controller
+RESET_CASES=1: delete all dedicated Namespaces
+service-sync/run.sh
+lifecycle/namespace/run.sh
+lifecycle/service/run.sh
+lifecycle/endpoints/run.sh
+inject/run.sh
+combined/run.sh
+all cases completed
+```
+
+**Optional order**:
+
+```text
+RUN_ALIAS_WINNER=1: service-sync/alias-winner.sh
+RUN_ALL_MODE=1: service-sync/switch-mode.sh all
+```
+
+**Resource control**:
+
+```bash
+./run-all.sh --keep
+./run-all.sh --cleanup
+./inspect.sh
+./cleanup.sh
+```
+
+**Expected**:
+
+- Each default suite prints its `all ... assertions passed` message.
+- The run ends with `[case] all cases completed`.
+- With the default `KEEP_RESOURCES=1`, retained Namespaces and inspection and
+  cleanup commands are printed on exit.
+- `--cleanup` or `CLEANUP=1` invokes cleanup on exit.
+- Setting both `KEEP_RESOURCES=1` and `CLEANUP=1` is an error.
+- Objects intentionally deleted or scaled down by lifecycle cases are not
+  recreated by keep mode.
+
+---
+
+## 11. Important Notes
+
+1. Do not infer sync results from HTTP metadata keys named `version`,
+   `protocol`, `region`, `zone`, or `campus`. Assert the top-level fields.
+2. `sync=false` removes controller-managed instances; it does not delete the
+   Polaris Service.
+3. A Pod label `protocol` and metadata `protocol` do not change top-level
+   Protocol. EndpointPort and `polarismesh.cn/protocols` do.
+4. `customVersion` has priority over the Pod label `version`.
+5. MODE-01 restarts the controller. Increase `WAIT_TIMEOUT` on EKlet or slow
+   image-pull environments.
+6. Test Namespaces must be dedicated. Cleanup deletes these Kubernetes
+   Namespaces directly and does not delete Polaris Namespaces.
+7. The Namespace lifecycle case deliberately retains its Polaris Namespace.
+8. INJ-10 default non-injection applies only when `sidecarInject.mode` is
+   empty or `none`. A configured cluster mode can still inject without a
+   Namespace or Pod mode.

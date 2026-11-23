@@ -419,6 +419,32 @@ assert_alias_target() {
     >/dev/null
 }
 
+case_namespace_names() {
+  printf '%s\n' \
+    "${NS_SYNC}" \
+    "${NS_SYNC_LEGACY}" \
+    "${NS_SYNC_ALL}" \
+    "${NS_INJECT}" \
+    "${NS_INJECT_POD_LABEL}" \
+    "${NS_INJECT_JAVA}" \
+    "${NS_INJECT_LEGACY}" \
+    "${NS_INJECT_NO_MODE}" \
+    "${NS_COMBO}" \
+    "${NS_NS_LIFECYCLE}" \
+    "${NS_SVC_LIFECYCLE}" \
+    "${NS_SVC_ALIAS}" \
+    "${NS_EP_LIFECYCLE}"
+}
+
+existing_case_namespaces() {
+  local namespace
+  while IFS= read -r namespace; do
+    if kube get namespace "${namespace}" --request-timeout=5s >/dev/null 2>&1; then
+      printf '%s\n' "${namespace}"
+    fi
+  done < <(case_namespace_names)
+}
+
 cleanup_case_namespaces() {
   kube delete namespace \
     "${NS_SYNC}" \
