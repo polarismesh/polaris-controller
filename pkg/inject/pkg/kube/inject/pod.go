@@ -74,12 +74,14 @@ func (p *podDataInfo) assignInjectTemplateAndVersion(wh *Webhook) {
 		p.injectTemplateConfig, p.injectTemplateVersion = wh.templateConfig.GetSidecarJavaAgentTemplateAndVersion()
 	case utils.SidecarForDns:
 		p.injectTemplateConfig, p.injectTemplateVersion = wh.templateConfig.GetSidecarDnsTemplateAndVersion()
-	default:
-		// 向前兼容, 默认是mesh模式
+	case utils.SidecarForMesh:
 		p.injectTemplateConfig, p.injectTemplateVersion = wh.templateConfig.GetSidecarMeshTemplateAndVersion()
+	default:
+		// An unknown mode never generates a patch, so no template is loaded.
+		return
 	}
-	log.InjectScope().Infof("podName=%s, injectMode=%s, injectTemplateConfig=%v", p.podName,
-		utils.ParseSidecarModeName(p.injectMode), p.injectTemplateConfig)
+	log.InjectScope().Infof("pod=%s inject-mode=%s template-version=%s", p.podName,
+		utils.ParseSidecarModeName(p.injectMode), p.injectTemplateVersion)
 	p.valuesConfig = wh.templateConfig.GetValuesConfig()
 	return
 }
@@ -112,6 +114,10 @@ func (p *podDataInfo) checkPodData() (bool, error) {
 func (p *podDataInfo) assignInjectAnnotations() {
 	md := p.podObject.ObjectMeta
 	injectAnnotations := map[string]string{}
+	if p.injectTemplateConfig == nil {
+		p.injectedAnnotations = injectAnnotations
+		return
+	}
 	// Add all additional injected annotations
 	for k, v := range p.injectTemplateConfig.InjectedAnnotations {
 		injectAnnotations[k] = v

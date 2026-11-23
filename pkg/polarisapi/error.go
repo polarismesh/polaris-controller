@@ -16,10 +16,114 @@
 package polarisapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/polarismesh/polaris-go/pkg/model"
 )
+
+// ErrDeleteConflict requires authoritative readback before deletion can finish.
+var ErrDeleteConflict = errors.New("instance deletion conflict; confirmation required")
+
+type APIError struct {
+	Code uint32
+	Info string
+}
+
+func (e *APIError) Error() string { return fmt.Sprintf("code=%d %s", e.Code, e.Info) }
+
+// FailureSignature excludes request IDs, addresses and response text so repeated
+// failures aggregate by error class while a changed business code is visible.
+func FailureSignature(err error) string {
+	codes := make(map[string]struct{})
+	var collect func(error)
+	collect = func(err error) {
+		if err == nil {
+			return
+		}
+		switch e := err.(type) {
+		case *BatchError:
+			for _, item := range e.Errors {
+				if item.Cause != nil {
+					collect(item.Cause)
+				} else if item.Code != nil {
+					codes[strconv.FormatUint(uint64(*item.Code), 10)] = struct{}{}
+				}
+			}
+		case *APIError:
+			codes[strconv.FormatUint(uint64(e.Code), 10)] = struct{}{}
+		case model.SDKError:
+			codes[fmt.Sprintf("sdk-%d", e.ErrorCode())] = struct{}{}
+			if e.ServerCode() != 0 {
+				codes[strconv.FormatUint(uint64(e.ServerCode()), 10)] = struct{}{}
+			}
+		case interface{ Unwrap() []error }:
+			for _, child := range e.Unwrap() {
+				collect(child)
+			}
+		case interface{ Unwrap() error }:
+			collect(e.Unwrap())
+		default:
+			var timeout net.Error
+			switch {
+			case errors.Is(err, context.Canceled):
+				codes["cancelled"] = struct{}{}
+			case errors.Is(err, context.DeadlineExceeded), errors.As(err, &timeout) && timeout.Timeout():
+				codes["timeout"] = struct{}{}
+			default:
+				codes[fmt.Sprintf("%T", err)] = struct{}{}
+			}
+		}
+	}
+	collect(err)
+	result := make([]string, 0, len(codes))
+	for code := range codes {
+		result = append(result, code)
+	}
+	sort.Strings(result)
+	return strings.Join(result, ",")
+}
+
+type BatchError struct {
+	Errors []PError
+}
+
+func (e *BatchError) Error() string {
+	data, err := json.Marshal(e.Errors)
+	if err != nil {
+		return fmt.Sprintf("%#v", e.Errors)
+	}
+	return string(data)
+}
+
+func (e *BatchError) Is(target error) bool {
+	if target != ErrDeleteConflict || len(e.Errors) == 0 {
+		return false
+	}
+	for _, failure := range e.Errors {
+		if failure.Code == nil || *failure.Code != SameInstanceRequest {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *BatchError) Unwrap() []error {
+	causes := make([]error, 0, len(e.Errors))
+	for _, item := range e.Errors {
+		if item.Cause != nil {
+			causes = append(causes, item.Cause)
+		}
+	}
+	return causes
+}
 
 // NewPErrors 实例化新的errors
 func NewPErrors() *PErrors {
@@ -34,6 +138,7 @@ type PErrors struct {
 
 // PError API 错误数据
 type PError struct {
+	Cause   error   `json:"-"`
 	ID      string  `json:"id,omitempty"`
 	PodName string  `json:"podName,omitempty"`
 	Port    int     `json:"port,omitempty"`
@@ -55,11 +160,7 @@ func (pe *PErrors) GetError() error {
 	defer pe.m.Unlock()
 
 	if len(pe.e) != 0 {
-		data, err := json.Marshal(pe.e)
-		if err != nil {
-			return fmt.Errorf("%#v", pe.e)
-		}
-		return fmt.Errorf("%s", string(data))
+		return &BatchError{Errors: append([]PError(nil), pe.e...)}
 	}
 	return nil
 }

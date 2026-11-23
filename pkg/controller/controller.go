@@ -16,6 +16,10 @@
 package controller
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -38,6 +42,7 @@ import (
 	"github.com/polarismesh/polaris-controller/common/log"
 	localCache "github.com/polarismesh/polaris-controller/pkg/cache"
 	"github.com/polarismesh/polaris-controller/pkg/metrics"
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
 	"github.com/polarismesh/polaris-controller/pkg/util"
 )
 
@@ -81,11 +86,25 @@ type PolarisController struct {
 	// necessary.
 	queue workqueue.RateLimitingInterface
 
+	// aliasLocks serializes reconciliation for the same Polaris alias.
+	aliasLocks sync.Map
+	// aliasClaimStates deduplicates repeated waiting/conflict events.
+	aliasClaimStates sync.Map
+	// serviceLocks serializes Service reconciliation and generation cleanup.
+	serviceLocks sync.Map
+	// serviceRecoveryApplied records which health-recovery generation checked each Service.
+	serviceRecoveryApplied    sync.Map
+	serviceRecoveryGeneration atomic.Uint64
+
+	syncStateStore *syncStateStore
+	// runContext is assigned before workers start and cancelled before joining them.
+	runContext context.Context
+
 	// workerLoopPeriod is the time between worker runs. The workers process the queue of service and pod changes.
 	workerLoopPeriod time.Duration
 
-	// serviceCache 记录了service历史service相关信息
-	serviceCache *localCache.CachedServiceMap
+	// appliedServiceCache stores the last Service state successfully applied to Polaris.
+	appliedServiceCache *localCache.CachedServiceMap
 	// resyncServiceCache 需要进行同步的service历史
 	resyncServiceCache *localCache.CachedServiceMap
 
@@ -115,13 +134,7 @@ const (
 	polarisControllerName       = "polaris-controller"
 	maxRetries                  = 10
 	metricPolarisControllerName = "polaris_controller"
-	noAllow                     = "false"
 	polarisEvent                = "PolarisRegister"
-
-	// ResourceKeyFlagAdd 加在 queue 中的 key 后，表示 key 对应的 service ，处理时，是否是北极星要处理的服务。
-	// 后续处理流程 syncService 方法中，通过这个字段判断是否要删除服务实例
-	ResourceKeyFlagAdd    = "add"
-	ResourceKeyFlagDelete = "delete"
 )
 
 // NewPolarisController
@@ -148,6 +161,7 @@ func NewPolarisController(
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(),
 			polarisControllerName),
 		workerLoopPeriod: time.Second,
+		syncStateStore:   newSyncStateStore(client),
 	}
 
 	_, _ = serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -190,7 +204,7 @@ func NewPolarisController(
 	p.eventBroadcaster = broadcaster
 	p.eventRecorder = recorder
 
-	p.serviceCache = localCache.NewCachedServiceMap()
+	p.appliedServiceCache = localCache.NewCachedServiceMap()
 	p.resyncServiceCache = localCache.NewCachedServiceMap()
 	p.configFileCache = localCache.NewCachedConfigFileMap()
 	p.resyncConfigFileCache = localCache.NewCachedConfigFileMap()
@@ -225,42 +239,97 @@ func (p *PolarisController) allowDeleteConfig() bool {
 // Run will not return until stopCh is closed. workers determines how many
 // endpoints will be handled in parallel.
 func (p *PolarisController) Run(workers int, stopCh <-chan struct{}) {
-	defer runtime.HandleCrash()
-	defer p.queue.ShutDown()
-	defer p.consumer.Destroy()
-	defer p.provider.Destroy()
+	p.RunWithShutdown(workers, stopCh, nil)
+}
 
-	defer log.Infof("Shutting down polaris controller")
+// RunWithShutdown joins all naming workers before unregistering the controller
+// itself. The Provider remains usable until onShutdown has returned.
+func (p *PolarisController) RunWithShutdown(workers int, stopCh <-chan struct{}, onShutdown func()) {
+	defer runtime.HandleCrash()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.runContext = ctx
+	var users sync.WaitGroup
+	stopListenerDone := make(chan struct{})
+	go func() {
+		select {
+		case <-stopCh:
+			cancel()
+			p.queue.ShutDown()
+		case <-ctx.Done():
+		}
+		close(stopListenerDone)
+	}()
+	defer func() {
+		cancel()
+		p.queue.ShutDown()
+		users.Wait()
+		<-stopListenerDone
+		if onShutdown != nil {
+			onShutdown()
+		}
+		if p.polarisConfigWatcher != nil {
+			if err := p.polarisConfigWatcher.Destroy(); err != nil {
+				log.Errorf("failed to stop experimental config watcher: %v", err)
+			}
+		}
+		if p.provider != nil {
+			p.provider.Destroy()
+		}
+		if p.consumer != nil {
+			p.consumer.Destroy()
+		}
+		if p.eventBroadcaster != nil {
+			p.eventBroadcaster.Shutdown()
+		}
+		log.Infof("Shutting down polaris controller")
+	}()
 
 	if !cache.WaitForCacheSync(stopCh, p.podsSynced, p.servicesSynced, p.endpointsSynced,
 		p.namespaceSynced, p.configMapSynced) {
 		return
 	}
+	if err := p.recoverSyncStates(ctx); err != nil && ctx.Err() == nil {
+		log.Errorf("failed to recover persisted sync states: %v", err)
+	}
 
 	p.CounterPolarisService()
 
+	start := func(fn func()) {
+		users.Add(1)
+		go func() {
+			defer users.Done()
+			fn()
+		}()
+	}
 	for i := 0; i < workers; i++ {
-		go wait.Until(p.worker, p.workerLoopPeriod, stopCh)
+		start(func() { wait.Until(p.worker, p.workerLoopPeriod, ctx.Done()) })
 	}
 
 	// 定时任务
-	go p.MetricTracker(stopCh)
+	start(func() { p.MetricTracker(ctx.Done()) })
 
 	// 定时对账
 	if p.config.PolarisController.ResyncDuration != 0 {
-		go wait.Until(p.resyncWorker, p.config.PolarisController.ResyncDuration, stopCh)
+		start(func() { wait.Until(p.resyncWorker, p.config.PolarisController.ResyncDuration, ctx.Done()) })
 	} else {
-		go wait.Until(p.resyncWorker, time.Second*30, stopCh)
+		start(func() { wait.Until(p.resyncWorker, time.Second*30, ctx.Done()) })
 	}
 
 	// 定时健康探测
 	if p.config.PolarisController.HealthCheckDuration != 0 {
-		go wait.Until(p.checkHealth, p.config.PolarisController.HealthCheckDuration, stopCh)
+		start(func() { wait.Until(p.checkHealth, p.config.PolarisController.HealthCheckDuration, ctx.Done()) })
 	} else {
-		go wait.Until(p.checkHealth, time.Second, stopCh)
+		start(func() { wait.Until(p.checkHealth, time.Second, ctx.Done()) })
 	}
 
 	<-stopCh
+}
+
+func (p *PolarisController) requestContext() context.Context {
+	if p.runContext != nil {
+		return p.runContext
+	}
+	return context.Background()
 }
 
 func (p *PolarisController) worker() {
@@ -281,6 +350,8 @@ func (p *PolarisController) process(t *Task) error {
 		err = p.syncService(t)
 	case KubernetesConfigMap:
 		err = p.syncConfigMap(t)
+	case PolarisSyncState:
+		err = p.processPendingSyncState(t)
 	}
 	return err
 }
@@ -306,23 +377,28 @@ func (p *PolarisController) CounterPolarisService() {
 // MetricTracker
 func (p *PolarisController) MetricTracker(stopCh <-chan struct{}) {
 	ticker := time.NewTicker(time.Second * 30)
-	for range ticker.C {
-		p.CounterPolarisService()
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			p.CounterPolarisService()
+		}
 	}
-	<-stopCh
 }
 
 // IsNamespaceSyncEnable 命名空间是否启用了 sync 注解
 func (p *PolarisController) IsNamespaceSyncEnable(ns *v1.Namespace) bool {
-	sync, ok := ns.Annotations[util.PolarisSync]
+	syncEnabled, ok := ns.Annotations[util.PolarisSync]
 	switch p.SyncMode() {
 	case util.SyncModeDemand:
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	default:
 		if !ok {
 			return true
 		}
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	}
 }
 
@@ -337,18 +413,36 @@ func (p *PolarisController) IsPolarisService(svc *v1.Service) bool {
 		return false
 	}
 
-	sync, ok := svc.Annotations[util.PolarisSync]
+	syncEnabled, ok := svc.Annotations[util.PolarisSync]
 	// 优先看服务的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
+	}
+	// enableRegister 是历史兼容的同步开关：仅在 sync 缺失时生效。
+	// 存量 Service 只设置该注解，且依赖 controller 正常注册实例。
+	if svc.Annotations[util.PolarisEnableRegister] == util.IsEnableSync {
+		return true
 	}
 	ns, err := p.namespaceLister.Get(svc.Namespace)
 	if err != nil {
+		if !p.namespaceCacheHasSynced() {
+			log.SyncNamingScope().Debugf(
+				"Namespace cache is not ready for service %s/%s, %v",
+				svc.Namespace, svc.Name, err)
+			return false
+		}
 		log.SyncNamingScope().Errorf("get namespace for service %s/%s error, %v", svc.Namespace, svc.Name, err)
 		return false
 	}
 	// 如果服务没有注解，则在看下命名空间是否有开启相关 sync 注解
 	return p.IsNamespaceSyncEnable(ns)
+}
+
+func (p *PolarisController) namespaceCacheHasSynced() bool {
+	if p.namespaceSynced == nil {
+		return true
+	}
+	return p.namespaceSynced()
 }
 
 // CompareServiceChange 判断本次更新是什么类型的
@@ -366,6 +460,9 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 	if util.IgnoreObject(svc) {
 		return false
 	}
+	if svc.GetLabels()[syncStateLabelKey] == syncStateLabelValue {
+		return false
+	}
 	if val, ok := svc.Annotations[util.InternalConfigFileSyncSourceKey]; ok {
 		// 如果同步来源是 polaris, 则不能在认为是需要同步回 polaris 的 ConfigMap
 		if val == util.SourceFromPolaris {
@@ -373,10 +470,10 @@ func (p *PolarisController) IsPolarisConfigMap(svc *v1.ConfigMap) bool {
 		}
 	}
 
-	sync, ok := svc.Annotations[util.PolarisSync]
+	syncEnabled, ok := svc.Annotations[util.PolarisSync]
 	// 优先看 ConfigMap 的 annotation 中是否携带 polarismesh.cn/sync 注解
 	if ok {
-		return sync == util.IsEnableSync
+		return syncEnabled == util.IsEnableSync
 	}
 	ns, err := p.namespaceLister.Get(svc.GetNamespace())
 	if err != nil {
@@ -391,40 +488,60 @@ func (p *PolarisController) insertTask(t *Task) {
 	switch t.ObjectType {
 	case KubernetesConfigMap:
 		log.SyncConfigScope().Infof("insert task: %s", t.String())
-	case KubernetesService, KubernetesEndpoints:
+	case KubernetesService, KubernetesEndpoints, PolarisSyncState:
 		log.SyncNamingScope().Infof("insert task: %s", t.String())
 	case KubernetesNamespace:
 		log.Infof("insert task: %s", t.String())
 	}
 	log.TraceScope().Info("INSERT-TASK|" + t.String())
-	p.queue.Add(t)
+	p.queue.Add(t.QueueKey())
 }
 
 func (p *PolarisController) handleTask(f func(t *Task) error) bool {
 	val, shutdown := p.queue.Get()
 	if shutdown {
-		return shutdown
+		return false
 	}
 	defer p.queue.Done(val)
-	task := val.(*Task)
+	if p.requestContext().Err() != nil {
+		p.queue.Forget(val)
+		return false
+	}
+	task := val.(taskQueueKey).task()
 	log.TraceScope().Info("HANDLE-TASK|" + task.String())
 	err := f(task)
+	scope := log.SyncNamingScope()
+	if task.ObjectType == KubernetesConfigMap {
+		scope = log.SyncConfigScope()
+	}
 	if err == nil {
+		scope.ClearFailure(task.Key())
 		log.TraceScope().Info("REMOVE-TASK|" + task.String())
 		p.queue.Forget(val)
 		return true
 	}
+	if p.requestContext().Err() != nil {
+		p.queue.Forget(val)
+		return false
+	}
+	signature := polarisapi.FailureSignature(err)
+	metrics.SyncFailures.WithLabelValues(fmt.Sprint(task.ObjectType), signature).Inc()
+	exhausted := p.queue.NumRequeues(val) >= maxRetries
+	conflictOnly := errors.Is(err, polarisapi.ErrDeleteConflict) && signature == fmt.Sprint(polarisapi.SameInstanceRequest)
+	emitted := scope.ReportFailure(task.Key(), signature, err, exhausted, conflictOnly)
+	if emitted && (task.ObjectType == KubernetesService || task.ObjectType == KubernetesEndpoints) {
+		if service, getErr := p.serviceLister.Services(task.Namespace).Get(task.Name); getErr == nil {
+			p.eventRecorder.Eventf(service, v1.EventTypeWarning, polarisEvent, "Sync failed: %v", err)
+		}
+	}
 
 	if p.queue.NumRequeues(val) < maxRetries {
-		log.TraceScope().Warn("RETRY-TASK|" + task.String())
-		log.Infof("syncing service %v, retrying. Error: %v", task, err)
+		log.TraceScope().Debug("RETRY-TASK|" + task.String())
 		p.queue.AddRateLimited(val)
 		return true
 	}
 
-	log.Errorf("Dropping service %v out of the queue: %v", task, err)
-	log.TraceScope().Error("DROP-TASK|" + task.String())
+	log.TraceScope().Debug("DROP-TASK|" + task.String())
 	p.queue.Forget(val)
-	runtime.HandleError(err)
 	return true
 }

@@ -1,0 +1,341 @@
+// Tencent is pleased to support the open source community by making Polaris available.
+//
+// Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+//
+// Licensed under the BSD 3-Clause License (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://opensource.org/licenses/BSD-3-Clause
+//
+// Unless required by applicable law or agreed to in writing, software distributed
+// under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+// CONDITIONS OF ANY KIND, either express or implied. See the License for the
+// specific language governing permissions and limitations under the License.
+
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/polarismesh/polaris-go/pkg/model"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/workqueue"
+
+	"github.com/polarismesh/polaris-controller/pkg/polarisapi"
+	"github.com/polarismesh/polaris-controller/pkg/util"
+)
+
+func TestServiceDeleteRetriesReadFailureAndRetainsCache(t *testing.T) {
+	p, _ := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	p.queue.ShutDown()
+	p.queue = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(time.Hour, time.Hour))
+	defer p.queue.ShutDown()
+	consumer := p.consumer.(*testConsumer)
+	mockPolarisInstances(tr, consumer)
+	consumer.err = errors.New("discovery unavailable")
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationDelete}
+	key := task.QueueKey()
+	p.appliedServiceCache.Store(task.Key(), testService())
+	p.insertTask(task)
+	p.handleTask(p.process)
+	if p.queue.NumRequeues(key) != 1 {
+		t.Fatal("delete failure was not retried")
+	}
+	if p.queue.Len() != 0 {
+		t.Fatal("delete failure bypassed rate limit")
+	}
+	if _, ok := p.appliedServiceCache.Load(task.Key()); !ok {
+		t.Fatal("lost applied Service on discovery failure")
+	}
+	if len(tr.writes()) != 0 {
+		t.Fatal("wrote instances after failed discovery")
+	}
+	consumer.err = nil
+	consumer.instances = []model.Instance{ownedInstance("10.0.0.1")}
+	p.insertTask(task)
+	p.handleTask(p.process)
+	if p.queue.NumRequeues(key) != 0 {
+		t.Fatal("success did not clear retries")
+	}
+	if _, ok := p.appliedServiceCache.Load(task.Key()); ok {
+		t.Fatal("successful deletion did not clear applied cache")
+	}
+	writes := tr.writes()
+	if len(writes) != 1 || writes[0].path != "/naming/v1/instances/delete" {
+		t.Fatalf("unexpected requests: %v", tr.requests)
+	}
+}
+
+func TestFirstRegistrationFailureKeepsOnlyPersistedDeletionState(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	tr.respond = func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPost && r.URL.Path == "/naming/v1/instances" {
+			return nil, errors.New("partial registration failure")
+		}
+		return successResponse(), nil
+	}
+	mockPolarisInstances(tr, p.consumer.(*testConsumer))
+	svc := testService()
+	storeObject(t, stores.services, svc)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationAdd}
+	if err := p.syncService(task); err == nil {
+		t.Fatal("registration error not returned")
+	}
+	if _, ok := p.appliedServiceCache.Load(task.Key()); ok {
+		t.Fatal("failed registration advanced applied cache")
+	}
+	if _, found, err := p.syncStateStore.Get(context.Background(), "test|ns/svc"); err != nil || !found {
+		t.Fatalf("partial registration lost persisted state: found=%v error=%v", found, err)
+	}
+	if err := stores.services.Delete(svc); err != nil {
+		t.Fatal(err)
+	}
+	p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	cleanupTask, _ := takeQueueTask(t, p)
+	if cleanupTask.ObjectType != PolarisSyncState {
+		t.Fatalf("unexpected cleanup task: %+v", cleanupTask)
+	}
+	if err := p.process(cleanupTask); err != nil {
+		t.Fatal(err)
+	}
+	writes := tr.writes()
+	last := writes[len(writes)-1]
+	if last.path != "/naming/v1/instances/delete" {
+		t.Fatalf("partial registration not cleaned up: %+v", last)
+	}
+}
+
+func TestOnServiceUpdatePreparesSchedulingBeforeEnqueue(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		disableSync bool
+		wantCached  bool
+	}{
+		{name: "sync to sync", wantCached: true},
+		{name: "sync to disabled", disableSync: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _ := newTestController(t)
+			old := testService()
+			cur := old.DeepCopy()
+			if tc.disableSync {
+				cur.Annotations[util.PolarisSync] = "false"
+			} else {
+				cur.Annotations[util.PolarisMetadata] = `{"version":"v2"}`
+			}
+			key := (&Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}).Key()
+			applied := old.DeepCopy()
+			p.appliedServiceCache.Store(key, applied)
+
+			observed := false
+			baseQueue := p.queue
+			p.queue = &observingQueue{
+				RateLimitingInterface: baseQueue,
+				onAdd: func() {
+					observed = true
+					_, cached := p.resyncServiceCache.Load(key)
+					if cached != tc.wantCached {
+						t.Fatalf("resync cache at enqueue=%v, want %v", cached, tc.wantCached)
+					}
+				},
+			}
+			p.onServiceUpdate(old, cur)
+			if !observed {
+				t.Fatal("service event was not enqueued")
+			}
+			current, found := p.appliedServiceCache.Load(key)
+			if !found || current.Annotations[util.PolarisMetadata] != applied.Annotations[util.PolarisMetadata] {
+				t.Fatal("event handler advanced applied cache")
+			}
+		})
+	}
+}
+
+func TestServiceUpdateFailureKeepsAppliedCache(t *testing.T) {
+	p, stores := newTestController(t)
+	mockPolarisHTTP(t)
+	old := testService()
+	old.Annotations[util.PolarisMetadata] = `{"version":"old"}`
+	cur := old.DeepCopy()
+	cur.Annotations[util.PolarisMetadata] = `{"version":"new"}`
+	storeObject(t, stores.services, cur)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	p.consumer.(*testConsumer).err = errors.New("discovery unavailable")
+
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	p.appliedServiceCache.Store(task.Key(), old)
+	if err := p.syncService(task); err == nil {
+		t.Fatal("update failure returned nil")
+	}
+	applied, found := p.appliedServiceCache.Load(task.Key())
+	if !found || applied.Annotations[util.PolarisMetadata] != old.Annotations[util.PolarisMetadata] {
+		t.Fatal("failed update advanced applied cache")
+	}
+}
+
+func TestServiceLabelRollbackAfterPartialSuccessConverges(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	old := testService()
+	old.UID = "uid-label"
+	old.Labels = map[string]string{"env": "v1"}
+	current := old.DeepCopy()
+	current.Labels = map[string]string{"env": "v2"}
+	storeObject(t, stores.services, current)
+	addTestEndpoint(t, stores, "10.0.0.1")
+
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	p.appliedServiceCache.Store(task.Key(), old.DeepCopy())
+	p.consumer.(*testConsumer).err = errors.New("discovery unavailable after Service write")
+
+	remoteMetadata := map[string]string{"env": "v1", "manual": "keep"}
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/naming/v1/services":
+			return serviceMetadataResponse(t, remoteMetadata), nil
+		case request.Method == http.MethodPut && request.URL.Path == "/naming/v1/services":
+			var services []polarisapi.Service
+			if err := json.NewDecoder(request.Body).Decode(&services); err != nil {
+				return nil, err
+			}
+			if len(services) == 1 {
+				remoteMetadata = services[0].Metadata
+			}
+		}
+		return successResponse(), nil
+	}
+
+	if err := p.syncService(task); err == nil {
+		t.Fatal("expected instance sync failure after Service metadata write")
+	}
+	applied, found := p.appliedServiceCache.Load(task.Key())
+	if !found || applied.Labels["env"] != "v2" {
+		t.Fatalf("successful Service metadata write was not recorded: %+v found=%v", applied, found)
+	}
+
+	rolledBack := current.DeepCopy()
+	rolledBack.Labels = map[string]string{"env": "v1"}
+	if err := stores.services.Update(rolledBack); err != nil {
+		t.Fatal(err)
+	}
+	p.consumer.(*testConsumer).err = nil
+	p.consumer.(*testConsumer).instances = []model.Instance{ownedInstance("10.0.0.1")}
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	if remoteMetadata["env"] != "v1" {
+		t.Fatalf("Kubernetes Label rollback did not converge: %v", remoteMetadata)
+	}
+}
+
+func TestHealthRecoveryAliasFailureDoesNotStopInstanceSync(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.Annotations[util.PolarisAliasNamespace] = "Production"
+	service.Annotations[util.PolarisAliasService] = "order"
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	p.appliedServiceCache.Store(task.Key(), service.DeepCopy())
+	p.serviceRecoveryGeneration.Inc()
+	tr.respond = func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/naming/v1/service/aliases" {
+			return aliasJSONResponse(http.StatusInternalServerError,
+				`{"code":500000,"info":"alias query failed"}`)
+		}
+		return successResponse(), nil
+	}
+
+	err := p.syncService(task)
+	if err == nil {
+		t.Fatal("alias failure was hidden")
+	}
+	if got := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances"); got != 1 {
+		t.Fatalf("instance writes after alias failure=%d, want 1", got)
+	}
+	if _, found := p.serviceRecoveryApplied.Load(task.Key()); !found {
+		t.Fatal("recovery generation was not advanced")
+	}
+}
+
+func TestTerminatingServiceDoesNotReactivateOnRestart(t *testing.T) {
+	p, stores := newTestController(t)
+	tr := mockPolarisHTTP(t)
+	service := testService()
+	service.UID = "uid-terminating"
+	now := metav1.Now()
+	service.DeletionTimestamp = &now
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+	consumer := p.consumer.(*testConsumer)
+	consumer.instances = []model.Instance{ownedInstance("10.0.0.1")}
+	mockPolarisInstances(tr, consumer)
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService, Operation: OperationAdd}
+
+	p.onServiceAdd(service)
+	if p.queue.Len() != 1 {
+		t.Fatalf("terminating Service queue length=%d, want 1", p.queue.Len())
+	}
+	queued, _ := takeQueueTask(t, p)
+	if queued.Name != "svc" {
+		t.Fatalf("terminating Service task=%+v, want svc", queued)
+	}
+	if _, found := p.resyncServiceCache.Load(task.Key()); found {
+		t.Fatal("terminating Service was added to the resync cache")
+	}
+
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := p.appliedServiceCache.Load(task.Key()); found {
+		t.Fatal("terminating Service was reactivated")
+	}
+	if got := countRequests(tr.requests, http.MethodPost, "/naming/v1/instances/delete"); got != 1 {
+		t.Fatalf("terminating Service instance deletes=%d, want 1", got)
+	}
+}
+
+func TestSuccessfulServiceSyncStoresAppliedDeepCopy(t *testing.T) {
+	p, stores := newTestController(t)
+	mockPolarisHTTP(t)
+	service := testService()
+	service.Annotations[util.PolarisMetadata] = `{"version":"applied"}`
+	storeObject(t, stores.services, service)
+	addTestEndpoint(t, stores, "10.0.0.1")
+
+	task := &Task{Namespace: "ns", Name: "svc", ObjectType: KubernetesService}
+	if err := p.syncService(task); err != nil {
+		t.Fatal(err)
+	}
+	service.Annotations[util.PolarisMetadata] = `{"version":"mutated"}`
+
+	applied, found := p.appliedServiceCache.Load(task.Key())
+	if !found || applied.Annotations[util.PolarisMetadata] != `{"version":"applied"}` {
+		t.Fatal("applied cache shares the informer object")
+	}
+}
+
+type observingQueue struct {
+	workqueue.RateLimitingInterface
+	onAdd func()
+}
+
+func (q *observingQueue) Add(item interface{}) {
+	if q.onAdd != nil {
+		q.onAdd()
+	}
+	q.RateLimitingInterface.Add(item)
+}

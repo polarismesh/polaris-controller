@@ -1,0 +1,410 @@
+# Tencent is pleased to support the open source community by making Polaris available.
+#
+# Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+#
+# Licensed under the BSD 3-Clause License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software distributed
+# under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-sync-legacy
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: it-pc-sync-all
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sync-shared
+  namespace: it-pc-sync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sync-shared
+  template:
+    metadata:
+      labels:
+        app: sync-shared
+        tenant: pod-tenant
+        team: pod-team
+        version: v2
+        region: cn-north
+        zone: zone-a
+        campus: campus-1
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metadata-demo
+  namespace: it-pc-sync
+  labels:
+    owner: payments
+    tier: backend
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/metadata: '{"tenant":"service-tenant","env":"service-env","team":"service-team","polarismesh.cn/customVersion":"v9"}'
+    polarismesh.cn/protocols: '{"http":"http"}'
+    polarismesh.cn/weight: "70"
+    polarismesh.cn/aliasNamespace: it-pc-sync
+    polarismesh.cn/aliasService: metadata-demo-alias
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: namespace-only-demo
+  namespace: it-pc-sync
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: disabled-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "false"
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sync-false-overrides-enable-register
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "false"
+    polarismesh.cn/enableRegister: "true"
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: enable-register-false-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/enableRegister: "false"
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8087
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: multiport-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/protocols: '{"http":"http","grpc":"grpc"}'
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8080
+      protocol: TCP
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alias-winner-a
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/aliasNamespace: it-pc-sync
+    polarismesh.cn/aliasService: shared-alias
+spec:
+  selector:
+    app: sync-shared
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ttl-demo
+  namespace: it-pc-sync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ttl-demo
+  template:
+    metadata:
+      labels:
+        app: ttl-demo
+        protocol: grpc
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ttl-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/ttl: "60"
+spec:
+  selector:
+    app: ttl-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: stateful-demo
+  namespace: it-pc-sync
+spec:
+  serviceName: stateful-demo
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stateful-demo
+  template:
+    metadata:
+      labels:
+        app: stateful-demo
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stateful-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+    polarismesh.cn/workloadKind: StatefulSet
+    polarismesh.cn/weight: "50"
+    polarismesh.cn/customWeight: '{"0-8080":80,"1-8080":20}'
+spec:
+  clusterIP: None
+  selector:
+    app: stateful-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notready-demo
+  namespace: it-pc-sync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notready-demo
+  template:
+    metadata:
+      labels:
+        app: notready-demo
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 18080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notready-demo
+  namespace: it-pc-sync
+  annotations:
+    polarismesh.cn/sync: "true"
+spec:
+  selector:
+    app: notready-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enable-register-demo
+  namespace: it-pc-sync-legacy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: enable-register-demo
+  template:
+    metadata:
+      labels:
+        app: enable-register-demo
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: enable-register-demo
+  namespace: it-pc-sync-legacy
+  annotations:
+    polarismesh.cn/enableRegister: "true"
+spec:
+  selector:
+    app: enable-register-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: all-mode-demo
+  namespace: it-pc-sync-all
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: all-mode-demo
+  template:
+    metadata:
+      labels:
+        app: all-mode-demo
+    spec:
+      containers:
+        - name: app
+          image: ccr.ccs.tencentyun.com/evelyn_public/http-echo:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: all-mode-demo
+  namespace: it-pc-sync-all
+spec:
+  selector:
+    app: all-mode-demo
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -1,41 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-# preprocess the variables
-
-function replaceVar() {
-  for file in $(ls *.yaml); do
-    key="#$1#"
-    echo "process replace file $file, key $key, value $2"
-    if [ "$(uname)" == "Darwin" ]; then
-      sed -i "" "s?$key?$2?g" $file
-    else
-      sed -i "s?$key?$2?g" $file
-    fi
-  done
-}
-
-varFile="variables.txt"
-if [ ! -f "$varFile" ]; then
-  echo "variables.txt not exists"
-  exit 1
-fi
-
-export -f replaceVar
-
-cat $varFile | awk -F ':' '{print "replaceVar", $1, $2}' | "/bin/bash"
-
-kubectl apply -f namespace.yaml
-kubectl create secret generic polaris-sidecar-injector -n polaris-system \
-  --from-file=secrets/key.pem \
-  --from-file=secrets/cert.pem \
-  --from-file=secrets/ca-cert.pem
-
-kubectl apply -f rbac.yaml
-kubectl apply -f polaris-client-config-tpl.yaml
-kubectl apply -f configmap.yaml
-kubectl apply -f injector.yaml
-kubectl apply -f javaagent-configmap.yaml
-kubectl apply -f polaris-metrics-svc.yaml
-kubectl apply -f polaris-controller.yaml
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/../../deploy.sh" install manifests \
+  --kubernetes-version v1.21 \
+  --variables-file "${SCRIPT_DIR}/variables.txt" \
+  "$@"

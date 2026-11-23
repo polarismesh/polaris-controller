@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: polaris-controller-config
+  name: injector-mesh
   namespace: polaris-system
 data:
   mesh: |-
@@ -70,6 +70,7 @@ data:
     # k8s cluster name
     clusterName: "#CLUSTER_NAME#"
     # polaris-sidecar 注入的默认启动模式, 可以配置 java-agent, mesh 或者 dns
+    # 空值或 none 表示默认不注入
     sidecarInject:
       mode: ""
     # service sync

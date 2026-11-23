@@ -126,16 +126,18 @@ metadata:
 
 If polaris-sidecar needs to be used, it can be automatically injected in the application Pod, and the configuration is as follows：
 
+The Label only makes the webhook intercept the Pod. A valid `polaris-sidecar-mode` is still required; `sidecarInject.mode` set to empty or `none` means no sidecar is injected.
+
 ```shell
-kubectl label namespace default polaris-injection=enabled 
+kubectl label namespace default polarismesh.cn/inject=enabled
 ```
 
 Check whether K8s Namespace supports automatic injection of polaris-sidecar：
 
 ```shell
-kubectl get namespace -L polaris-injection
+kubectl get namespace -L polarismesh.cn/inject
 
-NAME             STATUS   AGE    POLARIS-INJECTION
+NAME             STATUS   AGE    POLARISMESH.CN/INJECT
 default          Active   3d2h   enabled
 ```
 
@@ -148,7 +150,7 @@ NAME              STATUS   AGE   POLARIS-SIDECAR-MODE
 default           Active   10d   mesh
 ```
 
-After automatic injection is enabled, newly created Pods will be automatically injected, and existing Pods will not be automatically injected into polaris-sidecar. If you want stock pods to experience polaris-sidecar as well, for pods managed by Deployment, DaemonSet or StatefulSet controllers, you can run the following command
+After the webhook is selected and a valid mode is set, newly created Pods are injected automatically. Existing Pods are not modified. If you want stock pods to experience polaris-sidecar as well, for pods managed by Deployment, DaemonSet or StatefulSet controllers, you can run the following command
 
 ```shell
 # Deployment

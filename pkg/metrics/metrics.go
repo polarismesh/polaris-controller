@@ -25,6 +25,14 @@ import (
 const endpointSliceSubsystem = "polaris_controller"
 
 var (
+	SyncFailures = metrics.NewCounterVec(&metrics.CounterOpts{
+		Subsystem: endpointSliceSubsystem, Name: "sync_failures_total", Help: "Failed sync tasks by resource and error class",
+		StabilityLevel: metrics.STABLE,
+	}, []string{"resource", "code"})
+	PendingDeletions = metrics.NewGaugeVec(&metrics.GaugeOpts{
+		Subsystem: endpointSliceSubsystem, Name: "pending_deletions", Help: "Persisted pending instance cleanup records",
+		StabilityLevel: metrics.STABLE,
+	}, []string{"cluster"})
 	// InstanceRequestSync 单次接口操作请求时间
 	InstanceRequestSync = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
@@ -58,6 +66,17 @@ var (
 		},
 		[]string{"service_namespace", "service_name", "polaris_namespace", "polaris_service"},
 	)
+
+	// AliasBindingConflicts counts alias ownership or first-claim conflicts.
+	AliasBindingConflicts = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      endpointSliceSubsystem,
+			Name:           "alias_binding_conflicts_total",
+			Help:           "Number of alias binding conflicts",
+			StabilityLevel: metrics.STABLE,
+		},
+		[]string{"alias_namespace", "alias_service", "service_namespace", "service_name", "reason"},
+	)
 )
 
 var registerMetrics sync.Once
@@ -65,8 +84,10 @@ var registerMetrics sync.Once
 // RegisterMetrics registers EndpointSlice metrics.
 func RegisterMetrics() {
 	registerMetrics.Do(func() {
+		legacyregistry.MustRegister(SyncFailures, PendingDeletions)
 		legacyregistry.MustRegister(InstanceRequestSync)
 		legacyregistry.MustRegister(SyncTimes)
 		legacyregistry.MustRegister(PolarisCount)
+		legacyregistry.MustRegister(AliasBindingConflicts)
 	})
 }

@@ -25,6 +25,7 @@ import (
 	"k8s.io/component-base/logs"
 
 	"github.com/polarismesh/polaris-controller/cmd/polaris-controller/app"
+	commonlog "github.com/polarismesh/polaris-controller/common/log"
 )
 
 func main() {
@@ -33,7 +34,13 @@ func main() {
 	command := app.NewPolarisControllerManagerCommand()
 	logs.InitLogs()
 	defer logs.FlushLogs()
+	defer func() {
+		if err := commonlog.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "flush polaris controller logs: %v\n", err)
+		}
+	}()
 	if err := command.Execute(); err != nil {
+		commonlog.Errorf("polaris-controller command failed: %v", err)
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 	}
 }

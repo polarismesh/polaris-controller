@@ -17,6 +17,24 @@ metadata:
   labels:
     app: sidecar-injector
 webhooks:
+  - name: polaris.tencent.com
+    clientConfig:
+      service:
+        name: {{ .Values.controller.webhook.service }}
+        namespace: polaris-system
+        path: "/inject"
+      caBundle: {{ b64enc $ca.Cert }}
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: "None"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchLabels:
+        polaris-injection: enabled
   - name: ns.injector.polarismesh.cn
     clientConfig:
       service:

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/polarismesh/polaris-controller/common/log"
 )
 
 var (
@@ -80,6 +82,7 @@ func (v *Config) MarshalJSON() ([]byte, error) {
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	if err := write(w); err != nil {
+		log.Errorf("Failed to write configz response: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -125,6 +125,9 @@ type SidecarTemplateData struct {
 // 是否需要注入, 规则参考istio官方定义
 // https://istio.io/latest/zh/docs/ops/common-problems/injection/
 func (wh *Webhook) requireInject(p *podDataInfo) bool {
+	if p.injectMode == utils.SidecarForUnknown || p.injectTemplateConfig == nil {
+		return false
+	}
 	pod := p.podObject
 	templateConfig := p.injectTemplateConfig
 
@@ -210,7 +213,7 @@ func checkSelectors(pod *corev1.Pod, selectors []metav1.LabelSelector, selectorT
 	for _, selector := range selectors {
 		ls, err := metav1.LabelSelectorAsSelector(&selector)
 		if err != nil {
-			log.InjectScope().Warnf("Invalid %s: %v (%v)", selectorType, selector, err)
+			log.InjectScope().Errorf("Invalid %s: %v (%v)", selectorType, selector, err)
 			continue // Continue checking other selectors
 		}
 

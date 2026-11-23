@@ -8,12 +8,13 @@
 
 ## cluster name register in polaris server
 cluster:
-  name: default
+  name: #CLUSTER_NAME#
 
 ## sidecar config for controller injector
 sidecar:
   port: 443
-  mode: mesh
+  # Empty or "none" disables default sidecar injection.
+  mode: ""
   image:
     repo: polarismesh/polaris-sidecar
     tag: #SIDECAR_VERSION#
@@ -41,21 +42,22 @@ sidecar:
 polaris:
   server:
     address: #POLARIS_HOST#
-    token: #POLARIS_TOKEN#
-    operator: #POLARIS_OPERATOR#
+    token: "#POLARIS_TOKEN#"
+    operator: "#POLARIS_OPERATOR#"
   sync:
     service:
-      mode: all
+      mode: #SYNC_MODE#
     config:
       enable: false
       direction: both
-      groupName: default
+      groupName: #CLUSTER_NAME#
       allowDelete: false
 
 
 ## polaris controller config
 controller:
   name: polaris-controller
+  replicas: 2
   webhook:
     host: polaris.tencent.com
     service: polaris-sidecar-injector

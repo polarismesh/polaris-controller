@@ -1,53 +1,32 @@
-# Polaris Controller helm
+# Polaris Controller deployment
 
-English | [简体中文](./README-zh.md)
+English | [简体中文](./README-zh.md) | [Bilingual deployment guide](./DEPLOYMENT.md)
 
-This page show how to get polaris-controller service started by helm chart。
+The complete bilingual guide is available in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
-## Prerequisites
-Make sure k8s cluster is installed and helm is installed. And the polaris-server is running in the polaris-system namespaces of k8s.
-(Guidance:[polaris installation by using helm](https://github.com/polarismesh/polaris/tree/main/release/cluster/helm))
+Kubernetes `v1.21` uses the v1.21 manifests. Kubernetes `v1.22` and later reuse the v1.22 manifests.
 
-## Installation
-### helm init
-Confirm that the variable assignments in the `deploy/variables.txt` file are as expected, the example is as follows
-```shell
-cd deploy
-$ cat variables.txt                                                                                                                                                                                                                                                                               deploy -> main ? ! |•
-POLARIS_HOST:polaris.polaris-system
-CONTROLLER_VERSION:v1.7.1
-SIDECAR_VERSION:v1.5.1
-POLARIS_TOKEN:token
-ENVOY_VERSION:v1.26.2
-CLUSTER_NAME:default
-JAVA_AGENT_INIT:v0.0.1% 
-```
-Initialize the `values.yaml` file of the helm project
-```shell
-sh init_helm.sh
+Recommended Helm quick start:
+
+```bash
+PC_POLARIS_TOKEN='<token>' \
+PC_POLARIS_OPERATOR='<operator>' \
+PC_CONTROLLER_VERSION='<version>' \
+./deploy/deploy.sh install helm --kubernetes-version v1.22 --dry-run
 ```
 
-### install
-Use the `helm install ${release_name}.` command to install, replacing `${release_name}` with the release name you need.
-Examples are as follows
-```shell
-cd helm
-helm install polaris-controller .
+After the render is reviewed:
+
+```bash
+PC_POLARIS_TOKEN='<token>' \
+PC_POLARIS_OPERATOR='<operator>' \
+PC_CONTROLLER_VERSION='<version>' \
+./deploy/deploy.sh install helm \
+  --kubernetes-version v1.22 \
+  --release polaris-controller \
+  --namespace polaris-system
 ```
 
-### update
-Use the `helm upgrade -i ${release_name} .` command to update and replace `${release_name}` with the release name you need.
-Examples are as follows
-```shell
-helm upgrade -i polaris-controller .
-```
-
-### uninstall
-Use the `helm uninstall `${release_name}` command to update, replacing `${release_name}` with the release name you need.
-Examples are as follows
-```shell
-$ helm uninstall polaris-controller
-```
-
-## Configuration
-Configs in `values.yaml` of helm will explain how to configure the service.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for variable precedence, raw Kubernetes
+manifests, dry-run and render-only workflows, safe uninstall, residual cleanup,
+compatibility entry points, and security notes.

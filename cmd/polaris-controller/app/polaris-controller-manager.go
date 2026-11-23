@@ -23,8 +23,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/polarismesh/polaris-go/api"
@@ -108,6 +112,8 @@ type ControllerContext struct {
 
 	// Stop is the stop channel
 	Stop <-chan struct{}
+	// Shutdown waits for controller workers and SDK self-unregistration.
+	Shutdown *sync.WaitGroup
 
 	// InformersStarted is closed after all of the controllers have been initialized and are running.
 	// After this point it is safe,
@@ -133,11 +139,13 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 			initControllerConfig(s)
 			c, err := s.Config()
 			if err != nil {
+				log.Errorf("Failed to build controller configuration: %v", err)
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
 
-			if err := Run(c.Complete(), wait.NeverStop); err != nil {
+			if err := Run(c.Complete(), setupStopChannel()); err != nil {
+				log.Errorf("Controller manager stopped with error: %v", err)
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
@@ -165,6 +173,19 @@ func NewPolarisControllerManagerCommand() *cobra.Command {
 	// 	cliflag.PrintSections(cmd.OutOrStdout(), namedFlagSets, cols)
 	// })
 	return cmd
+}
+
+func setupStopChannel() <-chan struct{} {
+	stop := make(chan struct{})
+	signalChan := make(chan os.Signal, 2)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-signalChan
+		close(stop)
+		<-signalChan
+		os.Exit(1)
+	}()
+	return stop
 }
 
 func initControllerConfig(s *options.KubeControllerManagerOptions) {
@@ -240,9 +261,16 @@ func closeGrpcLog() {
 	var (
 		infoW    = io.Discard
 		warningW = io.Discard
-		errorW   = os.Stderr
+		errorW   = grpcErrorLogWriter{}
 	)
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(infoW, warningW, errorW))
+}
+
+type grpcErrorLogWriter struct{}
+
+func (grpcErrorLogWriter) Write(p []byte) (int, error) {
+	log.Errorf("gRPC: %s", strings.TrimSpace(string(p)))
+	return len(p), nil
 }
 
 func initPolarisSidecarInjector(c *options.CompletedConfig) error {
@@ -255,8 +283,15 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 		CertFile:            CertFile,
 		KeyFile:             KeyFile,
 	}
+	rawSidecarMode := c.ComponentConfig.PolarisController.SidecarMode
+	sidecarMode := util.ParseSidecarMode(rawSidecarMode)
+	if sidecarMode == util.SidecarForUnknown {
+		log.InjectScope().Warnf(
+			"sidecar inject mode is disabled: raw=%q, expect mesh/dns/java-agent or none",
+			rawSidecarMode)
+	}
 	parameters := inject.WebhookParameters{
-		DefaultSidecarMode:  util.ParseSidecarMode(c.ComponentConfig.PolarisController.SidecarMode),
+		DefaultSidecarMode:  sidecarMode,
 		TemplateFileConfig:  templateFilePath,
 		Port:                flags.injectPort,
 		HealthCheckInterval: 3 * time.Second,
@@ -268,7 +303,7 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 	wh, err := inject.NewWebhook(parameters)
 	if err != nil {
-		fmt.Printf("failed to create injection webhook, %s \n", err)
+		log.InjectScope().Errorf("Failed to create injection webhook: %v", err)
 		return err
 	}
 
@@ -281,6 +316,27 @@ func initPolarisSidecarInjector(c *options.CompletedConfig) error {
 
 // Run runs the KubeControllerManagerOptions.  This should never exit.
 func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
+	managerContext, cancelManager := context.WithCancel(context.Background())
+	workContext, cancelWork := context.WithCancel(context.Background())
+	defer cancelManager()
+	defer cancelWork()
+	var leading atomic.Bool
+	listenerDone := make(chan struct{})
+	go func() {
+		select {
+		case <-stopCh:
+			if leading.Load() {
+				// Keep the leader lease until the guarded controller workers have
+				// finished, then let run() cancel managerContext and release it.
+				cancelWork()
+			} else {
+				cancelManager()
+			}
+		case <-managerContext.Done():
+		}
+		close(listenerDone)
+	}()
+	defer func() { cancelManager(); <-listenerDone }()
 	// init sidecar injector
 	if err := initPolarisSidecarInjector(c); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -307,6 +363,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 	}
 
 	run := func(ctx context.Context) {
+		defer cancelManager()
 		rootClientBuilder := SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
 		}
@@ -314,6 +371,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 		if err != nil {
 			log.Fatalf("error building controller context: %v", err)
 		}
+		defer controllerContext.Shutdown.Wait()
 
 		if err := StartControllers(controllerContext, NewControllerInitializers(), unsecuredMux); err != nil {
 			log.Fatalf("error starting controllers: %v", err)
@@ -323,12 +381,14 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 		controllerContext.GenericInformerFactory.Start(controllerContext.Stop)
 		close(controllerContext.InformersStarted)
 
-		select {}
+		<-ctx.Done()
+		controllerContext.InformerFactory.Shutdown()
 	}
 
 	if !c.ComponentConfig.Generic.LeaderElection.LeaderElect {
-		run(context.TODO())
-		panic("unreachable")
+		leading.Store(true)
+		run(workContext)
+		return nil
 	}
 
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
@@ -345,23 +405,43 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 			EventRecorder: c.EventRecorder,
 		})
 	if err != nil {
+		log.Errorf("Failed to create leader election lock: %v", err)
 		panic(err)
 	}
 
 	// Try and become the leader and start cloud controller manager loops
-	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
-		Lock:          rl,
-		LeaseDuration: c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline: c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:   c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
+	leaderContexts := make(chan context.Context)
+	leaderDone := make(chan struct{})
+	go func() {
+		defer close(leaderDone)
+		select {
+		case <-leaderContexts:
+			run(workContext)
+		case <-managerContext.Done():
+		}
+	}()
+	leaderelection.RunOrDie(managerContext, leaderelection.LeaderElectionConfig{
+		Lock:            rl,
+		LeaseDuration:   c.ComponentConfig.Generic.LeaderElection.LeaseDuration.Duration,
+		RenewDeadline:   c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
+		RetryPeriod:     c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
+		ReleaseOnCancel: true,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: run,
-			OnStoppedLeading: StoppedLeading,
+			OnStartedLeading: func(ctx context.Context) {
+				leading.Store(true)
+				select {
+				case leaderContexts <- ctx:
+				case <-managerContext.Done():
+				}
+			},
+			OnStoppedLeading: func() { cancelWork(); StoppedLeading() },
 			OnNewLeader:      NewLeader,
 		},
 		WatchDog: electionChecker,
 		Name:     DefaultLeaderElectionName,
 	})
+	cancelManager()
+	<-leaderDone
 
 	return nil
 }
@@ -370,6 +450,7 @@ func Run(c *options.CompletedConfig, stopCh <-chan struct{}) error {
 func hostname() string {
 	hostname, err := os.Hostname()
 	if err != nil {
+		log.Errorf("Failed to get hostname: %v", err)
 		panic(err)
 	}
 	return hostname
@@ -422,6 +503,7 @@ func CreateControllerContext(s *options.CompletedConfig,
 		ComponentConfig:        s.ComponentConfig,
 		RESTMapper:             restMapper,
 		Stop:                   stop,
+		Shutdown:               &sync.WaitGroup{},
 		InformersStarted:       make(chan struct{}),
 		ResyncPeriod:           ResyncPeriod(s),
 	}
@@ -454,7 +536,7 @@ func StartControllers(ctx ControllerContext, controllers map[string]InitFunc, un
 		log.Infof("Starting %q", controllerName)
 		debugHandler, err := initFn(ctx)
 		if err != nil {
-			log.Errorf("Error starting %q", controllerName)
+			log.Errorf("Error starting %q: %v", controllerName, err)
 			return err
 		}
 
@@ -509,6 +591,7 @@ func buildAPI() (api.ConsumerAPI, api.ProviderAPI, error) {
 
 	providerAPI, err := api.NewProviderAPIByConfig(cfg)
 	if err != nil {
+		consumerAPI.Destroy()
 		log.Errorf("fail to create provider with %s, err: %v", polarisapi.PolarisGrpc, err)
 		return nil, nil, err
 	}
@@ -535,17 +618,24 @@ func startPolarisController(ctx ControllerContext) (http.Handler, error) {
 		providerAPI,
 	)
 	if err != nil {
+		providerAPI.Destroy()
+		consumerAPI.Destroy()
 		return nil, err
 	}
-	go handler.Run(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop)
 
 	// register controller to server
 	registerController(&ctx.ComponentConfig, providerAPI)
 
 	// deregister controller from server
+	if ctx.Shutdown != nil {
+		ctx.Shutdown.Add(1)
+	}
 	go func() {
-		defer deregisterController(&ctx.ComponentConfig, providerAPI)
-		<-ctx.Stop
+		if ctx.Shutdown != nil {
+			defer ctx.Shutdown.Done()
+		}
+		handler.RunWithShutdown(ctx.ComponentConfig.PolarisController.ConcurrentPolarisSyncs, ctx.Stop,
+			func() { deregisterController(&ctx.ComponentConfig, providerAPI) })
 	}()
 
 	return nil, nil
@@ -571,6 +661,7 @@ func registerController(c *options.KubeControllerManagerConfiguration, provider 
 		conn, err := net.Dial("ip4:1", common.PolarisServerAddress)
 		if err != nil {
 			log.Errorf("Sync: Failed to get controller ip address, %v", err)
+			return
 		}
 		defer conn.Close()
 
@@ -579,13 +670,18 @@ func registerController(c *options.KubeControllerManagerConfiguration, provider 
 	req.Host = podIP
 	req.Port = int(c.Generic.Port)
 	req.SetTTL(5)
+	req.SetTimeout(10 * time.Second)
+	req.SetRetryCount(0)
 	// 开启自动上报心跳
 	req.AutoHeartbeat = true
 
 	_, err := provider.RegisterInstance(req)
 	if err != nil {
 		log.Errorf("Sync: Failed to register controller to polaris server, %v", err)
+		return
 	}
+	log.Infof("Registered controller to polaris server: service=%s host=%s port=%d",
+		req.Service, req.Host, req.Port)
 }
 
 // deregisterController deregister controller from server
@@ -596,8 +692,13 @@ func deregisterController(c *options.KubeControllerManagerConfiguration, provide
 	req.ServiceToken = polarisapi.PolarisAccessToken
 	req.Host = podIP
 	req.Port = int(c.Generic.Port)
+	req.SetTimeout(10 * time.Second)
+	req.SetRetryCount(0)
 
 	if err := provider.Deregister(req); err != nil {
 		log.Errorf("Sync: Failed to deregister controller from polaris server, %v", err)
+		return
 	}
+	log.Infof("Deregistered controller from polaris server: service=%s host=%s port=%d",
+		req.Service, req.Host, req.Port)
 }

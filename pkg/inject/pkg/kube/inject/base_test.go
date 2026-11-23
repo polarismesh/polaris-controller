@@ -194,11 +194,48 @@ func TestRequireInject(t *testing.T) {
 				injectTemplateConfig: defaultTemplate,
 				podName:              pod.Name,
 			}
+			if podInfo.injectMode == utils.SidecarForUnknown {
+				podInfo.injectMode = utils.SidecarForMesh
+			}
 
 			result := wh.requireInject(podInfo)
 			if result != tc.expected {
 				t.Errorf("%s: 期望 %v 但得到 %v", tc.name, tc.expected, result)
 			}
 		})
+	}
+}
+
+func TestUnknownModeSkipsInjection(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+		},
+	}
+	podInfo := &podDataInfo{
+		podObject:  pod,
+		podName:    "test-pod",
+		injectMode: utils.SidecarForUnknown,
+	}
+	wh := &Webhook{}
+
+	patch, err := wh.getPodPatch(podInfo)
+	if err != nil {
+		t.Fatalf("getPodPatch() error = %v", err)
+	}
+	if patch != nil {
+		t.Fatalf("getPodPatch() patch = %s, want nil", patch)
+	}
+	if wh.requireInject(podInfo) {
+		t.Fatal("requireInject() = true, want false")
+	}
+
+	podInfo.assignInjectAnnotations()
+	if podInfo.injectedAnnotations == nil {
+		t.Fatal("assignInjectAnnotations() annotations = nil, want empty map")
+	}
+	if len(podInfo.injectedAnnotations) != 0 {
+		t.Fatalf("assignInjectAnnotations() annotations = %v, want empty", podInfo.injectedAnnotations)
 	}
 }

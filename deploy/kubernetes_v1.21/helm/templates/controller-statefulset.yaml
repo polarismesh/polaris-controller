@@ -6,9 +6,10 @@ metadata:
   name: {{ include "polaris-controller.controller.fullname" . }}
   namespace: polaris-system
 spec:
-  replicas: 1
+  replicas: {{ .Values.controller.replicas }}
   revisionHistoryLimit: 10
   serviceName: polaris-controller
+  podManagementPolicy: OrderedReady
   selector:
     matchLabels:
       {{- include "polaris-controller.controller.selectorLabels" . | nindent 6 }}
@@ -34,14 +35,37 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          startupProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          readinessProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           resources:
             limits:
               cpu: {{ .Values.controller.limit.cpu }}
               memory: {{ .Values.controller.limit.memory }}
           volumeMounts:
-            - mountPath: /polaris-controller/log
+            - mountPath: /polaris-controller/logs
               name: logs
+              subPathExpr: $(POD_NAME)
             - name: certs
               mountPath: /etc/polaris-inject/certs
               readOnly: true
@@ -56,6 +80,15 @@ spec:
       schedulerName: default-scheduler
       terminationGracePeriodSeconds: 30
       serviceAccountName: {{ include "polaris-controller.controller.fullname" . }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                  {{- include "polaris-controller.controller.selectorLabels" . | nindent 20 }}
       volumes:
         - name: certs
           secret:
@@ -76,6 +109,6 @@ spec:
           configMap:
             name: {{ include "polaris-controller.controller.fullname" . }}-mesh
         - hostPath:
-            path: /data/polaris-controller/log
+            path: /data/polaris-controller/logs
             type: "DirectoryOrCreate"
           name: logs

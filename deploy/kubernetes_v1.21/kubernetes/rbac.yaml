@@ -56,8 +56,31 @@ rules:
   resourceNames:
   - polaris-client-config-tpl
   - plugin-default.properties
+  - polaris-controller-sync-state-00
+  - polaris-controller-sync-state-01
+  - polaris-controller-sync-state-02
+  - polaris-controller-sync-state-03
+  - polaris-controller-sync-state-04
+  - polaris-controller-sync-state-05
+  - polaris-controller-sync-state-06
+  - polaris-controller-sync-state-07
+  - polaris-controller-sync-state-08
+  - polaris-controller-sync-state-09
+  - polaris-controller-sync-state-0a
+  - polaris-controller-sync-state-0b
+  - polaris-controller-sync-state-0c
+  - polaris-controller-sync-state-0d
+  - polaris-controller-sync-state-0e
+  - polaris-controller-sync-state-0f
   verbs:
   - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:

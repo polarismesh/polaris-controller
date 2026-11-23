@@ -9,6 +9,7 @@ spec:
   replicas: 1
   revisionHistoryLimit: 10
   serviceName: polaris-controller
+  podManagementPolicy: OrderedReady
   selector:
     matchLabels:
       k8s-app: polaris-controller
@@ -36,10 +37,33 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           imagePullPolicy: Always
+          startupProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          readinessProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 9443
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           volumeMounts:
             - mountPath: /polaris-controller/logs
               name: logs
+              subPathExpr: $(POD_NAME)
             - name: certs
               mountPath: /etc/polaris-inject/certs
               readOnly: true
@@ -54,6 +78,15 @@ spec:
       schedulerName: default-scheduler
       terminationGracePeriodSeconds: 30
       serviceAccountName: polaris-controller
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    k8s-app: polaris-controller
       volumes:
         - name: certs
           secret:
@@ -72,7 +105,7 @@ spec:
                 path: values
         - name: config-volume
           configMap:
-            name: polaris-controller-config
+            name: injector-mesh
         - hostPath:
             path: /data/polaris-controller/logs
             type: "DirectoryOrCreate"

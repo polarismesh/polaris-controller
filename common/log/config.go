@@ -19,10 +19,12 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -81,21 +83,32 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 		enc = zapcore.NewConsoleEncoder(encCfg)
 	}
 
+	rotateOutputPaths := make([]string, 0, 2)
+	if len(options.RotateOutputPath) > 0 {
+		rotateOutputPaths = append(rotateOutputPaths, options.RotateOutputPath)
+	}
+	if len(options.ErrorRotateOutputPath) > 0 {
+		rotateOutputPaths = append(rotateOutputPaths, options.ErrorRotateOutputPath)
+	}
+	if err := createPathIfNotExist(rotateOutputPaths...); err != nil {
+		return nil, nil, nil, err
+	}
+
 	var rotateSink zapcore.WriteSyncer
 	if len(options.RotateOutputPath) > 0 {
-		rotateSink = zapcore.AddSync(&lumberjack.Logger{
+		rotateSink = zapcore.AddSync(&rotatingLogWriter{kind: "rotate", logger: &lumberjack.Logger{
 			Filename:   options.RotateOutputPath,
 			MaxSize:    options.RotationMaxSize,
 			MaxBackups: options.RotationMaxBackups,
 			MaxAge:     options.RotationMaxAge,
-		})
+		}})
 	}
 
 	err := createPathIfNotExist(options.ErrorOutputPaths...)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	errSink, closeErrorSink, err := zap.Open(options.ErrorOutputPaths...)
+	errSink, closeErrorSink, err := openLogSinks(options.ErrorOutputPaths...)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -106,7 +119,7 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		outputSink, _, err = zap.Open(options.OutputPaths...)
+		outputSink, _, err = openLogSinks(options.OutputPaths...)
 		if err != nil {
 			closeErrorSink()
 			return nil, nil, nil, err
@@ -121,7 +134,9 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 	} else if outputSink != nil {
 		sink = outputSink
 	} else {
-		sink = zapcore.AddSync(os.Stdout)
+		sink = &countedLogSink{kind: "stdout", WriteSyncer: &standardStreamSyncer{
+			WriteSyncer: zapcore.AddSync(os.Stdout), stream: os.Stdout,
+		}}
 	}
 
 	var enabler zap.LevelEnablerFunc = func(lvl zapcore.Level) bool {
@@ -140,12 +155,12 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 
 	var errCore zapcore.Core
 	if len(options.ErrorRotateOutputPath) > 0 {
-		errRotateSink := zapcore.AddSync(&lumberjack.Logger{
+		errRotateSink := zapcore.AddSync(&rotatingLogWriter{kind: "error_rotate", logger: &lumberjack.Logger{
 			Filename:   options.ErrorRotateOutputPath,
 			MaxSize:    options.RotationMaxSize,
 			MaxBackups: options.RotationMaxBackups,
 			MaxAge:     options.RotationMaxAge,
-		})
+		}})
 		errCore = zapcore.NewCore(enc, errRotateSink, zap.NewAtomicLevelAt(zapcore.ErrorLevel))
 	}
 
@@ -154,7 +169,61 @@ func prepZap(options *Options) ([]zapcore.Core, zapcore.Core, zapcore.WriteSynce
 	if errCore != nil {
 		cores = append(cores, errCore)
 	}
-	return cores, zapcore.NewCore(enc, sink, enabler), errSink, nil
+	captureCore := zapcore.NewCore(enc, sink, enabler)
+	if errCore != nil {
+		captureCore = zapcore.NewTee(captureCore, errCore)
+	}
+	return cores, captureCore, errSink, nil
+}
+
+// Filter unsupported fsync only for explicitly selected stdout/stderr sinks.
+// File sync failures, including the same errno, remain visible.
+type standardStreamSyncer struct {
+	zapcore.WriteSyncer
+	stream *os.File
+}
+
+func (s *standardStreamSyncer) Sync() error {
+	err := s.WriteSyncer.Sync()
+	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EBADF) {
+		if info, statErr := s.stream.Stat(); statErr == nil &&
+			info.Mode()&(os.ModeNamedPipe|os.ModeCharDevice|os.ModeSocket) != 0 {
+			return nil
+		}
+	}
+	return err
+}
+
+func openLogSinks(paths ...string) (zapcore.WriteSyncer, func(), error) {
+	sinks := make([]zapcore.WriteSyncer, 0, len(paths))
+	closers := make([]func(), 0, len(paths))
+	closeAll := func() {
+		for _, closeSink := range closers {
+			closeSink()
+		}
+	}
+	for _, path := range paths {
+		sink, closeSink, err := zap.Open(path)
+		if err != nil {
+			closeAll()
+			return nil, nil, err
+		}
+		closers = append(closers, closeSink)
+		if path == "stdout" || path == "stderr" {
+			stream := os.Stdout
+			if path == "stderr" {
+				stream = os.Stderr
+			}
+			sink = &standardStreamSyncer{WriteSyncer: sink, stream: stream}
+		}
+		kind := "file"
+		if path == "stdout" || path == "stderr" {
+			kind = path
+		}
+		sink = &countedLogSink{kind: kind, WriteSyncer: sink}
+		sinks = append(sinks, sink)
+	}
+	return zapcore.NewMultiWriteSyncer(sinks...), closeAll, nil
 }
 
 func formatDate(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
@@ -257,6 +326,7 @@ func updateScopes(typeName string, options *Options, cores []zapcore.Core, errSi
 // You typically call this once at process startup.
 // Configure Once this call returns, the logging system is ready to accept data.
 func Configure(optionsMap map[string]*Options) error {
+	registerLoggingMetrics()
 	for typeName, options := range optionsMap {
 		setDefaultOption(options)
 		cores, captureCore, errSink, err := prepZap(options)
@@ -324,7 +394,17 @@ func setDefaultOption(options *Options) {
 // Sync flushes any buffered log entries.
 // Processes should normally take care to call Sync before exiting.
 func Sync() error {
-	return defaultScope.getPathTable().sync()
+	var errs error
+	for _, scope := range Scopes() {
+		pt := scope.getPathTable()
+		if pt == nil || pt.sync == nil {
+			continue
+		}
+		if err := pt.sync(); err != nil {
+			errs = multierror.Append(errs, err)
+		}
+	}
+	return errs
 }
 
 // createPathIfNotExist 如果判断为本地文件，检查目录是否存在，不存在创建父级目录

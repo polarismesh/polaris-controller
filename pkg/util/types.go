@@ -20,16 +20,21 @@ const (
 )
 
 const (
-	PolarisSync             = "polarismesh.cn/sync"
-	PolarisEnableRegister   = "polarismesh.cn/enableRegister"
-	PolarisAliasNamespace   = "polarismesh.cn/aliasNamespace"
-	PolarisAliasService     = "polarismesh.cn/aliasService"
-	PolarisOverideNamespace = "polarismesh.cn/overideNamespace"
-	PolarisOverideService   = "polarismesh.cn/overideService"
-	PolarisSidecarMode      = "polarismesh.cn/sidecar-mode"
-	PolarisMetadata         = "polarismesh.cn/metadata"
-	PolarisWeight           = "polarismesh.cn/weight"
-	PolarisHeartBeatTTL     = "polarismesh.cn/ttl"
+	// MaxInstanceProtocolLength 与 Polaris 服务端实例 protocol 字段的最大长度保持一致。
+	MaxInstanceProtocolLength = 32
+)
+
+const (
+	PolarisSync = "polarismesh.cn/sync"
+	// PolarisEnableRegister 是历史同步注解；sync 缺失时等价于 sync=true。
+	PolarisEnableRegister = "polarismesh.cn/enableRegister"
+	PolarisAliasNamespace = "polarismesh.cn/aliasNamespace"
+	PolarisAliasService   = "polarismesh.cn/aliasService"
+	PolarisSidecarMode    = "polarismesh.cn/sidecar-mode"
+	PolarisMetadata       = "polarismesh.cn/metadata"
+	PolarisProtocols      = "polarismesh.cn/protocols"
+	PolarisWeight         = "polarismesh.cn/weight"
+	PolarisHeartBeatTTL   = "polarismesh.cn/ttl"
 
 	WorkloadKind        = "polarismesh.cn/workloadKind"
 	PolarisCustomWeight = "polarismesh.cn/customWeight"
@@ -82,6 +87,13 @@ const (
 	PolarisSource      = "source"
 	PolarisVersion     = "version"
 	PolarisProtocol    = "protocol"
+	K8sServiceUID      = "k8sServiceUID"
+	// PolarisInternalLastHeartbeat is written by the Polaris server while
+	// heartbeat health checking is enabled.
+	PolarisInternalLastHeartbeat = "internal-lastheartbeat"
+	PolarisLocationRegion        = "region"
+	PolarisLocationZone          = "zone"
+	PolarisLocationCampus        = "campus"
 
 	// PolarisOldSource 旧版本 controller 用来标志是 controller 同步的服务实例。
 	// 已经废弃，项目中当前用来兼容存量的实例。
@@ -123,15 +135,26 @@ const (
 )
 
 // PolarisSystemMetaSet 由 polaris controller 决定的 meta，用户如果在 custom meta 中设置了，不会生效
-var PolarisSystemMetaSet = map[string]struct{}{PolarisClusterName: {}, PolarisSource: {}}
+var PolarisSystemMetaSet = map[string]struct{}{
+	PolarisClusterName: {}, PolarisSource: {},
+	K8sServiceUID: {},
+}
 
-// PolarisDefaultMetaSet 由 polaris controller 托管的 service ，注册的实例必定会带的 meta，
-// 用于判断用户的 custom meta 是否发生了更新
+// PolarisDefaultMetaSet 保存未声明的兼容 metadata，避免误删 controller 管理的字段。
 var PolarisDefaultMetaSet = map[string]struct{}{
 	PolarisClusterName: {},
 	PolarisSource:      {},
-	PolarisVersion:     {},
-	PolarisProtocol:    {},
+	K8sServiceUID:      {},
+}
+
+// PolarisServerMetaSet contains metadata keys injected by the Polaris server.
+// They are not part of the Kubernetes desired state and must not cause a
+// reconciliation loop.
+var PolarisServerMetaSet = map[string]struct{}{
+	PolarisInternalLastHeartbeat: {},
+	PolarisLocationRegion:        {},
+	PolarisLocationZone:          {},
+	PolarisLocationCampus:        {},
 }
 
 // ServiceChangeType 发升变更的类型
@@ -170,32 +193,38 @@ const (
 	SidecarMeshModeName      string = "mesh"
 	SidecarDnsModeName       string = "dns"
 	SidecarJavaAgentModeName string = "java-agent"
+	// SidecarNoneModeName explicitly disables sidecar injection.
+	SidecarNoneModeName    string = "none"
+	SidecarUnknownModeName string = "unknown"
 )
 
 func ParseSidecarMode(val string) SidecarMode {
-	if val == SidecarMeshModeName {
+	switch val {
+	case SidecarMeshModeName:
 		return SidecarForMesh
-	}
-	if val == SidecarDnsModeName {
+	case SidecarDnsModeName:
 		return SidecarForDns
-	}
-	if val == SidecarJavaAgentModeName {
+	case SidecarJavaAgentModeName:
 		return SidecarForJavaAgent
+	case SidecarNoneModeName:
+		// "none" is an explicit disabled value, represented as unknown internally.
+		return SidecarForUnknown
+	default:
+		return SidecarForUnknown
 	}
-	return SidecarForMesh
 }
 
 func ParseSidecarModeName(mode SidecarMode) string {
-	if mode == SidecarForMesh {
+	switch mode {
+	case SidecarForMesh:
 		return SidecarMeshModeName
-	}
-	if mode == SidecarForDns {
+	case SidecarForDns:
 		return SidecarDnsModeName
-	}
-	if mode == SidecarForJavaAgent {
+	case SidecarForJavaAgent:
 		return SidecarJavaAgentModeName
+	default:
+		return SidecarUnknownModeName
 	}
-	return SidecarMeshModeName
 }
 
 // IndexPortMap 对应{"index-port":weight}
