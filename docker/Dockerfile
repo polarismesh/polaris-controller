@@ -13,16 +13,19 @@
 #  CONDITIONS OF ANY KIND, either express or implied. See the License for the
 #  specific language governing permissions and limitations under the License.
 
-FROM alpine:latest
+FROM alpine:3.24.4
 
 ARG TARGETARCH
 
 RUN sed -i 's!http://dl-cdn.alpinelinux.org/!https://mirrors.tencent.com/!g' /etc/apk/repositories
 
 RUN apk update \
-    && apk add tzdata \
-    && apk add --no-cache bash \
-    && apk add curl \
+    && apk upgrade --no-cache \
+    && apk add --no-cache \
+        'libcrypto3>=3.5.9-r1' \
+        'libssl3>=3.5.9-r1' \
+        'zlib>=1.4-r0' \
+        tzdata bash curl \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
